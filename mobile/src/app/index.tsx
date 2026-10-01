@@ -244,6 +244,17 @@ export default function ChatScreen() {
   const [sessionsAnchor, setSessionsAnchor] = useState<{ top: number; right: number }>();
   const windowWidth = useWindowDimensions().width;
   const newChatRef = useRef<View>(null);
+  // Guarda o id de sessão que o próprio `send()` acabou de adotar (ver linha
+  // ~359) — quando o efeito abaixo vir essa mesma troca de `activeChatSessionId`,
+  // sabe que não veio de uma troca de conversa pelo menu, e sim de uma
+  // promoção silenciosa no meio do envio. Nesse caso as `messages` locais já
+  // são a verdade (resposta + botões de transfer/claim recém-adicionados) —
+  // refazer o fetch aqui sobrescreveria tudo isso com o que o backend tem
+  // registrado pra sessão nova, que é só o último par de mensagens, sem os
+  // botões (`messageFromChatSession` os omite de propósito). Era essa
+  // sobrescrita que apagava os botões de ação reportada no relatório de
+  // produto ("não permite ver o chat anterior ao que selecionei").
+  const justPromotedSessionRef = useRef<number | null>(null);
 
   /**
    * Mede o botão na janela para o painel abrir colado nele, não no canto do
@@ -276,6 +287,10 @@ export default function ChatScreen() {
    */
   useEffect(() => {
     if (activeChatSessionId !== null) {
+      if (justPromotedSessionRef.current === activeChatSessionId) {
+        justPromotedSessionRef.current = null;
+        return;
+      }
       let active = true;
       getChatSessionMessages(activeChatSessionId).then((history) => {
         if (active) setMessages(history.map(messageFromChatSession));
@@ -357,6 +372,7 @@ export default function ChatScreen() {
       // Primeira mensagem de uma conversa nova: o backend acabou de criar a
       // sessão — adota o id devolvido para o painel passar a listá-la.
       if (activeChatSessionId === null && result.session_id) {
+        justPromotedSessionRef.current = result.session_id;
         setActiveChatSessionId(result.session_id);
       }
       void refreshChatSessions();
