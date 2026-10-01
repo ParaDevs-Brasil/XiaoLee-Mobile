@@ -15,7 +15,13 @@ import {
   type ReactNode,
 } from 'react';
 
-import { getArcGasFees, getUsdcAuthorizationDomain, relayUsdcAuthorization } from '@/api/backend';
+import {
+  getArcGasFees,
+  getUsdcAuthorizationDomain,
+  linkWallet,
+  loginWithPrivy,
+  relayUsdcAuthorization,
+} from '@/api/backend';
 import { shortHash } from '@/lib/format';
 import { clearSession, clearWallet, saveSession, saveWallet } from '@/lib/session';
 
@@ -308,7 +314,7 @@ async function sendTransaction(requester: Requester, from: string, tx: EvmTxRequ
 const WalletContext = createContext<WalletContextValue | null>(null);
 
 export function WalletProvider({ children }: { children: ReactNode }) {
-  const { user, isReady, logout } = usePrivy();
+  const { user, isReady, logout, getAccessToken } = usePrivy();
   const { wallets } = useEmbeddedEthereumWallet();
   const wallet = wallets[0] as EmbeddedWallet | undefined;
   const address = wallet?.address;
@@ -316,20 +322,39 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   /** Endereço já gravado como sessão nesta execução — evita regravar a cada render. */
   const established = useRef<string>(undefined);
 
-  // Quando a carteira embutida existe, ela vira a sessão do app — não há POST
-  // de vínculo a esperar: `saveSession` é síncrono ao SecureStore, então ter
-  // a carteira já é "estar logado".
+  // Quando a carteira embutida existe, troca o access token do Privy por uma
+  // sessão do backend (`/auth/session`) — é ela, e não mais o endereço cru, que
+  // vai como `Bearer`, então o histórico/campanhas seguem a pessoa e não o
+  // endereço. Depois vincula o endereço de payout a esse usuário.
   useEffect(() => {
     if (!isReady || !address) return;
     if (established.current === address.toLowerCase()) return;
     established.current = address.toLowerCase();
 
     const id = address.toLowerCase();
-    void Promise.all([
-      saveSession({ sessionId: id, twitterUserId: id, handle: shortHash(address) }),
-      saveWallet({ address, chain: 'arc' }),
-    ]);
-  }, [isReady, address]);
+    void (async () => {
+      let sessionId = id;
+      let twitterUserId = id;
+      try {
+        const token = await getAccessToken();
+        if (!token) throw new Error('Privy sem access token');
+        const res = await loginWithPrivy(token);
+        sessionId = res.session_id;
+        twitterUserId = res.twitter_user_id;
+      } catch (err) {
+        // ponytail: sem backend/Privy configurado cai na sessão legada (endereço
+        // como Bearer) para o app não quebrar; remover quando o gate for obrigatório.
+        console.warn('loginWithPrivy falhou, usando sessão legada:', err);
+      }
+      await Promise.all([
+        saveSession({ sessionId, twitterUserId, handle: shortHash(address) }),
+        saveWallet({ address, chain: 'arc' }),
+      ]);
+      if (sessionId !== id) {
+        linkWallet(address).catch((err) => console.warn('linkWallet falhou:', err));
+      }
+    })();
+  }, [isReady, address, getAccessToken]);
 
   const disconnect = async () => {
     try {

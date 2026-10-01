@@ -87,6 +87,18 @@ export function loginWithFirebase(idToken: string): Promise<SessionResponse> {
   });
 }
 
+/**
+ * Troca o access token do Privy (`getAccessToken()`) por uma sessão do backend.
+ * Mesmo contrato de `loginWithFirebase`: só o token vai no corpo.
+ */
+export function loginWithPrivy(accessToken: string): Promise<SessionResponse> {
+  return apiFetch<SessionResponse>('/auth/session', {
+    method: 'POST',
+    json: { provider: 'privy', id_token: accessToken },
+    skipAuth: true,
+  });
+}
+
 /** `POST /chat` — `backend/server/app.py::chat_compat` */
 export interface ChatResponse {
   /** O backend devolve uma lista de blocos; hoje só `type: "text"` é usado. */
