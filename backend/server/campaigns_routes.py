@@ -19,7 +19,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Header, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -639,6 +639,71 @@ async def save_user_wallet(user_id: str, payload: dict, db: AsyncSession = Depen
     db.add(Wallet(user_id=user.id, address=address, private_key_encrypted="user_managed"))
     await db.commit()
     return {"address": address, "created": True}
+
+
+# ---------------------------------------------------------------------------
+# Perfil do onboarding
+# ---------------------------------------------------------------------------
+
+INTERESTS = {"defi", "games", "cards", "trader", "memecoins"}
+
+
+class ProfileUpdate(BaseModel):
+    """PATCH parcial: só os campos enviados mudam. Dono vem do Bearer, nunca da URL."""
+
+    full_name: Optional[str] = Field(default=None, max_length=255)
+    state: Optional[str] = Field(default=None, max_length=64)
+    city: Optional[str] = Field(default=None, max_length=128)
+    bio: Optional[str] = Field(default=None, max_length=1000)
+    social_links: Optional[dict[str, str]] = None
+    interest_profile: Optional[list[str]] = None
+
+
+def _profile_dict(user: User) -> dict:
+    interests = json.loads(user.interest_profile) if user.interest_profile else []
+    return {
+        "full_name": user.full_name,
+        "state": user.state,
+        "city": user.city,
+        "bio": user.bio,
+        "social_links": json.loads(user.social_links) if user.social_links else {},
+        "interest_profile": interests,
+        # Onboarding completo = nome e ao menos um interesse; o app usa para decidir se mostra o questionário.
+        "onboarded": bool(user.full_name and interests),
+    }
+
+
+@router.get("/user/me/profile")
+async def get_my_profile(
+    authorization: Optional[str] = Header(default=None), db: AsyncSession = Depends(get_db_session)
+):
+    user = await _resolve_user(db, authorization)
+    await db.commit()
+    return _profile_dict(user)
+
+
+@router.patch("/user/me/profile")
+async def update_my_profile(
+    payload: ProfileUpdate,
+    authorization: Optional[str] = Header(default=None),
+    db: AsyncSession = Depends(get_db_session),
+):
+    user = await _resolve_user(db, authorization)
+    data = payload.model_dump(exclude_unset=True)
+    for key in ("full_name", "state", "city", "bio"):
+        if key in data:
+            setattr(user, key, (data[key] or "").strip() or None)
+    if data.get("social_links") is not None:
+        links = {k.strip().lower()[:32]: v.strip()[:255] for k, v in data["social_links"].items() if v.strip()}
+        user.social_links = json.dumps(links)
+    if data.get("interest_profile") is not None:
+        interests = [i.strip().lower() for i in data["interest_profile"]]
+        invalid = [i for i in interests if i not in INTERESTS]
+        if invalid:
+            raise HTTPException(status_code=422, detail=f"interesses inválidos: {invalid}; use {sorted(INTERESTS)}")
+        user.interest_profile = json.dumps(list(dict.fromkeys(interests)))
+    await db.commit()
+    return _profile_dict(user)
 
 
 # ---------------------------------------------------------------------------
