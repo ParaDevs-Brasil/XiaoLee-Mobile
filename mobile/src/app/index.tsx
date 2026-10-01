@@ -1,4 +1,5 @@
 import { Image } from 'expo-image';
+import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import {
@@ -17,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   claimCampaignReward,
   getChatSessionMessages,
+  getMyProfile,
   sendChatMessage,
   type ChatSessionMessage,
 } from '@/api/backend';
@@ -226,6 +228,7 @@ const REACTIONS: { emoji: string; key: AnimationKey; label: string }[] = [
 ];
 
 export default function ChatScreen() {
+  const router = useRouter();
   const [draft, setDraft] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [sending, setSending] = useState(false);
@@ -309,6 +312,28 @@ export default function ChatScreen() {
       active = false;
     };
   }, [sessionId, activeChatSessionId]);
+
+  /**
+   * Onboarding obrigatório no 1º acesso — relatório de produto, "ao logar,
+   * seria importante ter um questionário". `onboarded` vem calculado do
+   * backend (nome + ao menos um interesse, ver `_profile_dict`); sem conta
+   * (`sessionId` nulo/undefined) não há perfil a checar, e convidado segue
+   * reto para o chat como sempre.
+   */
+  useEffect(() => {
+    if (!sessionId) return;
+    let active = true;
+    getMyProfile()
+      .then((profile) => {
+        if (active && !profile.onboarded) router.replace('/onboarding');
+      })
+      .catch(() => {
+        // Sem backend/sessão válida — não bloqueia o chat por causa disto.
+      });
+    return () => {
+      active = false;
+    };
+  }, [sessionId, router]);
 
   /**
    * Troca o botão pelo hash na mensagem que foi assinada.
