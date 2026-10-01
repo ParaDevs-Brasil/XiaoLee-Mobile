@@ -54,30 +54,72 @@ const palette = {
 } as const;
 
 /**
- * As cinco primeiras chaves são as que `themed-text`/`themed-view` consomem
- * via `useTheme()`; o resto é o vocabulário completo do design system.
+ * Paleta escura — pedido do relatório de produto (28/set): "coloque apenas a
+ * opção DARK, que é algo que todos gostam". `docs/DESIGN_SYSTEM.md` não
+ * define uma variante escura ainda, então os valores abaixo foram derivados
+ * a mão a partir de `palette` (mesmo hue de cada token, luminância
+ * invertida), não portados de um Figma existente.
+ *
+ * ponytail: contraste conferido só de olho (acento mais claro que o da
+ * paleta clara, pra continuar legível sobre fundo escuro), não validado com
+ * ferramenta de AA como os comentários da paleta clara documentam para ela.
+ * Upgrade: rodar um checker de contraste (ex.: WebAIM) token a token e levar
+ * os valores de volta para `docs/DESIGN_SYSTEM.md`, igual já é pedido no
+ * comentário do token `warn` acima.
  */
-const scheme = {
-  text: palette.ink,
-  background: palette.bg,
-  backgroundElement: palette.card,
-  backgroundSelected: palette.accentSoft,
-  textSecondary: palette.ink2,
-  ...palette,
+const paletteDark = {
+  bg: '#141316',
+  card: '#1f1c20',
+  border: '#332f34',
+  ink: '#f5f2f0',
+  ink2: '#b7b2ac',
+  ink3: '#847f79',
+
+  accent: '#f0509a',
+  accentHover: '#d63d85',
+  accentSoft: '#3a1428',
+
+  success: '#34c98a',
+  successSoft: '#0f2b20',
+  successBorder: '#1d4633',
+  danger: '#e2665f',
+  dangerSoft: '#301414',
+
+  warn: '#e0a840',
+  warnSoft: '#2e2210',
+  warnBorder: '#4a3a16',
 } as const;
 
 /**
- * O modo escuro está **suspenso** no design system até a paleta ganhar uma
- * variante escura — no web, `theme-context.tsx` força `light` e o toggle foi
- * removido da Navbar. `dark` aponta para os mesmos valores em vez de inventar
- * uma paleta escura que divergiria do produto.
+ * As cinco primeiras chaves são as que `themed-text`/`themed-view` consomem
+ * via `useTheme()`; o resto é o vocabulário completo do design system.
+ */
+function buildScheme(p: Record<keyof typeof palette, string>) {
+  return {
+    text: p.ink,
+    background: p.bg,
+    backgroundElement: p.card,
+    backgroundSelected: p.accentSoft,
+    textSecondary: p.ink2,
+    ...p,
+  } as const;
+}
+
+const schemeDark = buildScheme(paletteDark);
+
+/**
+ * Dark-only: o app não tem toggle de tema (removido junto com o do web —
+ * `theme-context.tsx`), então não há "light" para preservar. `light` e
+ * `dark` apontam para a mesma paleta escura de propósito — assim nenhum dos
+ * componentes que já leem `Colors.light.*` direto (a maioria do app, ver
+ * `header-bar.tsx`/`screen-shell.tsx`/etc.) precisa mudar uma linha.
  */
 export const Colors = {
-  light: scheme,
-  dark: scheme,
+  light: schemeDark,
+  dark: schemeDark,
 } as const;
 
-export type ThemeColor = keyof typeof scheme;
+export type ThemeColor = keyof typeof schemeDark;
 
 /**
  * Quicksand é a família do produto — o doc citava Inter, que nunca foi

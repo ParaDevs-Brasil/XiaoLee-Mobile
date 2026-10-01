@@ -17,7 +17,7 @@ import {
   useFonts,
 } from '@expo-google-fonts/quicksand';
 import { PrivyProvider } from '@privy-io/expo';
-import { DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
@@ -81,19 +81,20 @@ export default function RootLayout() {
   }, []);
 
   return (
-    // Tema claro fixo: o design system suspendeu o modo escuro até a paleta
-    // ganhar variante escura (o web também força light).
+    // Tema dark fixo (relatório de produto, 28/set): `constants/theme.ts`
+    // agora só define a paleta escura, sem toggle — não há "light" para
+    // preservar, e o web segue a mesma decisão.
     // SafeAreaProvider é obrigatório para `useSafeAreaInsets` devolver algo
     // diferente de zero — sem ele o header fica sob a status bar.
     <SafeAreaProvider>
-      {/* Relógio, wifi e bateria em escuro, sempre.
-          O padrão de `style` é `auto`, que segue o tema **do aparelho**: num
-          celular em modo escuro os ícones saem brancos — e a faixa da status
-          bar é pintada pelo `HeaderBar`, que é branco (`Colors.light.card`).
-          Branco no branco some, e o usuário perde o relógio e as notificações.
-          O app não acompanha o tema do sistema (ver `constants/theme.ts`: modo
-          escuro suspenso), então o conteúdo da barra também não deve. */}
-      <StatusBar style="dark" />
+      {/* Relógio, wifi e bateria em claro, sempre.
+          `constants/theme.ts` agora é dark-only — `HeaderBar` pinta a faixa
+          da status bar com `Colors.light.card`, que hoje é escuro
+          (`paletteDark.card`, #1f1c20). Ícones escuros sobre fundo escuro
+          somem, por isso `style="light"` (branco) em vez do antigo "dark". O
+          app não acompanha o tema do aparelho de propósito — é dark-only,
+          não "segue o sistema". */}
+      <StatusBar style="light" />
 
       {/*
         `supportedChains` é prop irmã de `config`, não filha — e não existe
@@ -109,7 +110,7 @@ export default function RootLayout() {
         config={PRIVY_CONFIG}
       >
         <WalletProvider>
-          <ThemeProvider value={DefaultTheme}>
+          <ThemeProvider value={DarkTheme}>
             {/*
               Só monta o Stack depois que a intro termina — não por
               performance, é correção. `AnimatedAvatar` (cabeçalho do chat) é
