@@ -52,12 +52,16 @@
             "useFrameworks": "static"
           },
           "android": {
-            "buildArchs": ["arm64-v8a"]
+            "buildArchs": [
+              "arm64-v8a"
+            ]
           }
         }
       ],
       "@react-native-firebase/messaging",
-      "expo-video"
+      "expo-video",
+      "expo-image",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
