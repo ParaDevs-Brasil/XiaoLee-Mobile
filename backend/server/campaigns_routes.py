@@ -694,6 +694,7 @@ class SessionLoginRequest(BaseModel):
 _TOKEN_VERIFIERS = {
     "firebase": token_auth.verify_firebase_token,
     "web3auth": token_auth.verify_web3auth_token,
+    "privy": token_auth.verify_privy_token,
 }
 
 

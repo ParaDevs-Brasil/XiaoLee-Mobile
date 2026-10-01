@@ -32,6 +32,7 @@ def _b64url(raw: bytes) -> str:
 
 FIREBASE_PROJECT = "xiaolee-mobile"
 WEB3AUTH_CLIENT_ID = "web3auth-test-client-id"
+PRIVY_APP_ID = "privy-test-app-id"
 
 # Chave de assinatura do "provedor" — só existe no teste; o código sob teste a
 # recebe via _signing_key_for, que é o ponto de injeção do JWKS real.
@@ -43,6 +44,7 @@ _ATTACKER_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 def _provider_config(monkeypatch):
     monkeypatch.setenv("FIREBASE_PROJECT_ID", FIREBASE_PROJECT)
     monkeypatch.setenv("WEB3AUTH_CLIENT_ID", WEB3AUTH_CLIENT_ID)
+    monkeypatch.setenv("PRIVY_APP_ID", PRIVY_APP_ID)
     monkeypatch.setattr(token_auth, "_signing_key_for", lambda token, jwks_url: _KEY.public_key())
     token_auth.reset_config_cache()
     yield
@@ -228,3 +230,35 @@ class TestFailClosed:
         token_auth.reset_config_cache()
         with pytest.raises(token_auth.TokenVerificationError):
             token_auth.verify_web3auth_token(_web3auth_token())
+
+
+# ---------------------------------------------------------------------------
+# Privy — access token (só DID em `sub`; sem email/wallet)
+# ---------------------------------------------------------------------------
+
+def _privy_token(key=_KEY, **overrides: Any) -> str:
+    now = int(time.time())
+    claims = {"iss": "privy.io", "aud": PRIVY_APP_ID, "sub": "did:privy:abc123", "iat": now, "exp": now + 3600}
+    claims.update(overrides)
+    return jwt.encode(claims, key, algorithm="RS256")
+
+
+class TestPrivy:
+    def test_valid_token_yields_identity(self):
+        ident = token_auth.verify_privy_token(_privy_token())
+        assert (ident.provider, ident.subject, ident.address) == ("privy", "did:privy:abc123", "")
+
+    @pytest.mark.parametrize("bad", [
+        {"key": _ATTACKER_KEY},
+        {"aud": "outro-app"},
+        {"iss": "evil.example.com"},
+        {"iat": int(time.time()) - 7200, "exp": int(time.time()) - 3600},
+    ])
+    def test_invalid_tokens_are_rejected(self, bad):
+        with pytest.raises(token_auth.TokenVerificationError):
+            token_auth.verify_privy_token(_privy_token(**bad))
+
+    def test_missing_app_id_fails_closed(self, monkeypatch):
+        monkeypatch.delenv("PRIVY_APP_ID", raising=False)
+        with pytest.raises(token_auth.TokenVerificationError):
+            token_auth.verify_privy_token(_privy_token())

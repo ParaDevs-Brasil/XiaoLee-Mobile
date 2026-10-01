@@ -110,6 +110,25 @@ def verify_firebase_token(token: str) -> VerifiedIdentity:
     )
 
 
+def verify_privy_token(token: str) -> VerifiedIdentity:
+    """Valida o access token do Privy (`getAccessToken()` no mobile).
+
+    O access token só carrega o DID (`sub`); email/wallet ficam vazios e o
+    backend associa depois, como no Firebase.
+    """
+    app_id = _required_env("PRIVY_APP_ID")
+    claims = _decode(
+        token,
+        jwks_url=f"https://auth.privy.io/api/v1/apps/{app_id}/jwks.json",
+        issuer="privy.io",
+        audience=app_id,
+    )
+    subject = (claims.get("sub") or "").strip()
+    if not subject:
+        raise TokenVerificationError("token sem sub")
+    return VerifiedIdentity(provider="privy", subject=subject, email="", name="", address="")
+
+
 def _address_from_wallets(claims: dict) -> str:
     """Endereço de payout declarado pelo Web3Auth dentro do token."""
     for wallet in claims.get("wallets") or []:
