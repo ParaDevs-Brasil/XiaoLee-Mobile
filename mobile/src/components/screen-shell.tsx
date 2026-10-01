@@ -10,6 +10,7 @@ import { IconChat } from '@/components/icons';
 import { NavMenu } from '@/components/nav-menu';
 import { ProfileMenu } from '@/components/profile-menu';
 import { CardShadow, Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { useUnreadNotificationsCount } from '@/hooks/use-unread-notifications';
 import { useWallet } from '@/hooks/use-wallet';
 
 /**
@@ -33,6 +34,7 @@ export function ScreenShell({ children }: { children: ReactNode }) {
   // A carteira É a identidade do app (`lib/wallet.tsx` grava a sessão
   // ao conectar) — não há mais um login separado dela para esperar aqui.
   const { address: wallet } = useWallet();
+  const unreadCount = useUnreadNotificationsCount();
 
   const close = () => setPanel('none');
   /** Tocar no mesmo ícone fecha; nos dois painéis, abrir um fecha o outro. */
@@ -55,6 +57,7 @@ export function ScreenShell({ children }: { children: ReactNode }) {
         // uma segunda cópia dele deixaria o voltar do Android preso num
         // vaivém entre dois chats idênticos.
         onPressLogo={() => router.navigate('/')}
+        unreadCount={unreadCount}
       />
 
       {children}
