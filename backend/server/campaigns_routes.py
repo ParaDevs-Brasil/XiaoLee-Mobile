@@ -37,6 +37,8 @@ logger = logging.getLogger(__name__)
 from fastapi import Depends
 from server.metrics import record_campaign_event
 
+from database.repository import DatabaseRepository  # noqa: E402
+
 router = APIRouter(tags=["campaigns"])
 
 _B58_ALPHABET = b'123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
@@ -330,6 +332,18 @@ async def resolve_twitter_identity(db: AsyncSession, authorization: Optional[str
         twitter_handle = web_session.twitter_user_id
 
     return twitter_user_id, twitter_handle
+
+
+async def resolve_optional_identity(db: AsyncSession, authorization: Optional[str]) -> Optional[str]:
+    """``twitter_user_id`` do Bearer, ou None se não há Bearer (chat guest, intencional).
+
+    Bearer presente é sempre resolvido (sessão vira o usuário real, expirada dá 401);
+    antes `/chat` usava a string crua como user_id e o histórico ficava preso ao
+    `session_id`, não à pessoa.
+    """
+    if not authorization or not authorization.removeprefix("Bearer ").strip():
+        return None
+    return (await resolve_twitter_identity(db, authorization))[0]
 
 
 async def _resolve_user(db: AsyncSession, authorization: Optional[str]) -> User:
@@ -740,13 +754,7 @@ async def auth_session(payload: SessionLoginRequest, db: AsyncSession = Depends(
     twitter_user_id = f"{identity.provider}_{identity.subject}"
     handle = identity.name or (identity.email.split("@")[0] if identity.email else twitter_user_id)
 
-    user = (
-        await db.execute(select(User).where(User.twitter_user_id == twitter_user_id))
-    ).scalars().first()
-    if not user:
-        user = User(twitter_user_id=twitter_user_id, twitter_handle=handle)
-        db.add(user)
-        await db.flush()
+    user = await DatabaseRepository(db).get_or_create_user(identity.provider, twitter_user_id, handle=handle)
 
     # Endereço de payout só existe se o provedor o assinou dentro do token.
     if identity.address:

@@ -37,7 +37,7 @@ from server.schemas import InboundMessage, OrchestrationResponse, SwapPrepareReq
 from server.settings import settings
 from server.rate_limiter import get_rate_limiter, reset_rate_limiter
 from server.webhooks.helius_routes import router as helius_router
-from server.campaigns_routes import router as campaigns_router
+from server.campaigns_routes import resolve_optional_identity, router as campaigns_router
 from server.notifications_routes import router as notifications_router
 from server.routes.stellar_auth_routes import router as stellar_auth_router
 from server.routes.stellar_routes import router as stellar_router
@@ -476,11 +476,7 @@ async def chat_compat(
     if stellar_wallet:
         text = f"[System Note: Stellar wallet {stellar_wallet}] {text}"
 
-    session_token = ""
-    if authorization and authorization.startswith("Bearer "):
-        session_token = authorization.removeprefix("Bearer ").strip()
-
-    user_id = session_token or str(payload.get("user_id", "web_anonymous"))
+    user_id = await resolve_optional_identity(db, authorization) or str(payload.get("user_id", "web_anonymous"))
     platform = str(payload.get("platform", "web"))
 
     _enforce_rate_limit(f"chat:{platform}:{user_id}")

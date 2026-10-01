@@ -23,7 +23,7 @@ class DatabaseRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get_or_create_user(self, platform: str, user_id: str) -> User:
+    async def get_or_create_user(self, platform: str, user_id: str, handle: str | None = None) -> User:
         stmt = select(User).where(User.twitter_user_id == user_id)
         result = await self.session.execute(stmt)
         user = result.scalars().first()
@@ -31,7 +31,7 @@ class DatabaseRepository:
         if not user:
             user = User(
                 twitter_user_id=user_id,
-                twitter_handle=f"{platform}_{user_id}",
+                twitter_handle=handle or f"{platform}_{user_id}",
             )
             self.session.add(user)
             await self.session.flush()
