@@ -86,6 +86,10 @@ class TestRunCampaignValidation:
             resp = self._client.get(f"/v1/agent/run-campaign/{run_id}/status")
         except httpx.InvalidURL:
             return  # caracteres de controle que o próprio cliente HTTP recusa montar
+        except Exception as e:
+            if "InvalidURL" in type(e).__name__:
+                return
+            raise
         assert resp.status_code != 500
 
 
