@@ -1,5 +1,5 @@
 import { API_URL, REQUEST_TIMEOUT_MS } from '@/lib/config';
-import { getSessionToken } from '@/lib/session';
+import { clearSession, getSessionToken } from '@/lib/session';
 
 /**
  * Cliente HTTP do backend XiaoLee — mesma responsabilidade de
@@ -65,9 +65,16 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
   requestHeaders.set('Accept', 'application/json');
   if (json !== undefined) requestHeaders.set('Content-Type', 'application/json');
 
+  // Só o Bearer que ESTE cliente injetou conta para a regra do 401 abaixo — um
+  // `Authorization` passado à mão (ex.: chamada com token de outro fluxo) não
+  // diz nada sobre a sessão guardada.
+  let sentStoredSession = false;
   if (!skipAuth && !requestHeaders.has('Authorization')) {
     const token = await getSessionToken();
-    if (token) requestHeaders.set('Authorization', `Bearer ${token}`);
+    if (token) {
+      requestHeaders.set('Authorization', `Bearer ${token}`);
+      sentStoredSession = true;
+    }
   }
 
   const controller = new AbortController();
@@ -111,6 +118,12 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
   }
 
   if (!response.ok) {
+    // O backend não reconhece mais a sessão guardada (expirou, foi revogada, ou
+    // é uma sessão legada de antes do login real). Descartar avisa o gate de
+    // login (`hooks/use-auth-state.ts`): se o Privy segue logado, o
+    // `WalletProvider` troca o token por uma sessão nova sozinho; senão o app
+    // volta para a tela de login em vez de ficar falhando em silêncio.
+    if (response.status === 401 && sentStoredSession) void clearSession();
     const detail = messageFromBody(body) ?? raw.slice(0, 200);
     throw new ApiError(detail || `HTTP ${response.status}`, response.status, false);
   }

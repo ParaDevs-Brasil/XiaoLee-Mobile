@@ -34,6 +34,7 @@ app_module = importlib.import_module("server.app")
 client = TestClient(app_module.app)
 
 FIREBASE_PROJECT = "xiaolee-mobile"
+PRIVY_APP_ID = "privy-test-app-id"
 _KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 _ATTACKER_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 
@@ -53,6 +54,7 @@ async def db(db_session):
 @pytest.fixture(autouse=True)
 def _provider_config(monkeypatch):
     monkeypatch.setenv("FIREBASE_PROJECT_ID", FIREBASE_PROJECT)
+    monkeypatch.setenv("PRIVY_APP_ID", PRIVY_APP_ID)
     monkeypatch.setattr(token_auth, "_signing_key_for", lambda token, jwks_url: _KEY.public_key())
     token_auth.reset_config_cache()
     yield
@@ -74,6 +76,19 @@ def _token(key=_KEY, **overrides: Any) -> str:
     return jwt.encode(claims, key, algorithm="RS256")
 
 
+def _privy_token(key=_KEY, **overrides: Any) -> str:
+    now = int(time.time())
+    claims = {
+        "iss": "privy.io",
+        "aud": PRIVY_APP_ID,
+        "sub": "did:privy:abc123",
+        "iat": now,
+        "exp": now + 3600,
+    }
+    claims.update(overrides)
+    return jwt.encode(claims, key, algorithm="RS256")
+
+
 class TestHappyPath:
     @pytest.mark.asyncio
     async def test_valid_token_issues_session(self, db):
@@ -83,6 +98,16 @@ class TestHappyPath:
         assert body["session_id"]
         assert body["twitter_user_id"] == "firebase_firebase-uid-abc"
         assert body["username"] == "Gustavo"
+
+    @pytest.mark.asyncio
+    async def test_valid_privy_token_issues_session(self, db):
+        resp = client.post("/auth/session", json={"provider": "privy", "id_token": _privy_token()})
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["session_id"].startswith("privy_session_")
+        assert body["twitter_user_id"] == "privy_did:privy:abc123"
+        assert body["username"] == "privy_did:privy:abc123"
+        assert body["address"] == ""
 
     @pytest.mark.asyncio
     async def test_session_is_persisted(self, db):

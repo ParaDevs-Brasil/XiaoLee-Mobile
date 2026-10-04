@@ -20,6 +20,7 @@ import { PrivyProvider } from '@privy-io/expo';
 import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
+import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useState } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -27,7 +28,11 @@ import { FadeOutOverlay } from '@/components/fade-out-overlay';
 import { IntroVideo } from '@/components/intro-video';
 import { LoadingScreen } from '@/components/loading-screen';
 import { Colors } from '@/constants/theme';
+import { useAuthState } from '@/hooks/use-auth-state';
 import { arcTestnetChain, PRIVY_CONFIG, WalletProvider } from '@/lib/wallet';
+
+// Necessário para fechar o navegador e completar o fluxo OAuth de volta no app (Android/Web)
+WebBrowser.maybeCompleteAuthSession();
 
 /**
  * `CHANGE_ME` deixa o app subir sem quebrar antes de o app do Privy existir —
@@ -39,6 +44,64 @@ const PRIVY_APP_ID = process.env.EXPO_PUBLIC_PRIVY_APP_ID?.trim() || 'CHANGE_ME'
 const PRIVY_CLIENT_ID = process.env.EXPO_PUBLIC_PRIVY_CLIENT_ID?.trim() || 'CHANGE_ME';
 
 SplashScreen.preventAutoHideAsync();
+
+/**
+ * Navegador raiz do aplicativo dentro dos provedores Privy e WalletProvider.
+ *
+ * Aplica o gate de login via `Stack.Protected`:
+ * - Sem sessão (`guard={!signedIn}`): apenas a rota `/login` fica acessível;
+ * - Autenticado (`guard={signedIn}`): todas as telas do app são liberadas;
+ * - Enquanto carrega o SecureStore (`authState === 'loading'`), devolve `null`
+ *   para evitar flash da tela de login para quem já possui sessão.
+ *
+ * Cuidado crítico: todas as 11 rotas do `src/app` precisam estar mapeadas
+ * dentro de um dos blocos protegidos. No Expo Router, rotas não declaradas
+ * são injetadas sem guarda e ficariam abertas.
+ */
+function RootNavigator() {
+  const authState = useAuthState();
+  const signedIn = authState === 'signedIn';
+
+  if (authState === 'loading') {
+    return null;
+  }
+
+  return (
+    <Stack
+      screenOptions={{
+        headerStyle: { backgroundColor: Colors.light.card },
+        headerTitleStyle: { fontFamily: 'Quicksand_700Bold', color: Colors.light.ink },
+        contentStyle: { backgroundColor: Colors.light.bg },
+      }}
+    >
+      <Stack.Protected guard={!signedIn}>
+        <Stack.Screen name="login" options={{ headerShown: false }} />
+      </Stack.Protected>
+
+      <Stack.Protected guard={signedIn}>
+        {/* Estas telas trazem o próprio HeaderBar (o wordmark do Figma) via
+            `ScreenShell`, então a barra nativa sairia duplicada. A volta
+            fica com o gesto do sistema e com o wordmark, que leva ao chat. */}
+        <Stack.Screen name="index" options={{ headerShown: false }} />
+        <Stack.Screen name="traction" options={{ headerShown: false }} />
+        <Stack.Screen name="notifications" options={{ headerShown: false }} />
+        <Stack.Screen name="dashboard" options={{ headerShown: false }} />
+        <Stack.Screen name="campaigns/index" options={{ headerShown: false }} />
+        <Stack.Screen name="wallet" options={{ headerShown: false }} />
+        <Stack.Screen name="transactions" options={{ headerShown: false }} />
+        <Stack.Screen name="history" options={{ headerShown: false }} />
+        {/* O formulário é a exceção: entra como modal e mantém a barra
+            nativa. Num formulário longo o usuário precisa de uma saída
+            sempre visível, e o wordmark do ScreenShell não é uma. */}
+        <Stack.Screen
+          name="campaigns/new"
+          options={{ presentation: 'modal', title: 'New Campaign' }}
+        />
+        <Stack.Screen name="diagnostics" options={{ title: 'Diagnóstico' }} />
+      </Stack.Protected>
+    </Stack>
+  );
+}
 
 export default function RootLayout() {
   // A intro toca em toda abertura fria do app — este estado nasce `'video'` a
@@ -122,35 +185,7 @@ export default function RootLayout() {
               todo — só eles não usam vídeo, então hidratam a sessão em
               paralelo à intro, sem esse conflito.
             */}
-            {stage === 'ready' && (fontsLoaded || fontError) ? (
-              <Stack
-                screenOptions={{
-                  headerStyle: { backgroundColor: Colors.light.card },
-                  headerTitleStyle: { fontFamily: 'Quicksand_700Bold', color: Colors.light.ink },
-                  contentStyle: { backgroundColor: Colors.light.bg },
-                }}
-              >
-                {/* Estas telas trazem o próprio HeaderBar (o wordmark do Figma) via
-                    `ScreenShell`, então a barra nativa sairia duplicada. A volta
-                    fica com o gesto do sistema e com o wordmark, que leva ao chat. */}
-                <Stack.Screen name="index" options={{ headerShown: false }} />
-                <Stack.Screen name="traction" options={{ headerShown: false }} />
-                <Stack.Screen name="notifications" options={{ headerShown: false }} />
-                <Stack.Screen name="dashboard" options={{ headerShown: false }} />
-                <Stack.Screen name="campaigns/index" options={{ headerShown: false }} />
-                <Stack.Screen name="wallet" options={{ headerShown: false }} />
-                <Stack.Screen name="transactions" options={{ headerShown: false }} />
-                <Stack.Screen name="history" options={{ headerShown: false }} />
-                {/* O formulário é a exceção: entra como modal e mantém a barra
-                    nativa. Num formulário longo o usuário precisa de uma saída
-                    sempre visível, e o wordmark do ScreenShell não é uma. */}
-                <Stack.Screen
-                  name="campaigns/new"
-                  options={{ presentation: 'modal', title: 'New Campaign' }}
-                />
-                <Stack.Screen name="diagnostics" options={{ title: 'Diagnóstico' }} />
-              </Stack>
-            ) : null}
+            {stage === 'ready' && (fontsLoaded || fontError) ? <RootNavigator /> : null}
           </ThemeProvider>
         </WalletProvider>
       </PrivyProvider>

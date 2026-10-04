@@ -270,3 +270,12 @@ export const IconSpark = ({ size = 24, color = 'currentColor' }: IconProps) => (
     <Path d="M12 2l1.6 5.6L19 9.2l-5.4 1.6L12 16l-1.6-5.2L5 9.2l5.4-1.6L12 2z" />
   </Svg>
 );
+
+export const IconLogOut = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+    <Polyline points="16 17 21 12 16 7" />
+    <Line x1="21" y1="12" x2="9" y2="12" />
+  </Svg>
+);
+

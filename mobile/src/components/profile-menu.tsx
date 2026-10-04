@@ -9,11 +9,13 @@ import {
   IconClipboard,
   IconClock,
   IconDownload,
+  IconLogOut,
   IconUpload,
   IconUser,
   IconWallet,
 } from '@/components/icons';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { usePrivyWallet } from '@/lib/wallet';
 
 /**
  * Painel de perfil — frame "Xiaolee - Profile" (grupo `menu-profile`, 191x522).
@@ -68,6 +70,7 @@ const ACTIONS: (PanelItem & { href?: '/wallet' | '/transactions' | '/history' })
 
 export function ProfileMenu({ visible, onDismiss, walletAddress, onConnectWallet }: ProfileMenuProps) {
   const router = useRouter();
+  const { disconnect } = usePrivyWallet();
 
   return (
     <DropdownPanel visible={visible} onDismiss={onDismiss}>
@@ -113,7 +116,20 @@ export function ProfileMenu({ visible, onDismiss, walletAddress, onConnectWallet
         />
       ))}
 
-      {walletAddress ? null : (
+      {walletAddress ? (
+        <PanelRow
+          item={{
+            key: 'disconnect',
+            Icon: IconLogOut,
+            title: 'Sign out',
+            subtitle: 'Disconnect your account',
+            onPress: () => {
+              onDismiss();
+              void disconnect();
+            },
+          }}
+        />
+      ) : (
         <Pressable
           onPress={onConnectWallet}
           style={({ pressed }) => [styles.connect, pressed && styles.pressed]}

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Animated, StyleSheet, type ViewStyle } from 'react-native';
 
 const DEFAULT_FADE_MS = 400;
@@ -27,7 +27,7 @@ export function FadeOutOverlay({
   durationMs = DEFAULT_FADE_MS,
   children,
 }: FadeOutOverlayProps) {
-  const opacity = useRef(new Animated.Value(1)).current;
+  const [opacity] = useState(() => new Animated.Value(1));
 
   useEffect(() => {
     if (!fadeOut) return;
