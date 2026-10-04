@@ -81,14 +81,11 @@ class TestRunCampaignValidation:
     @given(run_id=st.text(max_size=100))
     @settings(max_examples=60, suppress_health_check=[HealthCheck.too_slow, HealthCheck.function_scoped_fixture])
     def test_arbitrary_run_id_never_500(self, run_id):
-        import httpx
         try:
             resp = self._client.get(f"/v1/agent/run-campaign/{run_id}/status")
-        except httpx.InvalidURL:
-            return  # caracteres de controle que o próprio cliente HTTP recusa montar
-        except Exception as e:
-            if "InvalidURL" in type(e).__name__:
-                return
+        except Exception as exc:
+            if "InvalidURL" in type(exc).__name__:
+                return  # caracteres de controle que o próprio cliente HTTP recusa montar
             raise
         assert resp.status_code != 500
 
