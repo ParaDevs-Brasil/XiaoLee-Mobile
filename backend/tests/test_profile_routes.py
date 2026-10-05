@@ -86,6 +86,24 @@ class TestAuth:
         assert client.patch(URL, json=FULL, headers=h).status_code == 401
         assert await _user(db, "old") is None
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("method", ["get", "patch"])
+    async def test_unknown_bearer_is_401_and_creates_no_user(self, db, method):
+        """Bearer que o backend nunca emitiu não vira identidade (nem cria usuário)."""
+        h = {"Authorization": "Bearer privy_ghost"}
+        assert getattr(client, method)(URL, headers=h, **({"json": FULL} if method == "patch" else {})).status_code == 401
+        assert await _user(db, "ghost") is None
+
+    @pytest.mark.asyncio
+    async def test_other_users_id_is_not_a_credential(self, db):
+        """O twitter_user_id de alguém (ex.: endereço da carteira) não abre o perfil dele."""
+        owner = await _login(db, "a")
+        client.patch(URL, json=FULL, headers=owner)
+        stolen = {"Authorization": "Bearer privy_a"}  # o id, não a sessão
+        assert client.get(URL, headers=stolen).status_code == 401
+        assert client.patch(URL, json={"bio": "hackeado"}, headers=stolen).status_code == 401
+        assert client.get(URL, headers=owner).json()["bio"] == "criador de conteúdo"
+
 
 class TestIsolation:
     @pytest.mark.asyncio

@@ -287,12 +287,17 @@ def _verify_claim_proof(payload: CampaignActionRequest, campaign_id: int, sessio
         raise HTTPException(status_code=400, detail="Invalid wallet signature for this claim") from exc
 
 
-async def resolve_twitter_identity(db: AsyncSession, authorization: Optional[str]) -> tuple[str, str]:
+async def resolve_twitter_identity(
+    db: AsyncSession, authorization: Optional[str], *, strict: bool = False
+) -> tuple[str, str]:
     """Resolve o Bearer para ``(twitter_user_id, twitter_handle)``.
 
     O token pode ser um ``AuthToken`` de bot (Telegram/X), um ``WebSession`` de
     login social (Google/Web3Auth via `/auth/session`) ou, no caso legado, o
-    próprio twitter_user_id usado direto como token. Compartilhado com
+    próprio twitter_user_id usado direto como token. Com ``strict=True`` o caso
+    legado dá 401: só vale um token que o backend emitiu. Rotas com dados
+    pessoais (perfil) usam strict; as demais seguem aceitando o legado enquanto
+    houver build antigo do app em campo. Compartilhado com
     `notifications_routes.py`: resolver a sessão sem passar por aqui foi
     exatamente o bug que deixava `/v1/notifications/me` em 404 pra quem
     logou via Google — o `session_id` (`firebase_session_<uuid>`) não é o
@@ -331,6 +336,11 @@ async def resolve_twitter_identity(db: AsyncSession, authorization: Optional[str
         twitter_user_id = web_session.twitter_user_id
         twitter_handle = web_session.twitter_user_id
 
+    if strict and not auth_token and not web_session:
+        # O twitter_user_id (ex.: o endereço da carteira, que é público) não é
+        # credencial: aceitá-lo deixaria qualquer um ler/editar o perfil alheio.
+        raise HTTPException(status_code=401, detail="Invalid session")
+
     return twitter_user_id, twitter_handle
 
 
@@ -346,8 +356,8 @@ async def resolve_optional_identity(db: AsyncSession, authorization: Optional[st
     return (await resolve_twitter_identity(db, authorization))[0]
 
 
-async def _resolve_user(db: AsyncSession, authorization: Optional[str]) -> User:
-    twitter_user_id, twitter_handle = await resolve_twitter_identity(db, authorization)
+async def _resolve_user(db: AsyncSession, authorization: Optional[str], *, strict: bool = False) -> User:
+    twitter_user_id, twitter_handle = await resolve_twitter_identity(db, authorization, strict=strict)
 
     user_stmt = select(User).where(User.twitter_user_id == twitter_user_id)
     user_res = await db.execute(user_stmt)
@@ -677,7 +687,7 @@ def _profile_dict(user: User) -> dict:
 async def get_my_profile(
     authorization: Optional[str] = Header(default=None), db: AsyncSession = Depends(get_db_session)
 ):
-    user = await _resolve_user(db, authorization)
+    user = await _resolve_user(db, authorization, strict=True)
     await db.commit()
     return _profile_dict(user)
 
@@ -688,7 +698,7 @@ async def update_my_profile(
     authorization: Optional[str] = Header(default=None),
     db: AsyncSession = Depends(get_db_session),
 ):
-    user = await _resolve_user(db, authorization)
+    user = await _resolve_user(db, authorization, strict=True)
     data = payload.model_dump(exclude_unset=True)
     for key in ("full_name", "state", "city", "bio"):
         if key in data:
