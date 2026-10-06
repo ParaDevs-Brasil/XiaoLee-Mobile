@@ -17,7 +17,7 @@ import {
   useFonts,
 } from '@expo-google-fonts/quicksand';
 import { PrivyProvider } from '@privy-io/expo';
-import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
+import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import * as WebBrowser from 'expo-web-browser';
@@ -27,7 +27,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { FadeOutOverlay } from '@/components/fade-out-overlay';
 import { IntroVideo } from '@/components/intro-video';
 import { LoadingScreen } from '@/components/loading-screen';
-import { Colors } from '@/constants/theme';
+import { Colors, DARK_MODE } from '@/constants/theme';
 import { useAuthState } from '@/hooks/use-auth-state';
 import { arcTestnetChain, PRIVY_CONFIG, WalletProvider } from '@/lib/wallet';
 
@@ -144,20 +144,20 @@ export default function RootLayout() {
   }, []);
 
   return (
-    // Tema dark fixo (relatório de produto, 28/set): `constants/theme.ts`
-    // agora só define a paleta escura, sem toggle — não há "light" para
-    // preservar, e o web segue a mesma decisão.
+    // Tema fixo, escolhido por `DARK_MODE` em `constants/theme.ts` (claro por
+    // padrão; a paleta escura está pronta atrás desse interruptor). Sem
+    // toggle e sem seguir o tema do aparelho.
     // SafeAreaProvider é obrigatório para `useSafeAreaInsets` devolver algo
     // diferente de zero — sem ele o header fica sob a status bar.
     <SafeAreaProvider>
-      {/* Relógio, wifi e bateria em claro, sempre.
-          `constants/theme.ts` agora é dark-only — `HeaderBar` pinta a faixa
-          da status bar com `Colors.light.card`, que hoje é escuro
-          (`paletteDark.card`, #1f1c20). Ícones escuros sobre fundo escuro
-          somem, por isso `style="light"` (branco) em vez do antigo "dark". O
-          app não acompanha o tema do aparelho de propósito — é dark-only,
-          não "segue o sistema". */}
-      <StatusBar style="light" />
+      {/* Relógio, wifi e bateria contrastando com a faixa da status bar.
+          O padrão de `style` é `auto`, que segue o tema **do aparelho**: num
+          celular em modo escuro os ícones sairiam brancos sobre o
+          `HeaderBar`, que pinta a faixa com `Colors.light.card` — branco no
+          claro, e o usuário perderia o relógio e as notificações. O app não
+          acompanha o aparelho, então a barra também não: ícones escuros no
+          tema claro, claros no escuro. */}
+      <StatusBar style={DARK_MODE ? 'light' : 'dark'} />
 
       {/*
         `supportedChains` é prop irmã de `config`, não filha — e não existe
@@ -173,7 +173,7 @@ export default function RootLayout() {
         config={PRIVY_CONFIG}
       >
         <WalletProvider>
-          <ThemeProvider value={DarkTheme}>
+          <ThemeProvider value={DARK_MODE ? DarkTheme : DefaultTheme}>
             {/*
               Só monta o Stack depois que a intro termina — não por
               performance, é correção. `AnimatedAvatar` (cabeçalho do chat) é

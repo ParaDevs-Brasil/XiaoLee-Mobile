@@ -105,18 +105,29 @@ function buildScheme(p: Record<keyof typeof palette, string>) {
   } as const;
 }
 
+const schemeLight = buildScheme(palette);
 const schemeDark = buildScheme(paletteDark);
 
 /**
- * Dark-only: o app não tem toggle de tema (removido junto com o do web —
- * `theme-context.tsx`), então não há "light" para preservar. `light` e
- * `dark` apontam para a mesma paleta escura de propósito — assim nenhum dos
- * componentes que já leem `Colors.light.*` direto (a maioria do app, ver
- * `header-bar.tsx`/`screen-shell.tsx`/etc.) precisa mudar uma linha.
+ * Interruptor do tema: o app sobe no claro até a paleta escura ter design
+ * definido. A paleta escura fica pronta aqui — para ativá-la, troque para
+ * `true`; `_layout.tsx` ajusta a status bar e o tema do navegador a partir
+ * deste mesmo valor.
  */
+export const DARK_MODE = false;
+
+/**
+ * O app não tem toggle de tema nem acompanha o do aparelho. `light` e `dark`
+ * apontam para a mesma paleta (a ativa) de propósito — assim nenhum dos
+ * componentes que já leem `Colors.light.*` direto (a maioria do app, ver
+ * `header-bar.tsx`/`screen-shell.tsx`/etc.) precisa mudar uma linha, e o
+ * `useTheme()` devolve a mesma coisa com o aparelho em modo escuro.
+ */
+const activeScheme = DARK_MODE ? schemeDark : schemeLight;
+
 export const Colors = {
-  light: schemeDark,
-  dark: schemeDark,
+  light: activeScheme,
+  dark: activeScheme,
 } as const;
 
 export type ThemeColor = keyof typeof schemeDark;
