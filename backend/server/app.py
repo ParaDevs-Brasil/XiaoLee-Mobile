@@ -37,7 +37,7 @@ from server.schemas import InboundMessage, OrchestrationResponse, SwapPrepareReq
 from server.settings import settings
 from server.rate_limiter import get_rate_limiter, reset_rate_limiter
 from server.webhooks.helius_routes import router as helius_router
-from server.campaigns_routes import router as campaigns_router
+from server.campaigns_routes import resolve_optional_identity, router as campaigns_router
 from server.notifications_routes import router as notifications_router
 from server.routes.stellar_auth_routes import router as stellar_auth_router
 from server.routes.stellar_routes import router as stellar_router
@@ -402,7 +402,11 @@ async def _process_inbound(
     user = await repo.get_or_create_user(platform, user_id)
     if platform == "telegram" and metadata and metadata.get("chat_id"):
         await repo.set_telegram_chat_id(user.id, metadata["chat_id"])
-    history = await repo.get_user_history(user.id, limit=10)
+    # 30, não 10: um fluxo guiado (ex. criar campanha por chat) leva ~8-9
+    # idas e vindas — campo por campo — antes de confirmar. Com janela de 10
+    # mensagens, as primeiras respostas (título, tipo) saíam do histórico
+    # antes da hora de criar, e o modelo perguntava tudo de novo.
+    history = await repo.get_user_history(user.id, limit=30, session_id=session_id)
     # `text` pode trazer um `[System Note: ...]` de contexto (wallet conectada,
     # etc.) prefixado por /chat — o orchestrator precisa dele, mas a mensagem
     # gravada é o que a pessoa releria depois (histórico salvo, troca de tela),
@@ -410,6 +414,13 @@ async def _process_inbound(
     await repo.log_dm(
         user.id, platform, _SYSTEM_NOTE_RE.sub("", text).strip(), message_type="user", session_id=session_id
     )
+    # Commita antes de chamar o agente: as tools de campanha (`create_campaign`
+    # etc., em `OrchestrationService`) abrem uma conexão SQLite própria — se
+    # essa escrita do log ficasse pendente aqui, as duas conexões do mesmo
+    # processo colidiam com "database is locked" (SQLite só aceita um escritor
+    # por vez, mesmo entre conexões diferentes). Sem custo real: é só a mesma
+    # transação cortada em duas, a resposta do bot commita normalmente no fim.
+    await db.commit()
 
     result = await orchestrator.execute(text, user_id, history=history, platform=platform)
 
@@ -465,11 +476,7 @@ async def chat_compat(
     if stellar_wallet:
         text = f"[System Note: Stellar wallet {stellar_wallet}] {text}"
 
-    session_token = ""
-    if authorization and authorization.startswith("Bearer "):
-        session_token = authorization.removeprefix("Bearer ").strip()
-
-    user_id = session_token or str(payload.get("user_id", "web_anonymous"))
+    user_id = await resolve_optional_identity(db, authorization) or str(payload.get("user_id", "web_anonymous"))
     platform = str(payload.get("platform", "web"))
 
     _enforce_rate_limit(f"chat:{platform}:{user_id}")

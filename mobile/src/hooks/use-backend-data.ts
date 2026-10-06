@@ -25,7 +25,10 @@ export interface BackendData<T> {
   reload: () => void;
 }
 
-export function useBackendData<T>(fetcher: () => Promise<T>): BackendData<T> {
+export function useBackendData<T>(
+  fetcher: () => Promise<T>,
+  options?: { pollMs?: number },
+): BackendData<T> {
   // Quem busca é dono do dado de *uma* sessão. Entrar ou sair troca de quem é
   // esse dado, e sem refazer a busca a tela fica com o resultado do usuário
   // anterior: o `[]` que o convidado recebeu seguia na tela depois do login, e
@@ -98,6 +101,23 @@ export function useBackendData<T>(fetcher: () => Promise<T>): BackendData<T> {
       if (sessionId === undefined) return;
       run();
     }, [run, sessionId]),
+  );
+
+  // Saldo on-chain muda por fora do app (claim, transferência recebida) —
+  // sem isto só atualizava trocando de tela e voltando (o foco acima). Roda
+  // só enquanto a tela está em foco, silenciosa como o refetch por foco, e
+  // para sozinha ao sair da tela — sem isso a Wallet continuaria batendo o
+  // RPC em segundo plano com a tela invisível.
+  const pollMs = options?.pollMs;
+  useFocusEffect(
+    useCallback(() => {
+      if (!pollMs) return;
+      const id = setInterval(() => {
+        if (sessionId === undefined) return;
+        run();
+      }, pollMs);
+      return () => clearInterval(id);
+    }, [run, sessionId, pollMs]),
   );
 
   const reload = useCallback(() => {

@@ -19,6 +19,8 @@ interface HeaderBarProps {
   onPressProfile?: () => void;
   /** Volta para o chat. Sem handler o wordmark fica inerte, como era antes. */
   onPressLogo?: () => void;
+  /** Contagem para o badge sobre o sino — 0/undefined não desenha nada. */
+  unreadCount?: number;
 }
 
 export function HeaderBar({
@@ -26,6 +28,7 @@ export function HeaderBar({
   onPressMenu,
   onPressProfile,
   onPressLogo,
+  unreadCount,
 }: HeaderBarProps) {
   // O frame do Figma começa em y=0 porque não desenha a status bar. No
   // aparelho, sem este inset o wordmark fica embaixo do relógio e da bateria.
@@ -60,9 +63,18 @@ export function HeaderBar({
           onPress={onPressNotifications}
           hitSlop={Spacing.two}
           accessibilityRole="button"
-          accessibilityLabel="Notificações"
+          accessibilityLabel={
+            unreadCount ? `Notificações, ${unreadCount} pendentes` : 'Notificações'
+          }
         >
           <IconBell size={24} color={Colors.light.accent} />
+          {unreadCount ? (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText} numberOfLines={1}>
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </Text>
+            </View>
+          ) : null}
         </Pressable>
 
         <Pressable
@@ -124,5 +136,25 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.light.accent,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -6,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 3,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.light.danger,
+    borderWidth: 1.5,
+    borderColor: Colors.light.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: {
+    fontFamily: Fonts.bold,
+    fontSize: 10,
+    lineHeight: 12,
+    color: Colors.light.card,
   },
 });

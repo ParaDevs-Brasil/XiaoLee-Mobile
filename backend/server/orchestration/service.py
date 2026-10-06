@@ -61,6 +61,80 @@ STELLAR_AGENT_TOOLS = [
         "parameters": {"type": "object", "properties": {}},
     }},
     {"type": "function", "function": {
+        "name": "create_campaign",
+        "description": (
+            "Cria uma nova campanha de creator, com o usuário atual como criador. NÃO chame esta tool "
+            "até ter perguntado, um de cada vez, e recebido: título, descrição, tipo (social — seguir "
+            "perfil X e engajar um tweet; trading — atividade de swap on-chain; referral — indicar "
+            "outros usuários), token de recompensa (normalmente USDC), valor por participante e número "
+            "máximo de participantes. Para campanhas do tipo social, pergunte também o perfil a seguir "
+            "e o tweet a engajar. Depois de reunir tudo, resuma para o usuário e só chame a tool após "
+            "confirmação explícita — nunca invente um valor que ele não disse."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "description": {"type": "string"},
+                "campaign_type": {"type": "string", "enum": ["social", "trading", "referral"]},
+                "reward_token": {"type": "string", "description": "Ex: USDC"},
+                "reward_per_participant": {"type": "number"},
+                "max_participants": {"type": "integer"},
+                "profile_to_follow": {
+                    "type": "string",
+                    "description": "Obrigatório se campaign_type=social — perfil X/Twitter a seguir, sem @",
+                },
+                "tweet_id_to_engage": {
+                    "type": "string",
+                    "description": "Obrigatório se campaign_type=social — ID do tweet a curtir/retweetar/responder",
+                },
+            },
+            "required": [
+                "title", "description", "campaign_type",
+                "reward_token", "reward_per_participant", "max_participants",
+            ],
+        },
+    }},
+    {"type": "function", "function": {
+        "name": "join_campaign",
+        "description": (
+            "Inscreve o usuário atual numa campanha existente. Use o id retornado por list_campaigns — "
+            "se o usuário não disse qual campanha, chame list_campaigns primeiro e pergunte qual ele quer."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {"campaign_id": {"type": "integer"}},
+            "required": ["campaign_id"],
+        },
+    }},
+    {"type": "function", "function": {
+        "name": "verify_campaign_tasks",
+        "description": (
+            "Verifica se o usuário completou as tarefas de uma campanha em que já está inscrito (segue "
+            "no X, atividade de trading, ou indicações, dependendo do tipo da campanha). Chame quando o "
+            "usuário disser que já fez a tarefa e quiser confirmar, ou perguntar se pode resgatar."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {"campaign_id": {"type": "integer"}},
+            "required": ["campaign_id"],
+        },
+    }},
+    {"type": "function", "function": {
+        "name": "prepare_campaign_claim",
+        "description": (
+            "Prepara o resgate da recompensa de uma campanha já verificada (all_tasks_completed=true em "
+            "verify_campaign_tasks). NÃO paga nada sozinha — só monta a prova que o app do usuário vai "
+            "assinar com a própria wallet. Depois de chamar, diga que o botão de confirmar apareceu na "
+            "conversa e que é só tocar para assinar e receber."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {"campaign_id": {"type": "integer"}},
+            "required": ["campaign_id"],
+        },
+    }},
+    {"type": "function", "function": {
         "name": "stellar_swap_quote",
         "description": (
             "Gera uma cotação de swap no Stellar DEX (path payment) e prepara a transação para o "
@@ -552,6 +626,19 @@ class OrchestrationService:
             "disponíveis ou quiser saber o que pode participar. Responda direto com os dados reais "
             "desta tool (nome, tipo, reward, quantos já participaram) — NUNCA diga que não tem essa "
             "informação ou que precisa olhar o dashboard, você TEM essa tool.\n"
+            "- create_campaign: cria uma campanha nova com o usuário como criador. Colete campo por "
+            "campo em turnos separados (título, descrição, tipo, token, valor por participante, máximo "
+            "de participantes, e perfil/tweet se for social) e SÓ chame a tool depois de resumir tudo e "
+            "o usuário confirmar — nunca chame com campo faltando ou inventado.\n"
+            "- join_campaign: inscreve o usuário numa campanha (precisa do id — use list_campaigns se "
+            "ele não souber qual).\n"
+            "- verify_campaign_tasks: confere se as tarefas de uma campanha em que o usuário já está "
+            "inscrito foram cumpridas. Chame quando ele disser que já fez a tarefa ou perguntar se pode "
+            "resgatar.\n"
+            "- prepare_campaign_claim: prepara o resgate depois que verify_campaign_tasks confirmou "
+            "all_tasks_completed=true. Ela NÃO paga — só deixa pronto um botão de confirmar na "
+            "conversa, que o usuário toca para assinar com a própria wallet e receber de verdade. "
+            "Depois de chamar, diga isso: que é só tocar no botão que apareceu para confirmar o resgate.\n"
             "- play_animation: chame JUNTO com uma saudação ou uma reação clara de celebração/problema "
             "(ex: saldo mostrado com sucesso, erro, susto) — nunca no lugar do texto, sempre além dele. "
             "Não abuse: é para o momento certo, não para toda resposta.\n\n"
@@ -568,7 +655,8 @@ class OrchestrationService:
         )
 
     def _make_stellar_executor(
-        self, stellar_wallet: str | None, captured: Dict[str, Any], evm_wallet: str | None = None
+        self, stellar_wallet: str | None, captured: Dict[str, Any],
+        evm_wallet: str | None = None, user_id: str = "web_anonymous",
     ):
         """Build the tool executor closure for the agentic loop.
 
@@ -576,6 +664,23 @@ class OrchestrationService:
         ``execution`` payload (incl. ``swap_xdr`` for Freighter signing) so the
         /chat response keeps its existing shape for the frontend.
         """
+        from contextlib import asynccontextmanager
+
+        @asynccontextmanager
+        async def _campaigns_db():
+            # Conexão própria, sempre — tentei reaproveitar a sessão da request
+            # `/chat` (`shared_db`) com savepoint aninhado, mas `db.commit()`
+            # dentro de `campaigns_routes.py` (que as rotas já fazem, sozinhas
+            # ou aninhadas) fecha o contexto do savepoint por fora de formas
+            # que o SQLAlchemy não deixa recuperar direito — trocou um bug por
+            # outro. Mais simples e robusto: cada tool tem sua própria conexão,
+            # e quem evita a colisão de "database is locked" com a escrita
+            # pendente da request é `_process_inbound` (`app.py`), que agora
+            # comita o log da mensagem do usuário antes de chamar o agente.
+            from database.database import SessionLocal
+            async with SessionLocal() as db:
+                yield db
+
         async def executor(tool_name: str, tool_input: Dict[str, Any]) -> str:
             if tool_name == "play_animation":
                 # UI side effect only, not a backend call — capture and ack so the
@@ -601,14 +706,152 @@ class OrchestrationService:
 
             if tool_name == "list_campaigns":
                 try:
-                    from database.database import SessionLocal
                     from server.campaigns_routes import list_campaigns as _list_campaigns_route
-                    async with SessionLocal() as db:
+                    async with _campaigns_db() as db:
                         resp = await _list_campaigns_route(db)
                 except Exception as exc:
                     return json.dumps({"error": "campaigns_read_failed", "message": str(exc)})
                 captured["actions"].append("list_campaigns")
                 return json.dumps({"campaigns": [c.model_dump() for c in resp.campaigns]})
+
+            # As quatro tools abaixo escrevem no mesmo caminho que a UI usa
+            # (POST /campaigns/*) — importam e chamam a função de rota direto,
+            # com uma sessão de DB própria, igual list_campaigns acima. A
+            # identidade nunca vem do modelo: `user_id` já É o session_token
+            # (ver `app.py::chat_compat`, `session_token or "web_anonymous"`),
+            # então reconstruir `Bearer {user_id}` é exatamente o Authorization
+            # que o endpoint REST receberia do app.
+            if tool_name in {
+                "create_campaign", "join_campaign", "verify_campaign_tasks", "prepare_campaign_claim",
+            }:
+                if user_id == "web_anonymous":
+                    return json.dumps({
+                        "error": "no_session",
+                        "message": "Usuário precisa estar logado para isso — peça para conectar/entrar antes.",
+                    })
+                authorization = f"Bearer {user_id}"
+
+            if tool_name == "create_campaign":
+                try:
+                    from server.campaigns_routes import (
+                        create_campaign as _create_campaign_route,
+                        CreateCampaignRequest,
+                    )
+                    payload = CreateCampaignRequest(
+                        title=str(tool_input.get("title", "")),
+                        description=str(tool_input.get("description", "")),
+                        campaign_type=str(tool_input.get("campaign_type", "")),
+                        reward_token=str(tool_input.get("reward_token", "USDC")),
+                        reward_per_participant=float(tool_input.get("reward_per_participant", 0)),
+                        max_participants=int(tool_input.get("max_participants", 0)),
+                        profile_to_follow=tool_input.get("profile_to_follow"),
+                        tweet_id_to_engage=tool_input.get("tweet_id_to_engage"),
+                    )
+                    async with _campaigns_db() as db:
+                        resp = await _create_campaign_route(payload, db, authorization=authorization)
+                except Exception as exc:
+                    logger.warning("[chat-tool] create_campaign failed input=%r", tool_input, exc_info=True)
+                    return json.dumps({"error": "create_campaign_failed", "message": str(exc)})
+                captured["actions"].append("create_campaign")
+                return json.dumps(resp)
+
+            if tool_name == "join_campaign":
+                try:
+                    from server.campaigns_routes import (
+                        join_campaign as _join_campaign_route,
+                        CampaignActionRequest,
+                    )
+                    payload = CampaignActionRequest(campaign_identifier=str(tool_input.get("campaign_id")))
+                    async with _campaigns_db() as db:
+                        resp = await _join_campaign_route(payload, db, authorization=authorization)
+                except Exception as exc:
+                    logger.warning("[chat-tool] join_campaign failed input=%r", tool_input, exc_info=True)
+                    return json.dumps({"error": "join_campaign_failed", "message": str(exc)})
+                captured["actions"].append("join_campaign")
+                return json.dumps(resp)
+
+            if tool_name == "verify_campaign_tasks":
+                try:
+                    from server.campaigns_routes import (
+                        verify_tasks as _verify_tasks_route,
+                        CampaignActionRequest,
+                    )
+                    payload = CampaignActionRequest(campaign_identifier=str(tool_input.get("campaign_id")))
+                    async with _campaigns_db() as db:
+                        resp = await _verify_tasks_route(payload, db, authorization=authorization)
+                except Exception as exc:
+                    logger.warning("[chat-tool] verify_campaign_tasks failed input=%r", tool_input, exc_info=True)
+                    return json.dumps({"error": "verify_tasks_failed", "message": str(exc)})
+                captured["actions"].append("verify_campaign_tasks")
+                return json.dumps(resp)
+
+            if tool_name == "prepare_campaign_claim":
+                # Só prepara a prova — nunca assina, nunca paga. A wallet Privy
+                # embutida assina no cliente (ver mobile/index.tsx::ClaimButton e
+                # web ChatPanel.tsx), o mesmo acordo já usado para stellar_swap_quote
+                # (swap_xdr) logo abaixo.
+                try:
+                    from server.campaigns_routes import _resolve_user, _get_campaign_or_404
+                    from database.models import CampaignParticipant, Wallet
+                    from sqlalchemy import select as _select
+
+                    campaign_id = int(tool_input.get("campaign_id"))
+                    async with _campaigns_db() as db:
+                        user = await _resolve_user(db, authorization)
+                        campaign = await _get_campaign_or_404(db, campaign_id)
+                        participant_res = await db.execute(
+                            _select(CampaignParticipant).where(
+                                CampaignParticipant.campaign_id == campaign_id,
+                                CampaignParticipant.user_id == user.id,
+                            )
+                        )
+                        participant = participant_res.scalars().first()
+                        if not participant or participant.status not in {"tasks_verified", "paid"}:
+                            return json.dumps({
+                                "error": "not_verified",
+                                "message": "Ainda não dá para resgatar — verifique as tarefas primeiro com verify_campaign_tasks.",
+                            })
+                        if participant.status == "paid":
+                            return json.dumps({"error": "already_claimed", "message": "Essa recompensa já foi resgatada."})
+
+                        # `evm_wallet` é o endereço que o próprio app manda a cada
+                        # mensagem (System Note, mesma fonte que `arc_get_usdc_balance`
+                        # usa) — é a wallet Privy ativa agora, não uma gravada antes.
+                        # A tabela `Wallet` só entra como fallback (ex. conta antiga
+                        # ligada via Solana para verificação de trading).
+                        wallet_address = evm_wallet
+                        if not wallet_address:
+                            wallet_res = await db.execute(_select(Wallet).where(Wallet.user_id == user.id))
+                            wallet = wallet_res.scalars().first()
+                            wallet_address = wallet.address if wallet else None
+                        if not wallet_address:
+                            return json.dumps({
+                                "error": "no_wallet",
+                                "message": "Precisa conectar uma wallet (Connect Wallet) antes de resgatar.",
+                            })
+
+                        amount = float(campaign.reward_per_participant)
+                        token = campaign.reward_token
+                        proof_message = (
+                            f"XiaoLee Devnet claim|campaign:{campaign_id}|"
+                            f"session:{user_id}|wallet:{wallet_address}"
+                        )
+                except Exception as exc:
+                    logger.warning("[chat-tool] prepare_campaign_claim failed input=%r", tool_input, exc_info=True)
+                    return json.dumps({"error": "prepare_claim_failed", "message": str(exc)})
+
+                captured["actions"].append("prepare_campaign_claim")
+                captured["execution"] = {
+                    "status": "claim_ready",
+                    "claim": {
+                        "campaign_id": campaign_id,
+                        "wallet_address": wallet_address,
+                        "proof_message": proof_message,
+                        "amount": amount,
+                        "token": token,
+                    },
+                }
+                return json.dumps({"ready_to_claim": True, "campaign_id": campaign_id, "amount": amount, "token": token})
 
             if tool_name == "stellar_get_balance":
                 if not stellar_wallet:
@@ -708,7 +951,9 @@ class OrchestrationService:
         captured: Dict[str, Any] = {"actions": [], "execution": None, "last_swap_args": {}, "animation_name": None}
 
         system_prompt = self._build_agentic_system_prompt(stellar_wallet, platform, evm_wallet=evm_wallet)
-        executor = self._make_stellar_executor(stellar_wallet, captured, evm_wallet=evm_wallet)
+        executor = self._make_stellar_executor(
+            stellar_wallet, captured, evm_wallet=evm_wallet, user_id=user_id,
+        )
 
         result = await self.claude_engine.run(
             system_prompt=system_prompt,

@@ -266,6 +266,10 @@ async def arc_ai_query(
     user = await repo.get_or_create_user("web", user_id)
     history = await repo.get_user_history(user.id, limit=10)
     await repo.log_dm(user.id, "web", message, message_type="user")
+    # As tools de campanha do orchestrator abrem conexão SQLite própria — sem
+    # commitar antes, a escrita pendente aqui colide com a delas ("database is
+    # locked", SQLite só aceita um escritor por vez).
+    await db.commit()
 
     # Validate EVM wallet before injecting into prompt (prompt injection mitigation)
     text_with_ctx = message

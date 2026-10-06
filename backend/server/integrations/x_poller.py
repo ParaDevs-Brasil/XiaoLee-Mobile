@@ -113,9 +113,13 @@ class XPoller:
             user = await repo.get_or_create_user("x", sender_id)
             history = await repo.get_user_history(user.id, limit=10)
             await repo.log_dm(user.id, "x", text, message_type="user")
+            # As tools de campanha do orchestrator abrem conexão SQLite própria
+            # — sem commitar antes, a escrita pendente aqui colide com a delas
+            # ("database is locked", SQLite só aceita um escritor por vez).
+            await session.commit()
 
             result = await self._orchestrator.execute(
-                text, sender_id, history=history, platform="x"
+                text, sender_id, history=history, platform="x",
             )
 
             await repo.log_dm(user.id, "x", result["reply_text"], message_type="bot")

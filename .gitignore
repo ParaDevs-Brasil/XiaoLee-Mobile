@@ -61,3 +61,6 @@ backend/firebase-adminsdk.json
 
 # Banco local de teste manual
 backend/devtest.db
+
+# APK self-hosted na landing (binário grande, deploy é via `railway up`, não git)
+landing/assets/*.apk

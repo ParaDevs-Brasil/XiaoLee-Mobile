@@ -12,10 +12,19 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
   type ReactNode,
 } from 'react';
 
-import { getArcGasFees, getUsdcAuthorizationDomain, relayUsdcAuthorization } from '@/api/backend';
+import {
+  getArcGasFees,
+  getUsdcAuthorizationDomain,
+  linkWallet,
+  loginWithPrivy,
+  relayUsdcAuthorization,
+} from '@/api/backend';
+import { useSession } from '@/hooks/use-session';
+import { isRealSession } from '@/lib/auth-state';
 import { shortHash } from '@/lib/format';
 import { clearSession, clearWallet, saveSession, saveWallet } from '@/lib/session';
 
@@ -76,6 +85,14 @@ interface WalletContextValue {
   /** Sempre `'arc'` uma vez conectado — a carteira embutida só existe nesta chain. */
   chain: string | undefined;
   disconnect: () => Promise<void>;
+  /**
+   * Mensagem de falha ao trocar o login do Privy por uma sessão do backend, ou
+   * `null`. Enquanto existir, a conta Privy está autenticada mas o app não
+   * liberou o acesso — a tela de login mostra o erro e oferece `retrySession`.
+   */
+  sessionError: string | null;
+  /** Tenta de novo a troca que falhou (`sessionError`). */
+  retrySession: () => void;
   /** Assina e envia a tx preparada pelo backend. Devolve o hash. */
   signAndSend: (tx: EvmTxRequest) => Promise<string>;
   /**
@@ -308,36 +325,88 @@ async function sendTransaction(requester: Requester, from: string, tx: EvmTxRequ
 const WalletContext = createContext<WalletContextValue | null>(null);
 
 export function WalletProvider({ children }: { children: ReactNode }) {
-  const { user, isReady, logout } = usePrivy();
+  const { user, isReady, logout, getAccessToken } = usePrivy();
   const { wallets } = useEmbeddedEthereumWallet();
   const wallet = wallets[0] as EmbeddedWallet | undefined;
   const address = wallet?.address;
 
-  /** Endereço já gravado como sessão nesta execução — evita regravar a cada render. */
-  const established = useRef<string>(undefined);
+  const { session, loading: sessionLoading } = useSession();
+  const hasSession = isRealSession(session);
+  const [sessionError, setSessionError] = useState<string | null>(null);
+  /** Incrementa para reexecutar a troca depois de uma falha. */
+  const [attempt, setAttempt] = useState(0);
+  /** Há uma troca em andamento — evita duas `/auth/session` simultâneas. */
+  const exchanging = useRef(false);
+  /** Identificador sequencial da tentativa de troca. Evita race condition se o usuário cancelar/desconectar. */
+  const exchangeSeq = useRef(0);
 
-  // Quando a carteira embutida existe, ela vira a sessão do app — não há POST
-  // de vínculo a esperar: `saveSession` é síncrono ao SecureStore, então ter
-  // a carteira já é "estar logado".
+  // Com a carteira embutida pronta e sem sessão do backend, troca o access
+  // token do Privy por uma (`/auth/session`) — é ela, e não o endereço cru, que
+  // vai como `Bearer`, então histórico e campanhas seguem a pessoa. Depois
+  // vincula o endereço de payout a esse usuário.
+  //
+  // Depender de `hasSession` (e não de "já fiz isso nesta execução") é o que
+  // renova a sessão sozinha quando o `apiFetch` descarta uma expirada (401):
+  // o Privy continua logado, então basta trocar o token de novo.
+  //
+  // Sem fallback para "endereço como Bearer": o app tem gate de login, e uma
+  // sessão que o backend não reconhece só empurraria o erro para a próxima
+  // tela. Falhou → `sessionError`, e o login oferece tentar de novo.
   useEffect(() => {
-    if (!isReady || !address) return;
-    if (established.current === address.toLowerCase()) return;
-    established.current = address.toLowerCase();
+    if (!isReady || !address || sessionLoading || hasSession) return;
+    if (exchanging.current) return;
+    exchanging.current = true;
+    const currentSeq = ++exchangeSeq.current;
 
-    const id = address.toLowerCase();
-    void Promise.all([
-      saveSession({ sessionId: id, twitterUserId: id, handle: shortHash(address) }),
-      saveWallet({ address, chain: 'arc' }),
-    ]);
-  }, [isReady, address]);
+    void (async () => {
+      try {
+        const token = await getAccessToken();
+        if (currentSeq !== exchangeSeq.current) return;
+        if (!token) throw new Error('Privy sem access token');
+        const res = await loginWithPrivy(token);
+        if (currentSeq !== exchangeSeq.current) return;
+        await Promise.all([
+          saveSession({
+            sessionId: res.session_id,
+            twitterUserId: res.twitter_user_id,
+            handle: shortHash(address),
+          }),
+          saveWallet({ address, chain: 'arc' }),
+        ]);
+        if (currentSeq !== exchangeSeq.current) return;
+        setSessionError(null);
+        linkWallet(address).catch((err) => console.warn('linkWallet falhou:', err));
+      } catch (err) {
+        if (currentSeq !== exchangeSeq.current) return;
+        console.warn('loginWithPrivy falhou:', err);
+        setSessionError(
+          err instanceof Error && err.message
+            ? err.message
+            : 'Não foi possível entrar. Tente de novo.',
+        );
+      } finally {
+        if (currentSeq === exchangeSeq.current) {
+          exchanging.current = false;
+        }
+      }
+    })();
+  }, [isReady, address, sessionLoading, hasSession, attempt, getAccessToken]);
+
+  const retrySession = () => {
+    setSessionError(null);
+    setAttempt((n) => n + 1);
+  };
 
   const disconnect = async () => {
+    // Invalida imediatamente qualquer troca de token em andamento
+    exchangeSeq.current++;
+    exchanging.current = false;
+    setSessionError(null);
     try {
       await logout();
     } catch {
       // sessão já pode ter caído do lado do Privy — seguir e limpar mesmo assim
     }
-    established.current = undefined;
     await Promise.all([clearWallet(), clearSession()]);
   };
 
@@ -367,12 +436,14 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       address,
       chain: address ? 'arc' : undefined,
       disconnect,
+      sessionError,
+      retrySession,
       signAndSend,
       signAndRelay,
       signMessage,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user, address],
+    [user, address, sessionError],
   );
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;

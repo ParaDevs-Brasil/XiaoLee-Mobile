@@ -84,8 +84,14 @@ class TelegramPoller:
             await repo.set_telegram_chat_id(user.id, chat_id)
             history = await repo.get_user_history(user.id, limit=10)
             await repo.log_dm(user.id, "telegram", text, message_type="user")
+            # As tools de campanha do orchestrator abrem conexão SQLite própria
+            # — sem commitar antes, a escrita pendente aqui colide com a delas
+            # ("database is locked", SQLite só aceita um escritor por vez).
+            await session.commit()
 
-            result = await self._orchestrator.execute(text, user_id, history=history, platform="telegram")
+            result = await self._orchestrator.execute(
+                text, user_id, history=history, platform="telegram",
+            )
 
             await repo.log_dm(
                 user.id, "telegram", result["reply_text"], message_type="bot"

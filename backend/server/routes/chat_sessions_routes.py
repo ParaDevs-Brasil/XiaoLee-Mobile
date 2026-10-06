@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.database import get_db_session
 from database.repository import DatabaseRepository, to_utc_iso
+from server.campaigns_routes import resolve_optional_identity
 
 router = APIRouter(prefix="/v1/chat", tags=["chat"])
 
@@ -40,12 +41,8 @@ class ChatMessageOut(BaseModel):
     time: str
 
 
-def _resolve_user_id(authorization: str | None) -> str:
-    if authorization and authorization.startswith("Bearer "):
-        token = authorization.removeprefix("Bearer ").strip()
-        if token:
-            return token
-    return "web_anonymous"
+async def _resolve_user_id(db: AsyncSession, authorization: str | None) -> str:
+    return await resolve_optional_identity(db, authorization) or "web_anonymous"
 
 
 def _serialize_session(chat_session) -> ChatSessionOut:
@@ -63,7 +60,7 @@ async def list_sessions(
     db: AsyncSession = Depends(get_db_session),
 ):
     repo = DatabaseRepository(db)
-    user = await repo.get_or_create_user("web", _resolve_user_id(authorization))
+    user = await repo.get_or_create_user("web", await _resolve_user_id(db, authorization))
     sessions = await repo.list_chat_sessions(user.id)
     return [_serialize_session(s) for s in sessions]
 
@@ -74,7 +71,7 @@ async def create_session(
     db: AsyncSession = Depends(get_db_session),
 ):
     repo = DatabaseRepository(db)
-    user = await repo.get_or_create_user("web", _resolve_user_id(authorization))
+    user = await repo.get_or_create_user("web", await _resolve_user_id(db, authorization))
     chat_session = await repo.create_chat_session(user.id)
     await db.commit()
     return _serialize_session(chat_session)
@@ -87,7 +84,7 @@ async def get_session_messages(
     db: AsyncSession = Depends(get_db_session),
 ):
     repo = DatabaseRepository(db)
-    user = await repo.get_or_create_user("web", _resolve_user_id(authorization))
+    user = await repo.get_or_create_user("web", await _resolve_user_id(db, authorization))
     chat_session = await repo.get_chat_session(session_id, user.id)
     if not chat_session:
         raise HTTPException(status_code=404, detail="chat session not found")

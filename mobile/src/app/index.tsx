@@ -14,7 +14,12 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { getChatSessionMessages, sendChatMessage, type ChatSessionMessage } from '@/api/backend';
+import {
+  claimCampaignReward,
+  getChatSessionMessages,
+  sendChatMessage,
+  type ChatSessionMessage,
+} from '@/api/backend';
 import { ApiError } from '@/api/client';
 import {
   animationFromBackend,
@@ -25,7 +30,7 @@ import { appendChatMessage, loadChatHistory, type StoredMessage } from '@/lib/ch
 import { refreshChatSessions, setActiveChatSessionId } from '@/lib/chat-session';
 import { isOnChainTx, txExplorerUrl } from '@/lib/explorer';
 import { shortHash } from '@/lib/format';
-import { getWallet } from '@/lib/session';
+import { getSessionToken, getWallet } from '@/lib/session';
 import { usePrivyWallet } from '@/lib/wallet';
 
 import { AnimatedAvatar } from '@/components/animated-avatar';
@@ -124,12 +129,28 @@ interface Message {
   transfer?: PendingTransfer;
   /** Hash devolvido pela carteira, quando já assinou. */
   txHash?: string;
+  /**
+   * Resgate que o backend preparou para esta mensagem (`execution.claim`),
+   * quando a intenção era resgatar recompensa de campanha (`prepare_campaign_claim`
+   * — ver `OrchestrationService`). Mesmo acordo do `transfer`: some depois de
+   * resgatado, preso à mensagem que o originou.
+   */
+  claim?: PendingClaim;
+  /** Recibo devolvido pelo backend, quando já resgatou. */
+  claimReceiptId?: string;
 }
 
 /** O que o usuário vai autorizar: destino e valor, como o backend os preparou. */
 interface PendingTransfer {
   to: string;
   amountUsdc: number;
+}
+
+/** O que o usuário vai resgatar, como o backend preparou (`prepare_campaign_claim`). */
+interface PendingClaim {
+  campaignId: number;
+  amount: number;
+  token: string;
 }
 
 /**
@@ -144,6 +165,19 @@ function transferFrom(execution: Record<string, unknown> | undefined): PendingTr
   const t = execution.transfer as { to?: string; amount_usdc?: number } | undefined;
   if (!t?.to || !t.amount_usdc || t.amount_usdc <= 0) return undefined;
   return { to: t.to, amountUsdc: t.amount_usdc };
+}
+
+/**
+ * Espelho de `transferFrom` para `prepare_campaign_claim`. Não usamos o
+ * `proof_message` que o backend devolve aqui — o `ClaimButton` monta o dele
+ * próprio na hora de assinar (mesmo texto, timestamp fresco), exatamente como
+ * `campaign-card.tsx` já faz para o claim pela tela de Campaigns.
+ */
+function claimFrom(execution: Record<string, unknown> | undefined): PendingClaim | undefined {
+  if (!execution || execution.status !== 'claim_ready') return undefined;
+  const c = execution.claim as { campaign_id?: number; amount?: number; token?: string } | undefined;
+  if (!c?.campaign_id || !c.amount || c.amount <= 0 || !c.token) return undefined;
+  return { campaignId: c.campaign_id, amount: c.amount, token: c.token };
 }
 
 function now(): string {
@@ -210,6 +244,17 @@ export default function ChatScreen() {
   const [sessionsAnchor, setSessionsAnchor] = useState<{ top: number; right: number }>();
   const windowWidth = useWindowDimensions().width;
   const newChatRef = useRef<View>(null);
+  // Guarda o id de sessão que o próprio `send()` acabou de adotar (ver linha
+  // ~359) — quando o efeito abaixo vir essa mesma troca de `activeChatSessionId`,
+  // sabe que não veio de uma troca de conversa pelo menu, e sim de uma
+  // promoção silenciosa no meio do envio. Nesse caso as `messages` locais já
+  // são a verdade (resposta + botões de transfer/claim recém-adicionados) —
+  // refazer o fetch aqui sobrescreveria tudo isso com o que o backend tem
+  // registrado pra sessão nova, que é só o último par de mensagens, sem os
+  // botões (`messageFromChatSession` os omite de propósito). Era essa
+  // sobrescrita que apagava os botões de ação reportada no relatório de
+  // produto ("não permite ver o chat anterior ao que selecionei").
+  const justPromotedSessionRef = useRef<number | null>(null);
 
   /**
    * Mede o botão na janela para o painel abrir colado nele, não no canto do
@@ -242,6 +287,10 @@ export default function ChatScreen() {
    */
   useEffect(() => {
     if (activeChatSessionId !== null) {
+      if (justPromotedSessionRef.current === activeChatSessionId) {
+        justPromotedSessionRef.current = null;
+        return;
+      }
       let active = true;
       getChatSessionMessages(activeChatSessionId).then((history) => {
         if (active) setMessages(history.map(messageFromChatSession));
@@ -272,6 +321,13 @@ export default function ChatScreen() {
   function markSigned(id: string, hash: string) {
     setMessages((current) =>
       current.map((m) => (m.id === id ? { ...m, txHash: hash } : m)),
+    );
+  }
+
+  /** Mesmo acordo de `markSigned`, para o botão de claim. */
+  function markClaimed(id: string, receiptId: string) {
+    setMessages((current) =>
+      current.map((m) => (m.id === id ? { ...m, claimReceiptId: receiptId } : m)),
     );
   }
 
@@ -316,6 +372,7 @@ export default function ChatScreen() {
       // Primeira mensagem de uma conversa nova: o backend acabou de criar a
       // sessão — adota o id devolvido para o painel passar a listá-la.
       if (activeChatSessionId === null && result.session_id) {
+        justPromotedSessionRef.current = result.session_id;
         setActiveChatSessionId(result.session_id);
       }
       void refreshChatSessions();
@@ -328,6 +385,7 @@ export default function ChatScreen() {
           text: reply,
           time: now(),
           transfer: transferFrom(result.execution),
+          claim: claimFrom(result.execution),
         },
       ]);
       // O texto gravado é o mesmo que foi para a bolha, fallback incluído —
@@ -434,7 +492,12 @@ export default function ChatScreen() {
             ) : (
               <>
                 {messages.map((message) => (
-                  <Bubble key={message.id} message={message} onSigned={markSigned} />
+                  <Bubble
+                    key={message.id}
+                    message={message}
+                    onSigned={markSigned}
+                    onClaimed={markClaimed}
+                  />
                 ))}
                 {sending ? <Typing /> : null}
               </>
@@ -561,12 +624,101 @@ function SignTxButton({
   );
 }
 
+/**
+ * Espelho de `SignTxButton` para o resgate de campanha (`prepare_campaign_claim`
+ * no backend). A prova é montada aqui, com timestamp fresco, e não a que veio
+ * em `execution.claim` — mesmo texto e mesma regra que `campaign-card.tsx` já
+ * usa para o claim pela tela de Campaigns; `_verify_claim_proof` só confere o
+ * prefixo, então o `|ts:...` no fim não importa pra validação.
+ */
+function ClaimButton({
+  message,
+  onClaimed,
+}: {
+  message: Message;
+  onClaimed: (id: string, receiptId: string) => void;
+}) {
+  const { address, signMessage } = usePrivyWallet();
+  const [claiming, setClaiming] = useState(false);
+  const [error, setError] = useState<string>();
+
+  if (message.claimReceiptId) {
+    return (
+      <View style={styles.txDone}>
+        <IconCheck size={14} color={Colors.light.success} />
+        <Text style={styles.txDoneText}>
+          Claimed{message.claim ? ` · ${message.claim.amount} ${message.claim.token}` : ''}
+        </Text>
+      </View>
+    );
+  }
+
+  if (!address) {
+    return <Text style={styles.txHint}>Connect a wallet to claim this reward.</Text>;
+  }
+  // Recaptura o valor já narrowed acima: TS não propaga a checagem de
+  // `address` para dentro de `claim()`, uma function declaration à parte.
+  const walletAddress = address;
+
+  async function claim() {
+    if (!message.claim) return;
+    setClaiming(true);
+    setError(undefined);
+    try {
+      const session = await getSessionToken();
+      if (!session) throw new Error('Connect a wallet to claim.');
+      const proofMessage =
+        `XiaoLee Devnet claim|campaign:${message.claim.campaignId}|` +
+        `session:${session}|wallet:${walletAddress}|ts:${Date.now()}`;
+      const signature = await signMessage(proofMessage);
+      const result = await claimCampaignReward(
+        message.claim.campaignId, walletAddress, proofMessage, signature,
+      );
+      onClaimed(message.id, result.receiptId ?? 'claimed');
+      avatarAnimation.play('xiaolee_cheer');
+    } catch (err) {
+      const detail =
+        err && typeof err === 'object' && 'message' in err
+          ? String((err as { message: unknown }).message)
+          : String(err);
+      setError(detail);
+    } finally {
+      setClaiming(false);
+    }
+  }
+
+  return (
+    <>
+      <Pressable
+        onPress={claim}
+        disabled={claiming}
+        style={({ pressed }) => [styles.signButton, pressed && styles.signButtonPressed]}
+        accessibilityRole="button"
+      >
+        {claiming ? (
+          <ActivityIndicator size="small" color={Colors.light.card} />
+        ) : (
+          <>
+            <IconGift size={15} color={Colors.light.card} />
+            <Text style={styles.signButtonText}>
+              Claim {message.claim?.amount} {message.claim?.token}
+            </Text>
+          </>
+        )}
+      </Pressable>
+      {error ? <Text style={styles.txError}>{error}</Text> : null}
+    </>
+  );
+}
+
 function Bubble({
   message,
   onSigned,
+  onClaimed,
 }: {
   message: Message;
   onSigned: (id: string, hash: string) => void;
+  onClaimed: (id: string, receiptId: string) => void;
 }) {
   const mine = message.author === 'user';
 
@@ -597,6 +749,9 @@ function Bubble({
           <Text style={styles.bubbleText}>{message.text}</Text>
           {message.transfer || message.txHash ? (
             <SignTxButton message={message} onSigned={onSigned} />
+          ) : null}
+          {message.claim || message.claimReceiptId ? (
+            <ClaimButton message={message} onClaimed={onClaimed} />
           ) : null}
         </View>
         <View style={styles.meta}>

@@ -22,6 +22,13 @@ class User(Base):
     twitter_user_id: Mapped[str] = mapped_column(unique=True)
     telegram_chat_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True, unique=True)
     stellar_wallet: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    # Perfil do onboarding (S2). `social_links`/`interest_profile` guardam JSON em texto.
+    full_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    state: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    city: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    bio: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    social_links: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    interest_profile: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 class Wallet(Base):

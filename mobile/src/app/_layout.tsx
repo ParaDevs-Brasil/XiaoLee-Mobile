@@ -17,15 +17,22 @@ import {
   useFonts,
 } from '@expo-google-fonts/quicksand';
 import { PrivyProvider } from '@privy-io/expo';
-import { DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
+import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useState } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { FadeOutOverlay } from '@/components/fade-out-overlay';
 import { IntroVideo } from '@/components/intro-video';
-import { Colors } from '@/constants/theme';
+import { LoadingScreen } from '@/components/loading-screen';
+import { Colors, DARK_MODE } from '@/constants/theme';
+import { useAuthState } from '@/hooks/use-auth-state';
 import { arcTestnetChain, PRIVY_CONFIG, WalletProvider } from '@/lib/wallet';
+
+// Necessário para fechar o navegador e completar o fluxo OAuth de volta no app (Android/Web)
+WebBrowser.maybeCompleteAuthSession();
 
 /**
  * `CHANGE_ME` deixa o app subir sem quebrar antes de o app do Privy existir —
@@ -38,13 +45,79 @@ const PRIVY_CLIENT_ID = process.env.EXPO_PUBLIC_PRIVY_CLIENT_ID?.trim() || 'CHAN
 
 SplashScreen.preventAutoHideAsync();
 
+/**
+ * Navegador raiz do aplicativo dentro dos provedores Privy e WalletProvider.
+ *
+ * Aplica o gate de login via `Stack.Protected`:
+ * - Sem sessão (`guard={!signedIn}`): apenas a rota `/login` fica acessível;
+ * - Autenticado (`guard={signedIn}`): todas as telas do app são liberadas;
+ * - Enquanto carrega o SecureStore (`authState === 'loading'`), devolve `null`
+ *   para evitar flash da tela de login para quem já possui sessão.
+ *
+ * Cuidado crítico: todas as 11 rotas do `src/app` precisam estar mapeadas
+ * dentro de um dos blocos protegidos. No Expo Router, rotas não declaradas
+ * são injetadas sem guarda e ficariam abertas.
+ */
+function RootNavigator() {
+  const authState = useAuthState();
+  const signedIn = authState === 'signedIn';
+
+  if (authState === 'loading') {
+    return null;
+  }
+
+  return (
+    <Stack
+      screenOptions={{
+        headerStyle: { backgroundColor: Colors.light.card },
+        headerTitleStyle: { fontFamily: 'Quicksand_700Bold', color: Colors.light.ink },
+        contentStyle: { backgroundColor: Colors.light.bg },
+      }}
+    >
+      <Stack.Protected guard={!signedIn}>
+        <Stack.Screen name="login" options={{ headerShown: false }} />
+      </Stack.Protected>
+
+      <Stack.Protected guard={signedIn}>
+        {/* Estas telas trazem o próprio HeaderBar (o wordmark do Figma) via
+            `ScreenShell`, então a barra nativa sairia duplicada. A volta
+            fica com o gesto do sistema e com o wordmark, que leva ao chat. */}
+        <Stack.Screen name="index" options={{ headerShown: false }} />
+        <Stack.Screen name="traction" options={{ headerShown: false }} />
+        <Stack.Screen name="notifications" options={{ headerShown: false }} />
+        <Stack.Screen name="dashboard" options={{ headerShown: false }} />
+        <Stack.Screen name="campaigns/index" options={{ headerShown: false }} />
+        <Stack.Screen name="wallet" options={{ headerShown: false }} />
+        <Stack.Screen name="transactions" options={{ headerShown: false }} />
+        <Stack.Screen name="history" options={{ headerShown: false }} />
+        {/* O formulário é a exceção: entra como modal e mantém a barra
+            nativa. Num formulário longo o usuário precisa de uma saída
+            sempre visível, e o wordmark do ScreenShell não é uma. */}
+        <Stack.Screen
+          name="campaigns/new"
+          options={{ presentation: 'modal', title: 'New Campaign' }}
+        />
+        <Stack.Screen name="diagnostics" options={{ title: 'Diagnóstico' }} />
+      </Stack.Protected>
+    </Stack>
+  );
+}
+
 export default function RootLayout() {
-  // A intro toca em toda abertura fria do app — este estado nasce `false` a
+  // A intro toca em toda abertura fria do app — este estado nasce `'video'` a
   // cada montagem de `RootLayout`, então não precisa de storage pra saber
-  // "deve mostrar agora": a existência do vídeo por cima do Stack é a
+  // "deve mostrar agora": a existência do vídeo/loading por cima do Stack é a
   // resposta. O storage (`lib/intro.ts`) só decide se o botão de pular
-  // aparece dentro do `IntroVideo`.
-  const [introFinished, setIntroFinished] = useState(false);
+  // aparece dentro do `IntroVideo`. Ordem: vídeo (com voz) → loading (mesma
+  // cara do splash nativo) → chat — pedido explícito, o loading sozinho não
+  // é mais a primeira coisa que o usuário vê.
+  const [stage, setStage] = useState<'video' | 'loading' | 'ready'>('video');
+  // Cada camada some com um dissolve (`FadeOutOverlay`) em vez de sumir de
+  // uma vez — a próxima já está montada por baixo quando a de cima começa a
+  // desaparecer, então `stage` avançar não basta pra desmontar a anterior:
+  // só quando o próprio fade termina (`onFadedOut`) é que ela some de fato.
+  const [videoGone, setVideoGone] = useState(false);
+  const [loadingGone, setLoadingGone] = useState(false);
 
   // Quicksand é a fonte do produto (ver constants/theme.ts). Sem esperar por
   // ela, o app pisca na fonte de sistema antes de trocar.
@@ -57,30 +130,34 @@ export default function RootLayout() {
     Candice: require('../../assets/fonts/candice-web.ttf'),
   });
 
+  // Esconde o splash nativo assim que o primeiro frame JS existe — não espera
+  // fonte nenhuma. O vídeo de intro (a próxima coisa a aparecer) não usa texto
+  // nenhum além do botão "Skip", que só pode aparecer depois de uma checagem
+  // assíncrona (`hasSeenIntro`) — folga de sobra pra Quicksand carregar sem
+  // piscar. O `<Stack>` (chat, cheio de texto) é que segue esperando fonte,
+  // mais abaixo — e essa espera já é coberta pelos vários segundos de vídeo +
+  // loading antes dele montar.
   useEffect(() => {
-    // Falha de fonte não deve prender o usuário no splash — segue na de sistema.
-    if (!fontsLoaded && !fontError) return;
     SplashScreen.hideAsync().catch(() => {
       // splash já escondido — não há o que tratar
     });
-  }, [fontsLoaded, fontError]);
-
-  if (!fontsLoaded && !fontError) return null;
+  }, []);
 
   return (
-    // Tema claro fixo: o design system suspendeu o modo escuro até a paleta
-    // ganhar variante escura (o web também força light).
+    // Tema fixo, escolhido por `DARK_MODE` em `constants/theme.ts` (claro por
+    // padrão; a paleta escura está pronta atrás desse interruptor). Sem
+    // toggle e sem seguir o tema do aparelho.
     // SafeAreaProvider é obrigatório para `useSafeAreaInsets` devolver algo
     // diferente de zero — sem ele o header fica sob a status bar.
     <SafeAreaProvider>
-      {/* Relógio, wifi e bateria em escuro, sempre.
+      {/* Relógio, wifi e bateria contrastando com a faixa da status bar.
           O padrão de `style` é `auto`, que segue o tema **do aparelho**: num
-          celular em modo escuro os ícones saem brancos — e a faixa da status
-          bar é pintada pelo `HeaderBar`, que é branco (`Colors.light.card`).
-          Branco no branco some, e o usuário perde o relógio e as notificações.
-          O app não acompanha o tema do sistema (ver `constants/theme.ts`: modo
-          escuro suspenso), então o conteúdo da barra também não deve. */}
-      <StatusBar style="dark" />
+          celular em modo escuro os ícones sairiam brancos sobre o
+          `HeaderBar`, que pinta a faixa com `Colors.light.card` — branco no
+          claro, e o usuário perderia o relógio e as notificações. O app não
+          acompanha o aparelho, então a barra também não: ícones escuros no
+          tema claro, claros no escuro. */}
+      <StatusBar style={DARK_MODE ? 'light' : 'dark'} />
 
       {/*
         `supportedChains` é prop irmã de `config`, não filha — e não existe
@@ -96,7 +173,7 @@ export default function RootLayout() {
         config={PRIVY_CONFIG}
       >
         <WalletProvider>
-          <ThemeProvider value={DefaultTheme}>
+          <ThemeProvider value={DARK_MODE ? DarkTheme : DefaultTheme}>
             {/*
               Só monta o Stack depois que a intro termina — não por
               performance, é correção. `AnimatedAvatar` (cabeçalho do chat) é
@@ -108,40 +185,31 @@ export default function RootLayout() {
               todo — só eles não usam vídeo, então hidratam a sessão em
               paralelo à intro, sem esse conflito.
             */}
-            {introFinished ? (
-              <Stack
-                screenOptions={{
-                  headerStyle: { backgroundColor: Colors.light.card },
-                  headerTitleStyle: { fontFamily: 'Quicksand_700Bold', color: Colors.light.ink },
-                  contentStyle: { backgroundColor: Colors.light.bg },
-                }}
-              >
-                {/* Estas telas trazem o próprio HeaderBar (o wordmark do Figma) via
-                    `ScreenShell`, então a barra nativa sairia duplicada. A volta
-                    fica com o gesto do sistema e com o wordmark, que leva ao chat. */}
-                <Stack.Screen name="index" options={{ headerShown: false }} />
-                <Stack.Screen name="traction" options={{ headerShown: false }} />
-                <Stack.Screen name="notifications" options={{ headerShown: false }} />
-                <Stack.Screen name="dashboard" options={{ headerShown: false }} />
-                <Stack.Screen name="campaigns/index" options={{ headerShown: false }} />
-                <Stack.Screen name="wallet" options={{ headerShown: false }} />
-                <Stack.Screen name="transactions" options={{ headerShown: false }} />
-                <Stack.Screen name="history" options={{ headerShown: false }} />
-                {/* O formulário é a exceção: entra como modal e mantém a barra
-                    nativa. Num formulário longo o usuário precisa de uma saída
-                    sempre visível, e o wordmark do ScreenShell não é uma. */}
-                <Stack.Screen
-                  name="campaigns/new"
-                  options={{ presentation: 'modal', title: 'New Campaign' }}
-                />
-                <Stack.Screen name="diagnostics" options={{ title: 'Diagnóstico' }} />
-              </Stack>
-            ) : null}
+            {stage === 'ready' && (fontsLoaded || fontError) ? <RootNavigator /> : null}
           </ThemeProvider>
         </WalletProvider>
       </PrivyProvider>
 
-      {introFinished ? null : <IntroVideo onFinish={() => setIntroFinished(true)} />}
+      {/* Ordem de baixo pra cima: loading, depois vídeo — cada uma dissolve
+          revelando a de baixo, que já está montada e visível antes do fade
+          começar (ver `FadeOutOverlay`). O Stack (chat) já monta assim que
+          `stage` chega em 'ready', junto com o loading começar a sumir, pra
+          já estar pronto por baixo quando o fade dele terminar. */}
+      {!loadingGone && (stage === 'loading' || stage === 'ready') ? (
+        <FadeOutOverlay
+          zIndex={100}
+          fadeOut={stage === 'ready'}
+          onFadedOut={() => setLoadingGone(true)}
+          durationMs={700}
+        >
+          <LoadingScreen onFinish={() => setStage('ready')} />
+        </FadeOutOverlay>
+      ) : null}
+      {!videoGone ? (
+        <FadeOutOverlay zIndex={101} fadeOut={stage !== 'video'} onFadedOut={() => setVideoGone(true)}>
+          <IntroVideo onFinish={() => setStage('loading')} />
+        </FadeOutOverlay>
+      ) : null}
     </SafeAreaProvider>
   );
 }

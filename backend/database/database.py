@@ -83,8 +83,12 @@ def _engine_kwargs(url: str) -> dict:
             "pool_recycle": 1800,
             "pool_pre_ping": True,   # detecta conexões mortas
         }
-    # SQLite: sem pool (conexão em arquivo)
-    return {}
+    # SQLite: sem pool (conexão em arquivo), mas com busy_timeout — sem isto o
+    # driver falha na hora com "database is locked" a qualquer escrita
+    # concorrente (ex: poller do Telegram gravando enquanto o chat cria uma
+    # campanha) em vez de esperar a conexão anterior liberar, que é o padrão
+    # esperado de um servidor com requests concorrentes.
+    return {"connect_args": {"timeout": 15}}
 
 
 # ─── Inicialização ─────────────────────────────────────────────────────────────

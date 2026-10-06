@@ -87,6 +87,18 @@ export function loginWithFirebase(idToken: string): Promise<SessionResponse> {
   });
 }
 
+/**
+ * Troca o access token do Privy (`getAccessToken()`) por uma sessão do backend.
+ * Mesmo contrato de `loginWithFirebase`: só o token vai no corpo.
+ */
+export function loginWithPrivy(accessToken: string): Promise<SessionResponse> {
+  return apiFetch<SessionResponse>('/auth/session', {
+    method: 'POST',
+    json: { provider: 'privy', id_token: accessToken },
+    skipAuth: true,
+  });
+}
+
 /** `POST /chat` — `backend/server/app.py::chat_compat` */
 export interface ChatResponse {
   /** O backend devolve uma lista de blocos; hoje só `type: "text"` é usado. */
@@ -126,8 +138,11 @@ export function sendChatMessage(request: ChatRequest): Promise<ChatResponse> {
     // é a mesma experiência do app web, então usa o mesmo contexto.
     // Trocar para "mobile" só depois que o backend tratar o valor explicitamente.
     json: { ...request, platform: 'web' },
-    // Timeout maior: a resposta depende de uma chamada a LLM.
-    timeoutMs: 60_000,
+    // Timeout maior: a resposta depende de uma chamada a LLM, e um turno com
+    // tool-calling (ex: criar campanha) é vários round-trips ao Claude em
+    // sequência, não um só — 60s já se mostrou curto demais numa resposta
+    // mais lenta da IA.
+    timeoutMs: 90_000,
   });
 }
 

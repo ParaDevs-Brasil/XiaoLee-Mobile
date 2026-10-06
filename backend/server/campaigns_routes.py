@@ -19,8 +19,9 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Header, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -35,6 +36,8 @@ from server.settings import settings
 logger = logging.getLogger(__name__)
 from fastapi import Depends
 from server.metrics import record_campaign_event
+
+from database.repository import DatabaseRepository  # noqa: E402
 
 router = APIRouter(tags=["campaigns"])
 
@@ -284,12 +287,17 @@ def _verify_claim_proof(payload: CampaignActionRequest, campaign_id: int, sessio
         raise HTTPException(status_code=400, detail="Invalid wallet signature for this claim") from exc
 
 
-async def resolve_twitter_identity(db: AsyncSession, authorization: Optional[str]) -> tuple[str, str]:
+async def resolve_twitter_identity(
+    db: AsyncSession, authorization: Optional[str], *, strict: bool = False
+) -> tuple[str, str]:
     """Resolve o Bearer para ``(twitter_user_id, twitter_handle)``.
 
     O token pode ser um ``AuthToken`` de bot (Telegram/X), um ``WebSession`` de
     login social (Google/Web3Auth via `/auth/session`) ou, no caso legado, o
-    próprio twitter_user_id usado direto como token. Compartilhado com
+    próprio twitter_user_id usado direto como token. Com ``strict=True`` o caso
+    legado dá 401: só vale um token que o backend emitiu. Rotas com dados
+    pessoais (perfil) usam strict; as demais seguem aceitando o legado enquanto
+    houver build antigo do app em campo. Compartilhado com
     `notifications_routes.py`: resolver a sessão sem passar por aqui foi
     exatamente o bug que deixava `/v1/notifications/me` em 404 pra quem
     logou via Google — o `session_id` (`firebase_session_<uuid>`) não é o
@@ -328,11 +336,28 @@ async def resolve_twitter_identity(db: AsyncSession, authorization: Optional[str
         twitter_user_id = web_session.twitter_user_id
         twitter_handle = web_session.twitter_user_id
 
+    if strict and not auth_token and not web_session:
+        # O twitter_user_id (ex.: o endereço da carteira, que é público) não é
+        # credencial: aceitá-lo deixaria qualquer um ler/editar o perfil alheio.
+        raise HTTPException(status_code=401, detail="Invalid session")
+
     return twitter_user_id, twitter_handle
 
 
-async def _resolve_user(db: AsyncSession, authorization: Optional[str]) -> User:
-    twitter_user_id, twitter_handle = await resolve_twitter_identity(db, authorization)
+async def resolve_optional_identity(db: AsyncSession, authorization: Optional[str]) -> Optional[str]:
+    """``twitter_user_id`` do Bearer, ou None se não há Bearer (chat guest, intencional).
+
+    Bearer presente é sempre resolvido (sessão vira o usuário real, expirada dá 401);
+    antes `/chat` usava a string crua como user_id e o histórico ficava preso ao
+    `session_id`, não à pessoa.
+    """
+    if not authorization or not authorization.removeprefix("Bearer ").strip():
+        return None
+    return (await resolve_twitter_identity(db, authorization))[0]
+
+
+async def _resolve_user(db: AsyncSession, authorization: Optional[str], *, strict: bool = False) -> User:
+    twitter_user_id, twitter_handle = await resolve_twitter_identity(db, authorization, strict=strict)
 
     user_stmt = select(User).where(User.twitter_user_id == twitter_user_id)
     user_res = await db.execute(user_stmt)
@@ -627,6 +652,71 @@ async def save_user_wallet(user_id: str, payload: dict, db: AsyncSession = Depen
 
 
 # ---------------------------------------------------------------------------
+# Perfil do onboarding
+# ---------------------------------------------------------------------------
+
+INTERESTS = {"defi", "games", "cards", "trader", "memecoins"}
+
+
+class ProfileUpdate(BaseModel):
+    """PATCH parcial: só os campos enviados mudam. Dono vem do Bearer, nunca da URL."""
+
+    full_name: Optional[str] = Field(default=None, max_length=255)
+    state: Optional[str] = Field(default=None, max_length=64)
+    city: Optional[str] = Field(default=None, max_length=128)
+    bio: Optional[str] = Field(default=None, max_length=1000)
+    social_links: Optional[dict[str, str]] = None
+    interest_profile: Optional[list[str]] = None
+
+
+def _profile_dict(user: User) -> dict:
+    interests = json.loads(user.interest_profile) if user.interest_profile else []
+    return {
+        "full_name": user.full_name,
+        "state": user.state,
+        "city": user.city,
+        "bio": user.bio,
+        "social_links": json.loads(user.social_links) if user.social_links else {},
+        "interest_profile": interests,
+        # Onboarding completo = nome e ao menos um interesse; o app usa para decidir se mostra o questionário.
+        "onboarded": bool(user.full_name and interests),
+    }
+
+
+@router.get("/user/me/profile")
+async def get_my_profile(
+    authorization: Optional[str] = Header(default=None), db: AsyncSession = Depends(get_db_session)
+):
+    user = await _resolve_user(db, authorization, strict=True)
+    await db.commit()
+    return _profile_dict(user)
+
+
+@router.patch("/user/me/profile")
+async def update_my_profile(
+    payload: ProfileUpdate,
+    authorization: Optional[str] = Header(default=None),
+    db: AsyncSession = Depends(get_db_session),
+):
+    user = await _resolve_user(db, authorization, strict=True)
+    data = payload.model_dump(exclude_unset=True)
+    for key in ("full_name", "state", "city", "bio"):
+        if key in data:
+            setattr(user, key, (data[key] or "").strip() or None)
+    if data.get("social_links") is not None:
+        links = {k.strip().lower()[:32]: v.strip()[:255] for k, v in data["social_links"].items() if v.strip()}
+        user.social_links = json.dumps(links)
+    if data.get("interest_profile") is not None:
+        interests = [i.strip().lower() for i in data["interest_profile"]]
+        invalid = [i for i in interests if i not in INTERESTS]
+        if invalid:
+            raise HTTPException(status_code=422, detail=f"interesses inválidos: {invalid}; use {sorted(INTERESTS)}")
+        user.interest_profile = json.dumps(list(dict.fromkeys(interests)))
+    await db.commit()
+    return _profile_dict(user)
+
+
+# ---------------------------------------------------------------------------
 # Google / Web3Auth login
 # ---------------------------------------------------------------------------
 
@@ -693,6 +783,7 @@ class SessionLoginRequest(BaseModel):
 _TOKEN_VERIFIERS = {
     "firebase": token_auth.verify_firebase_token,
     "web3auth": token_auth.verify_web3auth_token,
+    "privy": token_auth.verify_privy_token,
 }
 
 
@@ -738,13 +829,7 @@ async def auth_session(payload: SessionLoginRequest, db: AsyncSession = Depends(
     twitter_user_id = f"{identity.provider}_{identity.subject}"
     handle = identity.name or (identity.email.split("@")[0] if identity.email else twitter_user_id)
 
-    user = (
-        await db.execute(select(User).where(User.twitter_user_id == twitter_user_id))
-    ).scalars().first()
-    if not user:
-        user = User(twitter_user_id=twitter_user_id, twitter_handle=handle)
-        db.add(user)
-        await db.flush()
+    user = await DatabaseRepository(db).get_or_create_user(identity.provider, twitter_user_id, handle=handle)
 
     # Endereço de payout só existe se o provedor o assinou dentro do token.
     if identity.address:
@@ -960,7 +1045,13 @@ async def create_campaign(
         tweet_id_to_engage=payload.tweet_id_to_engage,
     )
     db.add(new_campaign)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        # `Campaign.name` é unique — sem isto o form (ou o chat) mandava um
+        # 500 cru pro usuário em vez de "esse nome já existe".
+        await db.rollback()
+        return {"success": False, "error": f"A campaign named '{payload.title}' already exists — pick a different title."}
     await db.refresh(new_campaign)
 
     return {"success": True, "message": "Campaign created successfully!", "campaign": _campaign_to_dict(new_campaign)}

@@ -12,6 +12,7 @@ import ChatHeader from "@/components/chat/ChatHeader";
 import EmptyState from "@/components/chat/EmptyState";
 import { useChatSession } from "@/contexts/ChatSessionContext";
 import { getChatSessionMessages } from "@/api/api";
+import { useCampaignActions } from "@/hooks/useCampaignActions";
 
 type SwapExecution = {
   chain?: string;
@@ -26,6 +27,9 @@ type SwapExecution = {
   // Transferência USDC no Arc preparada pelo backend — assinada na wallet EVM conectada
   evm_tx?: { to: string; data: string; value?: string } | null;
   transfer?: { to: string; amount_usdc: number; token: string };
+  // Resgate de campanha preparado pelo backend (`prepare_campaign_claim` no
+  // OrchestrationService) — assinado pela wallet conectada via useCampaignActions.
+  claim?: { campaign_id: number; amount: number; token: string };
   [key: string]: unknown;
 };
 
@@ -68,6 +72,9 @@ export default function ChatPanel() {
   const [swapTxHash, setSwapTxHash] = useState<{[key: number]: string}>({});
   const [evmTxSigning, setEvmTxSigning] = useState<{[key: number]: boolean}>({});
   const [evmTxHash, setEvmTxHash] = useState<{[key: number]: string}>({});
+  const [claimReceiptId, setClaimReceiptId] = useState<{[key: number]: string}>({});
+  const [claimError, setClaimError] = useState<{[key: number]: string}>({});
+  const { claimReward, isClaimLoading } = useCampaignActions();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
@@ -219,6 +226,26 @@ export default function ChatPanel() {
     } finally {
       setEvmTxSigning(prev => ({ ...prev, [messageIndex]: false }));
     }
+  };
+
+  // Espelho de handleSignEvmTx para o resgate de campanha preparado pelo
+  // backend (`prepare_campaign_claim`) — `claimReward` já monta a prova,
+  // assina na wallet conectada e chama /campaigns/claim (useCampaignActions.tsx),
+  // mesmo caminho que a tela de Campaigns já usa. Nunca lança: erro vira
+  // `success: false`.
+  const handleClaim = async (messageIndex: number, campaignId: number) => {
+    setClaimError(prev => ({ ...prev, [messageIndex]: "" }));
+    const result = await claimReward(campaignId);
+    if (!result.success) {
+      setClaimError(prev => ({ ...prev, [messageIndex]: result.error || result.message || "Erro ao resgatar recompensa" }));
+      return;
+    }
+    setClaimReceiptId(prev => ({ ...prev, [messageIndex]: result.claim_receipt_id || "claimed" }));
+    setMsgs(prev => {
+      const updated = [...prev];
+      updated[messageIndex] = { ...updated[messageIndex], execution: { ...updated[messageIndex].execution, claim: undefined } };
+      return updated;
+    });
   };
 
   useEffect(() => {
@@ -382,6 +409,36 @@ export default function ChatPanel() {
                       >
                         {evmTxSigning[index] ? "Signing…" : "Sign with your wallet"}
                       </button>
+                    </div>
+                  )}
+
+                  {/* Claim button — appears when AI prepared a campaign reward claim */}
+                  {msg.execution?.claim && msg.response !== TYPING_SENTINEL && (
+                    <div className="mt-3 space-y-2">
+                      <p className="text-xs text-fuchsia-600 font-mono">
+                        {msg.execution.claim.amount} {msg.execution.claim.token} ready to claim
+                      </p>
+                      <button
+                        onClick={() => handleClaim(index, msg.execution!.claim!.campaign_id)}
+                        disabled={isClaimLoading(msg.execution.claim.campaign_id)}
+                        className="px-4 py-2 text-xs font-bold rounded-xl btn-primary text-white hover:opacity-90 disabled:opacity-50 transition-all"
+                      >
+                        {isClaimLoading(msg.execution.claim.campaign_id) ? "Claiming…" : "Claim reward"}
+                      </button>
+                      {claimError[index] && (
+                        <p className="text-xs text-red-600">{claimError[index]}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Receipt after successful campaign claim */}
+                  {claimReceiptId[index] && (
+                    <div className="mt-3 p-3 bg-emerald-50 border border-emerald-100 rounded-xl text-xs space-y-1">
+                      <p className="font-bold text-emerald-700 flex items-center gap-1">
+                        <IconCheck size={12} sw={3} />
+                        Reward claimed
+                      </p>
+                      <p className="font-mono text-emerald-600 break-all">Receipt {claimReceiptId[index]}</p>
                     </div>
                   )}
 

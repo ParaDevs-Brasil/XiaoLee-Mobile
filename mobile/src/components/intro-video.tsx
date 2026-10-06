@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Fonts, Radius, Spacing } from '@/constants/theme';
+import { Radius, Spacing } from '@/constants/theme';
 import { hasSeenIntro, markIntroSeen } from '@/lib/intro';
 
 /**
@@ -32,8 +32,12 @@ const VIDEO_H = 1920;
 
 /**
  * Cor de fundo do próprio vídeo (amostrada num canto, longe do desenho —
- * `ffmpeg -vf fps=2` + pick de pixel). Usada só como cor do container antes
- * do primeiro frame renderizar/enquanto mede o layout.
+ * `ffmpeg -vf fps=2` + pick de pixel). Usada como cor do container antes do
+ * primeiro frame renderizar/enquanto mede o layout — e é a mesma cor do
+ * `backgroundColor` do splash nativo em `app.json` (plugin
+ * `expo-splash-screen`), de propósito: o splash nativo (inevitável, roda
+ * antes do JS) funde direto no vídeo em vez de parecer uma tela própria. Se
+ * o vídeo mudar de cor de fundo, atualizar os dois juntos.
  */
 const VIDEO_BG = '#E94C91';
 
@@ -65,7 +69,11 @@ export function IntroVideo({ onFinish }: IntroVideoProps) {
   const [containerSize, setContainerSize] = useState<{ width: number; height: number }>();
 
   const player = useVideoPlayer(VIDEO_SOURCE, (p) => {
-    p.loop = true;
+    // Sem loop: a fala dela é pra acontecer uma vez só. Sem repetir, o player
+    // já para sozinho no último frame — que já tem o "START" desenhado nele
+    // (ver comentário no topo do arquivo), então continua parado e tocável
+    // sem precisar de nenhuma lógica extra de fim-de-vídeo.
+    p.loop = false;
     p.play();
   });
 
@@ -77,6 +85,14 @@ export function IntroVideo({ onFinish }: IntroVideoProps) {
     void markIntroSeen();
     onFinish();
   }
+
+  // Sem loop, o player emite isto uma vez só quando chega no fim — segue pro
+  // chat sozinho, sem esperar o toque em "START". O botão continua aí (ver
+  // `startHit` abaixo) pra quem quiser pular antes do vídeo terminar.
+  useEffect(() => {
+    const subscription = player.addListener('playToEnd', finish);
+    return () => subscription.remove();
+  }, [player]);
 
   function onLayout(event: LayoutChangeEvent) {
     const { width, height } = event.nativeEvent.layout;
@@ -172,10 +188,20 @@ const styles = StyleSheet.create({
   skip: {
     position: 'absolute',
     right: Spacing.three,
-    paddingHorizontal: Spacing.three - 2,
+    minWidth: 64,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two - 2,
     borderRadius: Radius.pill,
     backgroundColor: 'rgba(0,0,0,0.35)',
   },
-  skipText: { fontFamily: Fonts.bold, fontSize: 13, color: '#fff' },
+  // Sem `fontFamily: Fonts.bold` de propósito: este botão pode renderizar
+  // antes do Quicksand terminar de carregar (`IntroVideo` não espera
+  // `fontsLoaded`, ver comentário em `_layout.tsx`). Nesse caso o RN mede o
+  // layout com a fonte de sistema e, quando o Quicksand troca depois, o
+  // texto fica mais largo sem o box ser recalculado — cortando "Skip". Peso
+  // bold nativo evita essa corrida (era a causa real do corte em produção,
+  // não largura insuficiente).
+  skipText: { fontWeight: '700', fontSize: 13, color: '#fff' },
 });

@@ -34,28 +34,20 @@ import { usePrivyWallet } from '@/lib/wallet';
  * Tela de Wallet — destino da primeira linha do `ProfileMenu`, que até aqui não
  * levava a lugar nenhum.
  *
- * Porta `frontend/src/components/navbar/Wallet.tsx`, mas **não pela fonte de
- * dados dele**, e essa é a diferença que vale declarar.
+ * O número grande do topo (`WalletHero`) é o saldo USDC on-chain real da
+ * carteira embutida do Privy (`GET /v1/arc/balance/{address}`) — o que o
+ * usuário pode efetivamente gastar, não só o que já foi marcado como
+ * resgatado em campanha. Sem carteira conectada ainda não há endereço para
+ * consultar, e aí cai pro total resgatado por campanha (ver `WalletHero`).
  *
- * O painel do web mostra duas coisas: o saldo USDC on-chain de uma carteira
- * conectada (`GET /v1/arc/balance/{address}`) e uma lista de tokens vinda de
- * `UserData.balances`. Nenhuma das duas existe aqui:
+ * O resto da tela — `Rewards by token` — segue vindo de `GET /campaigns/me`:
+ * token, valor por participante e estado de cada participação. `balances` do
+ * dossiê de `GET /user/{id}` não é usado porque o backend devolve lista vazia
+ * literal ali (`campaigns_routes.py:555`).
  *
- *  1. Não há endereço. O web conecta por extensão de navegador (EIP-6963,
- *     Freighter); no mobile isso exigiria WalletConnect, que não está nas
- *     dependências. Sem endereço, aquela rota não tem o que consultar.
- *  2. `balances` vem do dossiê de `GET /user/{id}`, que o backend devolve como
- *     lista vazia literal (`campaigns_routes.py:555`) — junto com `swaps`,
- *     `transactions` e `chat_history`. Portar aquilo renderizaria vazio para
- *     sempre.
- *
- * O que o usuário realmente tem no XiaoLee hoje são as recompensas das
- * campanhas, e essas são reais: `GET /campaigns/me` devolve token, valor por
- * participante e o estado de cada participação. É daí que esta tela vive.
- *
- * O total é por token, nunca somado entre tokens. O web soma `valueUSD`, um
- * campo que o backend nunca preenche — somar USDC com um token de campanha de
- * terceiro precisaria de preço, e não há cotação para esses.
+ * O total por campanha é por token, nunca somado entre tokens. O web soma
+ * `valueUSD`, um campo que o backend nunca preenche — somar USDC com um token
+ * de campanha de terceiro precisaria de preço, e não há cotação para esses.
  */
 
 /** O trilho do produto é USDC (ver `ARC_LEPTON_ARCHITECTURE.md`); o resto é token de campanha. */
@@ -113,6 +105,7 @@ export default function WalletScreen() {
   // Barra de gestos do Android come o fim da lista sem este inset.
   const insets = useSafeAreaInsets();
   const { hasSession } = useSession();
+  const { address } = useWallet();
   const { data, error, loading, refreshing, reload } = useBackendData(fetchRewards);
 
   const campaigns = data ?? [];
@@ -157,16 +150,10 @@ export default function WalletScreen() {
 
         {data && hasSession ? (
           <>
-            <StatCard
-              size="lg"
-              Icon={IconWallet}
-              label="USDC claimed"
-              value={`$${formatUSDC(usdc?.claimed ?? 0)}`}
-              sub={heroSubLabel(usdc, otherTokens)}
-            />
+            <WalletHero key={address ?? 'no-wallet'} address={address} usdc={usdc} otherTokens={otherTokens} />
 
             <View style={styles.strip}>
-              <MiniStat Icon={IconCheck} label="Claimed" value={String(counts.claimed)} />
+              <MiniStat Icon={IconCheck} label="Claimed" value={`$${formatUSDC(usdc?.claimed ?? 0)}`} />
               <MiniStat Icon={IconGift} label="Claimable" value={String(counts.claimable)} />
               <MiniStat Icon={IconClock} label="Pending" value={String(counts.pending)} />
             </View>
@@ -218,6 +205,43 @@ function heroSubLabel(usdc: TokenTally | undefined, others: TokenTally[]): strin
   }
 
   return parts.length > 0 ? parts.join(' · ') : 'Settled on Arc Testnet';
+}
+
+/**
+ * O número grande do topo. Saldo on-chain real quando há carteira conectada —
+ * é o que o usuário pode efetivamente gastar, não só o que as campanhas já
+ * marcaram como resgatado. Sem carteira ainda não há endereço para consultar,
+ * então cai pro total resgatado por campanha como antes.
+ */
+function WalletHero({
+  address,
+  usdc,
+  otherTokens,
+}: {
+  address: string | undefined;
+  usdc: TokenTally | undefined;
+  otherTokens: TokenTally[];
+}) {
+  const { data: balance, loading } = useBackendData(
+    () => (address ? getAddressBalance(address) : Promise.resolve(null)),
+    { pollMs: 5000 },
+  );
+
+  const value = !address
+    ? `$${formatUSDC(usdc?.claimed ?? 0)}`
+    : loading
+      ? '—'
+      : `$${formatUSDC(balance ?? 0)}`;
+
+  return (
+    <StatCard
+      size="lg"
+      Icon={IconWallet}
+      label="USDC balance"
+      value={value}
+      sub={heroSubLabel(usdc, otherTokens)}
+    />
+  );
 }
 
 function TokenRow({ tally }: { tally: TokenTally }) {
@@ -356,7 +380,7 @@ function FaucetButton({ address }: { address: string }) {
  * carteira nem esconder o botão de desconectar.
  */
 function WalletBalance({ address }: { address: string }) {
-  const { data, error, loading } = useBackendData(() => getAddressBalance(address));
+  const { data, error, loading } = useBackendData(() => getAddressBalance(address), { pollMs: 5000 });
 
   if (loading) return <Text style={styles.balanceLoading}>Loading balance…</Text>;
   if (error || data === null) return <Text style={styles.balanceError}>Balance unavailable</Text>;

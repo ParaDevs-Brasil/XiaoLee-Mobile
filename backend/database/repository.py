@@ -23,7 +23,7 @@ class DatabaseRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get_or_create_user(self, platform: str, user_id: str) -> User:
+    async def get_or_create_user(self, platform: str, user_id: str, handle: str | None = None) -> User:
         stmt = select(User).where(User.twitter_user_id == user_id)
         result = await self.session.execute(stmt)
         user = result.scalars().first()
@@ -31,7 +31,7 @@ class DatabaseRepository:
         if not user:
             user = User(
                 twitter_user_id=user_id,
-                twitter_handle=f"{platform}_{user_id}",
+                twitter_handle=handle or f"{platform}_{user_id}",
             )
             self.session.add(user)
             await self.session.flush()
@@ -69,10 +69,20 @@ class DatabaseRepository:
         await self.session.flush()
         return dm_log
 
-    async def get_user_history(self, user_id: int, limit: int = 5) -> list[dict]:
+    async def get_user_history(
+        self, user_id: int, limit: int = 5, session_id: str | None = None,
+    ) -> list[dict]:
+        # Sem `session_id`, o histórico do usuário inteiro vira contexto — ok
+        # para Telegram/X (uma conversa contínua), mas web/mobile abrem várias
+        # sessões e "New chat" precisa começar do zero de verdade: sem filtrar
+        # por sessão, uma tentativa de criar campanha vazava pra próxima janela
+        # de chat e o modelo via duas conversas coladas, confundindo o estado.
+        conditions = [DMLog.user_id == user_id]
+        if session_id is not None:
+            conditions.append(DMLog.session_id == session_id)
         stmt = (
             select(DMLog)
-            .where(DMLog.user_id == user_id)
+            .where(*conditions)
             .order_by(DMLog.id.desc())
             .limit(limit)
         )
