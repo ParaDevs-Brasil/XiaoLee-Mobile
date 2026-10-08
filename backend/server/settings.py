@@ -14,6 +14,20 @@ def _parse_csv_env(name: str, default: str) -> list[str]:
     return items or [default]
 
 
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+
+
+def _transcription_config(env) -> tuple[str, str, str]:
+    """(api_key, base_url, model) da transcrição. TRANSCRIPTION_* manda; senão GROQ_API_KEY
+    liga o Groq (URL + whisper-large-v3-turbo); senão OPENAI_API_KEY com whisper-1."""
+    explicit = env.get("TRANSCRIPTION_API_KEY", "")
+    groq = not explicit and bool(env.get("GROQ_API_KEY"))
+    key = explicit or env.get("GROQ_API_KEY") or env.get("OPENAI_API_KEY", "")
+    base_url = env.get("TRANSCRIPTION_BASE_URL") or (GROQ_BASE_URL if groq else "")
+    model = env.get("TRANSCRIPTION_MODEL") or ("whisper-large-v3-turbo" if groq else "whisper-1")
+    return key, base_url, model
+
+
 @dataclass(frozen=True)
 class Settings:
     app_name: str = os.getenv("XIAOLEE_APP_NAME", "XiaoLee Core API")
@@ -61,6 +75,20 @@ class Settings:
     # Se nao definida, o rate limiter usa in-memory (nao persiste entre restarts).
     # Producao: redis://user:pass@host:6379/0  ou  rediss:// para TLS
     redis_url: str = os.getenv("REDIS_URL", "")
+
+    # ── Mídia do Clipper (S4): bucket Cloudflare R2 (compatível com S3) ──────────
+    r2_account_id:        str = os.getenv("R2_ACCOUNT_ID",        "")
+    r2_access_key_id:     str = os.getenv("R2_ACCESS_KEY_ID",     "")
+    r2_secret_access_key: str = os.getenv("R2_SECRET_ACCESS_KEY", "")
+    r2_bucket:            str = os.getenv("R2_BUCKET",            "")
+    # Opcional: qualquer storage S3-compatível (MinIO local, Backblaze B2...) no lugar do R2.
+    r2_endpoint_url:      str = os.getenv("R2_ENDPOINT_URL",      "")
+    r2_region:            str = os.getenv("R2_REGION",            "auto")
+    media_max_bytes:      int = int(os.getenv("MEDIA_MAX_BYTES", str(2 * 1024**3)))
+    # Transcrição: endpoint OpenAI-compatível. GROQ_API_KEY sozinha já configura o Groq (ver _transcription_config).
+    transcription_api_key:  str = _transcription_config(os.environ)[0]
+    transcription_base_url: str = _transcription_config(os.environ)[1]
+    transcription_model:    str = _transcription_config(os.environ)[2]
 
     # ── Arc / Circle Programmable Wallets (W3S) ──────────────────────────────────
     circle_api_key:       str  = os.getenv("CIRCLE_API_KEY",        "")

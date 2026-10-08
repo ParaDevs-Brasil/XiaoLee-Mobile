@@ -48,6 +48,7 @@ from server.routes.arc_x402_routes import router as arc_x402_router
 from server.routes.trust_routes import router as trust_router
 from server.routes.cctp_routes import router as cctp_router
 from server.routes.chat_sessions_routes import router as chat_sessions_router
+from server.media_routes import router as media_router
 from server.traction_routes import router as traction_router
 
 
@@ -193,6 +194,7 @@ app.include_router(arc_x402_router)
 app.include_router(trust_router)
 app.include_router(cctp_router)
 app.include_router(chat_sessions_router)
+app.include_router(media_router)
 app.include_router(traction_router)
 
 request_hits: Dict[str, Deque[datetime]] = defaultdict(deque)
