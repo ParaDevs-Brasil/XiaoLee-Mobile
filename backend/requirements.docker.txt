@@ -39,6 +39,7 @@ python-telegram-bot>=21.0
 # ─── AI / Agent Engine (Sprint Lepton) ───────────────────────────────────────
 anthropic>=0.111.0
 openai>=1.0.0
+boto3>=1.35
 
 # ─── Arc / Circle / CCTP (Sprint Lepton) ─────────────────────────────────────
 web3>=6.20.0                # EVM on-chain: CCTP depositForBurn + receiveMessage
