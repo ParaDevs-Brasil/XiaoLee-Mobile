@@ -75,7 +75,7 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "test": "node --experimental-strip-types src/lib/auth-state.test.ts && node --experimental-strip-types src/lib/avatar-animation.test.ts && node --experimental-strip-types src/lib/format.test.ts && node --experimental-strip-types src/lib/sse.test.ts",
+    "test": "node --experimental-strip-types src/lib/auth-state.test.ts && node --experimental-strip-types src/lib/avatar-animation.test.ts && node --experimental-strip-types src/lib/format.test.ts && node --experimental-strip-types src/lib/sse.test.ts && node --experimental-strip-types src/lib/media.test.ts",
     "build:dev:android": "eas build --profile development --platform android",
     "build:dev:ios": "eas build --profile development --platform ios"
   },
