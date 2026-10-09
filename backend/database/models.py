@@ -320,3 +320,24 @@ class MediaTranscript(Base):
     segments_json: Mapped[str] = mapped_column(Text)
     language: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
     model: Mapped[str] = mapped_column(String(100))
+
+
+class MediaClip(Base):
+    """Corte vertical (9:16, legendado) de um MediaAsset — saída do Clipper (#29).
+
+    status: pending → rendering → ready | failed. `start_s`/`end_s` são na mídia original;
+    `r2_key` é o mp4 renderizado (só existe quando `ready`).
+    """
+    __tablename__ = 'media_clips'
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    media_id: Mapped[int] = mapped_column(ForeignKey("media_assets.id"), index=True)
+    rank: Mapped[int] = mapped_column()  # 1 = melhor
+    start_s: Mapped[float] = mapped_column()
+    end_s: Mapped[float] = mapped_column()
+    title: Mapped[str] = mapped_column(String(120))
+    reason: Mapped[str] = mapped_column(String(300))
+    status: Mapped[str] = mapped_column(String(20), default='pending', index=True)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    r2_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    size_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
