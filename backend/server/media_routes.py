@@ -7,6 +7,9 @@ Fluxo (o arquivo nunca passa pelo backend):
     POST /v1/media/{id}/complete  → confere o objeto no bucket e dispara a transcrição
     GET  /v1/media[/{id}]         → lista / detalhe (com transcrição quando pronta)
 
+    POST /v1/media/{id}/clips     → Claude escolhe 3 highlights; renderiza em background (9:16 legendado)
+    GET  /v1/media/{id}/clips     → cortes + URL de download dos prontos
+
 Transcrição: ffmpeg extrai áudio mono 16 kHz/32 kbps do vídeo (lido por URL
 pré-assinada) e um endpoint Whisper OpenAI-compatível devolve segmentos com
 timestamps — insumo da detecção de highlights.
@@ -33,9 +36,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import database as _dbmod
 from database.database import get_db_session
-from database.models import MediaAsset, MediaTranscript
+from database.models import MediaAsset, MediaClip, MediaTranscript
 from database.repository import to_utc_iso
-from server import media_storage
+from server import clipper, media_storage
 from server.campaigns_routes import _resolve_user
 from server.settings import settings
 
@@ -71,6 +74,19 @@ class MediaOut(BaseModel):
 
 class MediaDetail(MediaOut):
     transcript: Optional[dict] = None
+
+
+class ClipOut(BaseModel):
+    id: int
+    rank: int
+    start_s: float
+    end_s: float
+    title: str
+    reason: str
+    status: str
+    error: Optional[str] = None
+    size_bytes: Optional[int] = None
+    download_url: Optional[str] = None  # só quando ready; URL temporária (1 h)
 
 
 class MediaUpload(BaseModel):
@@ -251,3 +267,121 @@ async def transcribe_asset(asset_id: int) -> None:
             logger.exception("transcription failed for media %s", asset_id)
             asset.status, asset.error = "failed", str(exc)[:500]
         await db.commit()
+
+
+# ── Clipper: highlights + render (#29) ───────────────────────────────────────
+
+def _clip_out(c: MediaClip) -> ClipOut:
+    url = media_storage.presign_get(c.r2_key) if c.status == "ready" and c.r2_key else None
+    return ClipOut(
+        id=c.id, rank=c.rank, start_s=c.start_s, end_s=c.end_s, title=c.title, reason=c.reason,
+        status=c.status, error=c.error, size_bytes=c.size_bytes, download_url=url,
+    )
+
+
+async def _clips_of(db: AsyncSession, asset_id: int) -> list[MediaClip]:
+    return list((await db.execute(
+        select(MediaClip).where(MediaClip.media_id == asset_id).order_by(MediaClip.rank)
+    )).scalars().all())
+
+
+@router.get("/{asset_id}/clips", response_model=list[ClipOut])
+async def list_clips(
+    asset_id: int,
+    authorization: Optional[str] = Header(default=None),
+    db: AsyncSession = Depends(get_db_session),
+):
+    asset = await _owned(db, authorization, asset_id)
+    try:
+        return [_clip_out(c) for c in await _clips_of(db, asset.id)]
+    except media_storage.StorageNotConfigured as exc:
+        raise HTTPException(503, str(exc))
+
+
+@router.post("/{asset_id}/clips", response_model=list[ClipOut])
+async def create_clips(
+    asset_id: int,
+    background: BackgroundTasks,
+    regenerate: bool = False,
+    authorization: Optional[str] = Header(default=None),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Escolhe os highlights na hora (a lista volta já com títulos) e renderiza em background.
+    Cada chamada custa uma ida ao Claude: se já há cortes, exige `regenerate=true`."""
+    asset = await _owned(db, authorization, asset_id)
+    if asset.kind != "video":
+        raise HTTPException(422, "clips need a video, not audio")
+    if asset.status != "transcribed":
+        raise HTTPException(409, f"media is {asset.status}; transcribe it first")
+
+    existing = await _clips_of(db, asset.id)
+    now = datetime.utcnow()
+    if any(c.status in ("pending", "rendering") and now - c.updated_at <= STALE_TRANSCRIBING for c in existing):
+        raise HTTPException(409, "clips are still rendering")
+    if existing and not regenerate:
+        raise HTTPException(409, "clips already exist; pass regenerate=true to redo them")
+
+    row = (await db.execute(select(MediaTranscript).where(MediaTranscript.media_id == asset.id))).scalars().first()
+    segments = json.loads(row.segments_json) if row else []
+    if not segments:
+        raise HTTPException(422, "transcript is empty (no speech detected)")
+
+    try:
+        # ponytail: seleção síncrona (~5-20 s) para a resposta já trazer os títulos; se o app
+        # passar a estourar timeout, mover para background com um status em MediaAsset.
+        picks = await clipper.pick_highlights(segments)
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except Exception:
+        logger.exception("highlight selection failed for media %s", asset_id)
+        raise HTTPException(502, "highlight detection failed, try again")
+    if not picks:
+        raise HTTPException(422, "no usable highlights found in this video")
+
+    old_keys = [c.r2_key for c in existing if c.r2_key]
+    await db.execute(delete(MediaClip).where(MediaClip.media_id == asset.id))
+    clips = [
+        MediaClip(user_id=asset.user_id, media_id=asset.id, rank=i, start_s=h.start, end_s=h.end,
+                  title=h.title, reason=h.reason, status="pending")
+        for i, h in enumerate(picks, 1)
+    ]
+    db.add_all(clips)
+    await db.commit()
+    background.add_task(render_clips, asset.id, old_keys)
+    try:
+        return [_clip_out(c) for c in clips]
+    except media_storage.StorageNotConfigured as exc:
+        raise HTTPException(503, str(exc))
+
+
+async def render_clips(asset_id: int, old_keys: list[str] | None = None) -> None:
+    """Um corte por vez (ffmpeg 1080x1920 é pesado); cada corte tem o próprio status."""
+    for key in old_keys or []:
+        try:
+            await media_storage.delete_object(key)
+        except Exception:
+            logger.warning("could not delete old clip object %s", key)
+    async with _session() as db:
+        asset = await db.get(MediaAsset, asset_id)
+        if not asset:
+            return
+        segments = json.loads(
+            (await db.execute(select(MediaTranscript).where(MediaTranscript.media_id == asset_id))).scalars().one().segments_json
+        )
+        for clip in await _clips_of(db, asset_id):
+            clip.status = "rendering"
+            await db.commit()
+            try:
+                with tempfile.TemporaryDirectory() as tmp:
+                    ass, out = os.path.join(tmp, "subs.ass"), os.path.join(tmp, "clip.mp4")
+                    with open(ass, "w", encoding="utf-8") as f:
+                        f.write(clipper.build_ass(segments, clip.start_s, clip.end_s))
+                    await clipper.render_clip(media_storage.presign_get(asset.r2_key), ass, clip.start_s, clip.end_s, out)
+                    key = f"clips/{asset.user_id}/{asset.id}/{uuid.uuid4().hex}.mp4"
+                    await media_storage.upload_file(out, key, "video/mp4")
+                    clip.r2_key, clip.size_bytes = key, os.path.getsize(out)
+                clip.status, clip.error = "ready", None
+            except Exception as exc:
+                logger.exception("clip render failed for clip %s", clip.id)
+                clip.status, clip.error = "failed", str(exc)[:500]
+            await db.commit()

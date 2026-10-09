@@ -13,10 +13,12 @@ from __future__ import annotations
 
 import contextlib
 import importlib
+import json
 import os
 import shutil
 import subprocess
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 import pytest_asyncio
@@ -27,7 +29,7 @@ os.environ.setdefault("JWT_SECRET", "route-test-jwt-secret-32-chars-ok")
 os.environ.setdefault("ENCRYPTION_KEY", "route-test-encryption-key-xxxxxx")
 
 from database.database import get_db_session
-from database.models import MediaAsset, MediaTranscript, WebSession
+from database.models import MediaAsset, MediaClip, MediaTranscript, WebSession
 
 app_module = importlib.import_module("server.app")
 media_routes = importlib.import_module("server.media_routes")
@@ -267,3 +269,160 @@ def test_transcription_config_precedence():
     assert cfg({"TRANSCRIPTION_API_KEY": "t", "GROQ_API_KEY": "g"}) == ("t", "", "whisper-1")
     # overrides individuais valem
     assert cfg({"GROQ_API_KEY": "g", "TRANSCRIPTION_MODEL": "m"}) == ("g", GROQ_BASE_URL, "m")
+
+
+# ── Clipper (#29): /v1/media/{id}/clips ──────────────────────────────────────
+
+clipper = importlib.import_module("server.clipper")
+LONG_SEGS = [{"start": i * 10.0, "end": i * 10.0 + 10.0, "text": f"frase numero {i} com varias palavras"} for i in range(12)]
+
+
+def _pick(*windows):
+    async def _p(segments):
+        return [clipper.Highlight(a, b, f"Clip {i}", "porque sim") for i, (a, b) in enumerate(windows, 1)]
+
+    return _p
+
+
+@pytest_asyncio.fixture
+async def clips_env(db, monkeypatch, tmp_path):
+    """Mídia de vídeo já transcrita + armazenamento simulado (upload/delete gravados) + vídeo real p/ o ffmpeg."""
+    src = tmp_path / "src.mp4"
+    subprocess.run(
+        ["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc=size=640x360:rate=25:duration=120",
+         "-f", "lavfi", "-i", "sine=frequency=440:duration=120", "-shortest", "-pix_fmt", "yuv420p", "-y", str(src)],
+        check=True,
+    )
+    uploaded, deleted = {}, []
+
+    async def _upload(path, key, content_type):
+        uploaded[key] = os.path.getsize(path)
+
+    async def _delete(key):
+        deleted.append(key)
+
+    monkeypatch.setattr(media_routes.media_storage, "presign_get", lambda key, expires=3600: str(src) if key.startswith("media/") else f"https://r2.test/get/{key}")
+    monkeypatch.setattr(media_routes.media_storage, "upload_file", _upload)
+    monkeypatch.setattr(media_routes.media_storage, "delete_object", _delete)
+    monkeypatch.setattr(clipper, "pick_highlights", _pick((0, 30), (40, 70), (80, 110)))
+
+    h = await _login(db, "a")
+    aid = client.post("/v1/media", json=BODY, headers=h).json()["asset"]["id"]
+    asset = await db.get(MediaAsset, aid)
+    asset.status = "transcribed"
+    db.add(MediaTranscript(media_id=aid, segments_json=json.dumps(LONG_SEGS), language="pt", model="m"))
+    await db.commit()
+    return SimpleNamespace(h=h, aid=aid, uploaded=uploaded, deleted=deleted, db=db)
+
+
+def test_clips_require_bearer():
+    assert client.post("/v1/media/1/clips").status_code in (401, 403)
+    assert client.get("/v1/media/1/clips").status_code in (401, 403)
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg ausente")
+@pytest.mark.asyncio
+async def test_clips_end_to_end_renders_three_real_vertical_clips(clips_env):
+    e = clips_env
+    r = client.post(f"/v1/media/{e.aid}/clips", headers=e.h)
+    assert r.status_code == 200, r.text
+    first = r.json()
+    assert [c["rank"] for c in first] == [1, 2, 3] and first[0]["title"] == "Clip 1"
+    assert all(c["download_url"] is None for c in first)  # ainda não renderizado na resposta
+
+    clips = client.get(f"/v1/media/{e.aid}/clips", headers=e.h).json()  # background já rodou
+    assert [c["status"] for c in clips] == ["ready"] * 3, clips
+    assert all(c["download_url"].startswith("https://r2.test/get/clips/") and c["size_bytes"] > 10_000 for c in clips)
+    uid = (await e.db.get(MediaAsset, e.aid)).user_id
+    assert len(e.uploaded) == 3 and all(k.startswith(f"clips/{uid}/{e.aid}/") for k in e.uploaded)
+
+
+@pytest.mark.asyncio
+async def test_clips_preconditions(clips_env, db):
+    e = clips_env
+    audio = client.post("/v1/media", json={**BODY, "content_type": "audio/mpeg"}, headers=e.h).json()["asset"]["id"]
+    assert client.post(f"/v1/media/{audio}/clips", headers=e.h).status_code == 422
+    pending = client.post("/v1/media", json=BODY, headers=e.h).json()["asset"]["id"]
+    assert client.post(f"/v1/media/{pending}/clips", headers=e.h).status_code == 409
+    other = await _login(db, "b")
+    assert client.post(f"/v1/media/{e.aid}/clips", headers=other).status_code == 404
+    assert client.get(f"/v1/media/{e.aid}/clips", headers=other).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_clips_selection_failures_store_nothing(clips_env, monkeypatch):
+    e = clips_env
+    for exc, status in ((RuntimeError("ANTHROPIC_API_KEY não configurada"), 503), (ValueError("boom"), 502)):
+        async def _bad(segments, exc=exc):
+            raise exc
+
+        monkeypatch.setattr(clipper, "pick_highlights", _bad)
+        r = client.post(f"/v1/media/{e.aid}/clips", headers=e.h)
+        assert r.status_code == status and "boom" not in r.text
+    monkeypatch.setattr(clipper, "pick_highlights", _pick())
+    assert client.post(f"/v1/media/{e.aid}/clips", headers=e.h).status_code == 422
+    assert (await e.db.execute(select(MediaClip))).scalars().all() == []
+
+
+@pytest.mark.asyncio
+async def test_empty_transcript_is_refused(clips_env):
+    e = clips_env
+    row = (await e.db.execute(select(MediaTranscript))).scalars().one()
+    row.segments_json = "[]"
+    await e.db.commit()
+    assert client.post(f"/v1/media/{e.aid}/clips", headers=e.h).status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_one_failed_render_does_not_sink_the_others(clips_env, monkeypatch):
+    e = clips_env
+    calls = []
+
+    async def _render(source, ass, start, end, dest):
+        calls.append(start)
+        if start == 40.0:
+            raise RuntimeError("ffmpeg failed: <media> broke")
+        open(dest, "wb").write(b"mp4")
+
+    monkeypatch.setattr(clipper, "render_clip", _render)
+    client.post(f"/v1/media/{e.aid}/clips", headers=e.h)
+    got = {c["rank"]: c for c in client.get(f"/v1/media/{e.aid}/clips", headers=e.h).json()}
+    assert [got[i]["status"] for i in (1, 2, 3)] == ["ready", "failed", "ready"] and calls == [0.0, 40.0, 80.0]
+    assert "broke" in got[2]["error"] and got[2]["download_url"] is None
+
+
+@pytest.mark.asyncio
+async def test_regenerate_guard_replaces_and_cleans_old_objects(clips_env, monkeypatch):
+    e = clips_env
+
+    async def _render(source, ass, start, end, dest):
+        open(dest, "wb").write(b"mp4")
+
+    monkeypatch.setattr(clipper, "render_clip", _render)
+    client.post(f"/v1/media/{e.aid}/clips", headers=e.h)
+    assert client.post(f"/v1/media/{e.aid}/clips", headers=e.h).status_code == 409  # custo: exige regenerate
+    old = set(e.uploaded)
+
+    monkeypatch.setattr(clipper, "pick_highlights", _pick((10, 40)))
+    assert client.post(f"/v1/media/{e.aid}/clips?regenerate=true", headers=e.h).status_code == 200
+    rows = (await e.db.execute(select(MediaClip))).scalars().all()
+    assert len(rows) == 1 and rows[0].status == "ready"
+    assert set(e.deleted) == old  # objetos antigos removidos do bucket
+
+
+@pytest.mark.asyncio
+async def test_inflight_render_blocks_but_stale_one_does_not(clips_env, monkeypatch):
+    e = clips_env
+
+    async def _render(source, ass, start, end, dest):
+        open(dest, "wb").write(b"mp4")
+
+    monkeypatch.setattr(clipper, "render_clip", _render)
+    client.post(f"/v1/media/{e.aid}/clips", headers=e.h)
+    clip = (await e.db.execute(select(MediaClip))).scalars().first()
+    clip.status = "rendering"
+    await e.db.commit()
+    assert client.post(f"/v1/media/{e.aid}/clips?regenerate=true", headers=e.h).status_code == 409
+    clip.updated_at = datetime.utcnow() - timedelta(hours=1)  # processo morreu no meio
+    await e.db.commit()
+    assert client.post(f"/v1/media/{e.aid}/clips?regenerate=true", headers=e.h).status_code == 200

@@ -70,3 +70,14 @@ def presign_get(key: str, expires: int = 3600) -> str:
     return _client().generate_presigned_url(
         "get_object", Params={"Bucket": settings.r2_bucket, "Key": key}, ExpiresIn=expires
     )
+
+
+async def upload_file(path: str, key: str, content_type: str) -> None:
+    """Envia um arquivo local (o clipe renderizado) ao bucket."""
+    await asyncio.to_thread(
+        _client().upload_file, path, settings.r2_bucket, key, ExtraArgs={"ContentType": content_type}
+    )
+
+
+async def delete_object(key: str) -> None:
+    await asyncio.to_thread(_client().delete_object, Bucket=settings.r2_bucket, Key=key)
