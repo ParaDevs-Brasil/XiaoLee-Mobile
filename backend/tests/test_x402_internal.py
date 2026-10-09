@@ -71,3 +71,27 @@ def test_same_tx_twice_does_not_crash(db):
 def test_bad_input_rejected(db):
     r = client.post(URL, json={**BODY, "followers": -1}, headers={**PAID, "x-internal-secret": "s3cret"})
     assert r.status_code == 422
+
+
+PLAN_URL = "/internal/x402/campaign-plan"
+PLAN = {"goal": "lançar token X", "budget_usdc": 1000, "platforms": ["tiktok", "x"], "duration_days": 7}
+
+
+def test_campaign_plan_requires_secret(db):
+    assert client.post(PLAN_URL, json=PLAN, headers=PAID).status_code == 403
+
+
+def test_campaign_plan_splits_budget_and_returns_receipt(db):
+    r = client.post(PLAN_URL, json=PLAN, headers={**PAID, "x-internal-secret": "s3cret", "x-payment-tx": "settle-plan"})
+    assert r.status_code == 200
+    d = r.json()
+    split = d["result"]["budget_split"]
+    assert split["rewards_usdc"] + split["ops_reserve_usdc"] == pytest.approx(1000)
+    assert sum(p["reward_budget_usdc"] for p in d["result"]["platforms"]) == pytest.approx(split["rewards_usdc"])
+    assert d["receipt"]["payment_tx"] == "settle-plan" and d["receipt"]["receipt_pqc"]
+
+
+def test_campaign_plan_rejects_bad_input(db):
+    h = {**PAID, "x-internal-secret": "s3cret"}
+    assert client.post(PLAN_URL, json={**PLAN, "budget_usdc": 0}, headers=h).status_code == 422
+    assert client.post(PLAN_URL, json={**PLAN, "platforms": []}, headers=h).status_code == 422

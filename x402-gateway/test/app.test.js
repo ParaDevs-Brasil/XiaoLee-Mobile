@@ -5,9 +5,21 @@ import { createApp } from "../src/app.js";
 const cfg = {
   sellerAddress: "0x08cdF8De63700A66467EaBFfc603B6A14BA89125",
   facilitatorUrl: "https://gateway-api-testnet.circle.com",
-  networks: ["eip155:5042002"], price: "$0.05",
-  upstreamUrl: "http://127.0.0.1:1/x", internalSecret: "s", upstreamTimeoutMs: 500,
+  networks: ["eip155:5042002"],
+  upstreamBase: "http://127.0.0.1:1", internalSecret: "s", upstreamTimeoutMs: 500,
 };
+
+test("catálogo: cada serviço responde 402 com o seu preço", async () => {
+  const srv = createApp(cfg).listen(0);
+  try {
+    for (const [id, amount] of [["profile-analysis", "50000"], ["campaign-plan", "100000"]]) {
+      const r = await fetch(`http://127.0.0.1:${srv.address().port}/v1/x402/${id}`, { method: "POST", body: "{}", headers: { "content-type": "application/json" } });
+      assert.equal(r.status, 402, id);
+      const pr = JSON.parse(Buffer.from(r.headers.get("payment-required"), "base64").toString());
+      assert.equal(pr.accepts[0].amount, amount, id);
+    }
+  } finally { srv.close(); }
+});
 
 test("sem pagamento: 402 padrão x402 v2 com accepts[] em Arc Testnet", async () => {
   const srv = createApp(cfg).listen(0);
@@ -28,5 +40,6 @@ test("/openapi.json expõe a rota paga", async () => {
   try {
     const d = await (await fetch(`http://127.0.0.1:${srv.address().port}/openapi.json`)).json();
     assert.ok(d.paths["/v1/x402/profile-analysis"].post);
+    assert.ok(d.paths["/v1/x402/campaign-plan"].post);
   } finally { srv.close(); }
 });

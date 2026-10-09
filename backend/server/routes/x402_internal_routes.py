@@ -18,7 +18,7 @@ import uuid
 from decimal import Decimal
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -77,48 +77,77 @@ def analyze(p: ProfileAnalysisIn) -> dict:
     }
 
 
-@router.post("/profile-analysis")
-async def profile_analysis(
-    body: ProfileAnalysisIn,
-    x_internal_secret: Optional[str] = Header(default=None),
-    x_payer: str = Header(default=""),
-    x_payment_network: str = Header(default=""),
-    x_payment_amount: str = Header(default="0"),
-    x_payment_tx: str = Header(default=""),
-    db: AsyncSession = Depends(get_db_session),
-):
-    _require_internal(x_internal_secret)
+class CampaignPlanIn(BaseModel):
+    goal: str = Field(min_length=1, max_length=200)
+    budget_usdc: float = Field(gt=0, le=1_000_000)
+    platforms: list[str] = Field(default_factory=lambda: ["tiktok"], min_length=1, max_length=8)
+    duration_days: int = Field(default=14, ge=1, le=90)
+    niche: str = Field(default="", max_length=64)
 
+
+def plan_campaign(p: CampaignPlanIn) -> dict:
+    """Heurística determinística (sem LLM), mesma filosofia de analyze().
+    # ponytail: regras fixas de divisão de orçamento; trocar por LLM/dados reais depois."""
+    reward_pool = round(p.budget_usdc * 0.85, 2)  # 15% reservado a verificação e taxas
+    per_platform = round(reward_pool / len(p.platforms), 2)
+    return {
+        "goal": p.goal,
+        "duration_days": p.duration_days,
+        "budget_split": {"rewards_usdc": reward_pool, "ops_reserve_usdc": round(p.budget_usdc - reward_pool, 2)},
+        "platforms": [
+            {"platform": pl, "reward_budget_usdc": per_platform,
+             "suggested_tasks": ["publicar 1 vídeo com a mensagem da campanha", "marcar o perfil da marca", "manter o post no ar até o fim"]}
+            for pl in p.platforms
+        ],
+        "creator_payout_rule": "pagamento em USDC após verificação das tarefas (cada tarefa verificada libera sua parcela)",
+        "success_metrics": ["tarefas verificadas / participantes", "custo por tarefa verificada", "alcance reportado"],
+    }
+
+
+async def _paid(request: Request, db: AsyncSession, result: dict) -> dict:
+    """Parte comum dos serviços pagos: trilha de auditoria e recibo PQC (o segredo é checado antes, na rota)."""
+    h = request.headers
+    payer, network, tx = h.get("x-payer", ""), h.get("x-payment-network", ""), h.get("x-payment-tx", "")
     try:
-        amount_usdc = float(Decimal(x_payment_amount or "0") / USDC_DECIMALS)
+        amount_usdc = float(Decimal(h.get("x-payment-amount") or "0") / USDC_DECIMALS)
     except Exception:
         amount_usdc = 0.0
 
     # Trilha de auditoria. O anti-replay do pagamento em si é feito pelo Gateway (nonce da
     # autorização EIP-3009); aqui o UNIQUE só evita registrar duas vezes o mesmo tx.
-    if x_payment_tx:
+    if tx:
         db.add(UsedPayment(
-            tx_hash=f"{x_payment_network}:{x_payment_tx}"[:255],
-            user_id=x_payer or None,
+            tx_hash=f"{network}:{tx}"[:255],
+            user_id=payer or None,
             amount_xlm=amount_usdc,  # coluna legada reutilizada para USDC (igual ao arc_x402)
-            network=(x_payment_network or "x402")[:16],
+            network=(network or "x402")[:16],
         ))
         try:
             await db.commit()
         except IntegrityError:
             await db.rollback()
 
-    result = analyze(body)
     intent_id = str(uuid.uuid4())
-    receipt = sign_receipt(intent_id, x_payer, amount_usdc, x_payment_tx)
     return {
         "result": result,
         "receipt": {
             "intent_id": intent_id,
-            "payer": x_payer,
+            "payer": payer,
             "amount_usdc": amount_usdc,
-            "network": x_payment_network,
-            "payment_tx": x_payment_tx,
-            "receipt_pqc": receipt,
+            "network": network,
+            "payment_tx": tx,
+            "receipt_pqc": sign_receipt(intent_id, payer, amount_usdc, tx),
         },
     }
+
+
+@router.post("/profile-analysis")
+async def profile_analysis(body: ProfileAnalysisIn, request: Request, db: AsyncSession = Depends(get_db_session)):
+    _require_internal(request.headers.get("x-internal-secret"))  # falha antes de qualquer trabalho
+    return await _paid(request, db, analyze(body))
+
+
+@router.post("/campaign-plan")
+async def campaign_plan(body: CampaignPlanIn, request: Request, db: AsyncSession = Depends(get_db_session)):
+    _require_internal(request.headers.get("x-internal-secret"))
+    return await _paid(request, db, plan_campaign(body))

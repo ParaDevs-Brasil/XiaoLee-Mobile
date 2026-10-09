@@ -8,8 +8,8 @@ const cfg = {
   facilitatorUrl: env.X402_FACILITATOR_URL ?? "https://gateway-api.circle.com",
   networks: (env.X402_NETWORKS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
   publicUrl: env.PUBLIC_URL ?? "http://localhost:3100",
-  price: env.X402_PRICE ?? "$0.05",
-  upstreamUrl: need("UPSTREAM_URL"),
+  // compat: UPSTREAM_URL antigo (aponta p/ uma rota) vira a base
+  upstreamBase: (env.UPSTREAM_BASE_URL ?? need("UPSTREAM_URL").replace(/\/[^/]+$/, "")).replace(/\/$/, ""),
   internalSecret: need("X402_INTERNAL_SECRET"),
   upstreamTimeoutMs: Number(env.UPSTREAM_TIMEOUT_MS ?? 30000),
 };
