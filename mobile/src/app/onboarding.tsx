@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -27,6 +27,11 @@ import { useKeyboard } from '@/hooks/use-keyboard';
  * Mesmo padrão de formulário de `campaigns/new.tsx`, sem o "Cancel": este
  * passo não é dispensável no primeiro acesso (`index.tsx` redireciona para
  * aqui enquanto `onboarded` for `false`), então não há para onde voltar.
+ *
+ * Também serve como tela de edição — `/onboarding?edit=1` (link do
+ * `ProfileMenu`) — para quem já passou pelo onboarding e quer atualizar o
+ * perfil depois. Nesse modo o botão volta pra onde a pessoa estava
+ * (`router.back()`) em vez de forçar o dashboard.
  */
 
 const INTERESTS: { id: string; label: string }[] = [
@@ -59,6 +64,10 @@ export default function OnboardingScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const keyboard = useKeyboard();
+  // `/onboarding?edit=1` — link do `ProfileMenu` para quem já passou pelo
+  // questionário e quer atualizar o perfil depois.
+  const { edit } = useLocalSearchParams<{ edit?: string }>();
+  const isEditing = edit === '1';
 
   const [form, setForm] = useState<FormState>(INITIAL);
   const [interests, setInterests] = useState<string[]>([]);
@@ -120,16 +129,25 @@ export default function OnboardingScreen() {
     try {
       await updateMyProfile({
         full_name: form.full_name.trim(),
-        state: form.state.trim() || undefined,
-        city: form.city.trim() || undefined,
-        bio: form.bio.trim() || undefined,
+        // String vazia, não `undefined`: o PATCH é parcial
+        // (`exclude_unset=True` no backend) — omitir a chave deixaria um
+        // valor salvo antes impossível de limpar. `""` chega, e o backend
+        // converte pra `None` (`(data[key] or "").strip() or None`).
+        state: form.state.trim(),
+        city: form.city.trim(),
+        bio: form.bio.trim(),
         social_links,
         interest_profile: interests,
       });
-      // `replace`, não `push`: o onboarding não deve ficar na pilha — o
-      // voltar do Android não pode trazer o usuário de volta ao questionário
-      // já respondido.
-      router.replace('/dashboard');
+      if (isEditing) {
+        // Veio do menu de perfil — volta pra onde a pessoa estava.
+        router.back();
+      } else {
+        // `replace`, não `push`: o onboarding não deve ficar na pilha — o
+        // voltar do Android não pode trazer o usuário de volta ao
+        // questionário já respondido.
+        router.replace('/dashboard');
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));
     } finally {
@@ -147,10 +165,13 @@ export default function OnboardingScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.title}>Welcome to Xiaolee</Text>
+        <Text style={styles.title}>
+          {isEditing ? 'Edit your profile' : 'Welcome to Xiaolee'}
+        </Text>
         <Text style={styles.subtitle}>
-          Tell us a bit about yourself so Xiaolee can point you to the right campaigns and
-          content ideas.
+          {isEditing
+            ? 'Update your info — Xiaolee uses it to point you to the right campaigns and content ideas.'
+            : 'Tell us a bit about yourself so Xiaolee can point you to the right campaigns and content ideas.'}
         </Text>
 
         {error ? <ErrorState title="Couldn't save your profile" message={error} /> : null}
@@ -161,6 +182,7 @@ export default function OnboardingScreen() {
           value={form.full_name}
           onChange={(v) => set('full_name', v)}
           placeholder="Your full name"
+          maxLength={255}
         />
 
         <View style={styles.row}>
@@ -170,6 +192,7 @@ export default function OnboardingScreen() {
             onChange={(v) => set('state', v)}
             placeholder="Ex: SP"
             style={styles.flex}
+            maxLength={64}
           />
           <Field
             label="City"
@@ -177,6 +200,7 @@ export default function OnboardingScreen() {
             onChange={(v) => set('city', v)}
             placeholder="Ex: São Paulo"
             style={styles.flex}
+            maxLength={128}
           />
         </View>
 
@@ -227,6 +251,7 @@ export default function OnboardingScreen() {
           onChange={(v) => set('bio', v)}
           placeholder="A short description about you…"
           multiline
+          maxLength={1000}
         />
 
         <Pressable
@@ -243,7 +268,7 @@ export default function OnboardingScreen() {
           {submitting ? (
             <ActivityIndicator color={Colors.light.card} />
           ) : (
-            <Text style={styles.submitText}>Continue</Text>
+            <Text style={styles.submitText}>{isEditing ? 'Save changes' : 'Continue'}</Text>
           )}
         </Pressable>
       </ScrollView>
@@ -259,6 +284,7 @@ function Field({
   required,
   multiline,
   autoCapitalize,
+  maxLength,
   style,
 }: {
   label: string;
@@ -268,6 +294,8 @@ function Field({
   required?: boolean;
   multiline?: boolean;
   autoCapitalize?: 'none' | 'characters';
+  /** Mesmos limites do `ProfileUpdate` no backend — evita o 422 de campo longo demais. */
+  maxLength?: number;
   style?: object;
 }) {
   return (
@@ -284,6 +312,7 @@ function Field({
         style={[styles.input, multiline && styles.inputMultiline]}
         multiline={multiline}
         autoCapitalize={autoCapitalize}
+        maxLength={maxLength}
       />
     </View>
   );
