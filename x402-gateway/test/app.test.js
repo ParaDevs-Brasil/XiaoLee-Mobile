@@ -43,3 +43,18 @@ test("/openapi.json expõe a rota paga", async () => {
     assert.ok(d.paths["/v1/x402/campaign-plan"].post);
   } finally { srv.close(); }
 });
+
+test("comprador interno: 503 sem chave, 403 sem segredo, 200 com segredo", async () => {
+  const mkSrv = (buyer) => createApp({ ...cfg, internalSecret: "s" }, buyer).listen(0);
+  let srv = mkSrv(null);
+  try {
+    assert.equal((await fetch(`http://127.0.0.1:${srv.address().port}/internal/market/search`, { headers: { "x-internal-secret": "s" } })).status, 503);
+  } finally { srv.close(); }
+  srv = mkSrv({ search: async () => [{ resource: "r" }], buy: async () => ({ ok: true }) });
+  try {
+    const u = `http://127.0.0.1:${srv.address().port}/internal/market/search`;
+    assert.equal((await fetch(u)).status, 403);
+    assert.equal((await fetch(u, { headers: { "x-internal-secret": "bad" } })).status, 403);
+    assert.equal((await (await fetch(u, { headers: { "x-internal-secret": "s" } })).json()).items[0].resource, "r");
+  } finally { srv.close(); }
+});

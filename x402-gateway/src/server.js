@@ -1,4 +1,6 @@
 import { createApp } from "./app.js";
+import { createBuyer } from "./buyer.js";
+import { GatewayClient } from "@circle-fin/x402-batching/client";
 
 const env = process.env;
 const need = (k) => { if (!env[k]) throw new Error(`missing env ${k}`); return env[k]; };
@@ -14,4 +16,10 @@ const cfg = {
   upstreamTimeoutMs: Number(env.UPSTREAM_TIMEOUT_MS ?? 30000),
 };
 
-createApp(cfg).listen(Number(env.PORT ?? 3100), () => console.log("x402-gateway up"));
+// Comprador só liga se houver chave. Rede por X402_CHAIN (arcTestnet | arc).
+const buyer = env.BUYER_PRIVATE_KEY ? createBuyer(
+  { maxPerCallUsdc: Number(env.BUYER_MAX_PER_CALL_USDC ?? 0.1), dailyCapUsdc: Number(env.BUYER_DAILY_CAP_USDC ?? 1) },
+  { makeClient: () => new GatewayClient({ chain: env.X402_CHAIN ?? "arcTestnet", privateKey: env.BUYER_PRIVATE_KEY, rpcUrl: env.ARC_RPC }) },
+) : null;
+
+createApp(cfg, buyer).listen(Number(env.PORT ?? 3100), () => console.log("x402-gateway up"));
