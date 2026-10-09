@@ -13,6 +13,8 @@ const cfg = {
   // compat: UPSTREAM_URL antigo (aponta p/ uma rota) vira a base
   upstreamBase: (env.UPSTREAM_BASE_URL ?? need("UPSTREAM_URL").replace(/\/[^/]+$/, "")).replace(/\/$/, ""),
   internalSecret: need("X402_INTERNAL_SECRET"),
+  paused: env.X402_PAUSED === "true",
+  rateLimitPerMin: Number(env.X402_RATE_LIMIT_PER_MIN ?? 30),
   upstreamTimeoutMs: Number(env.UPSTREAM_TIMEOUT_MS ?? 30000),
 };
 

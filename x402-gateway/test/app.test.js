@@ -79,3 +79,35 @@ test("/internal/reconcile exige o segredo mesmo sem comprador", async () => {
     assert.ok(Array.isArray((await (await fetch(u, { headers: { "x-internal-secret": "s" } })).json()).failures));
   } finally { srv.close(); }
 });
+
+test("pausa: 503 sem cobrar, liga/desliga em runtime com o segredo", async () => {
+  const srv = createApp({ ...cfg, internalSecret: "s" }).listen(0);
+  const base = `http://127.0.0.1:${srv.address().port}`;
+  const post = (path, headers = {}, body = "{}") => fetch(base + path, { method: "POST", body, headers: { "content-type": "application/json", ...headers } });
+  try {
+    assert.equal((await post("/v1/x402/profile-analysis")).status, 402);
+    assert.equal((await post("/internal/pause", {}, '{"paused":true}')).status, 403);
+    assert.equal((await post("/internal/pause", { "x-internal-secret": "s" }, '{"paused":true}')).status, 200);
+    const r = await post("/v1/x402/profile-analysis");
+    assert.equal(r.status, 503);
+    assert.equal(r.headers.get("payment-required"), null); // nem oferece pagamento
+    assert.equal((await fetch(base + "/health")).status, 200);
+    await post("/internal/pause", { "x-internal-secret": "s" }, '{"paused":false}');
+    assert.equal((await post("/v1/x402/profile-analysis")).status, 402);
+  } finally { srv.close(); }
+});
+
+test("limite de taxa: excedeu -> 429 antes de cobrar; pagadores distintos têm cotas separadas", async () => {
+  const srv = createApp({ ...cfg, rateLimitPerMin: 2 }).listen(0);
+  const url = `http://127.0.0.1:${srv.address().port}/v1/x402/profile-analysis`;
+  const hdr = (addr) => ({ "content-type": "application/json", "payment-signature": Buffer.from(JSON.stringify({ payload: { authorization: { from: addr } } })).toString("base64") });
+  const A = "0x" + "a".repeat(40), B = "0x" + "b".repeat(40);
+  try {
+    const st = async (h) => (await fetch(url, { method: "POST", body: "{}", headers: h })).status;
+    // com header de pagamento inválido o pedido ainda passa pelo guard; o status final não importa, só 429 ou não
+    assert.notEqual(await st(hdr(A)), 429);
+    assert.notEqual(await st(hdr(A)), 429);
+    assert.equal(await st(hdr(A)), 429);
+    assert.notEqual(await st(hdr(B)), 429);
+  } finally { srv.close(); }
+});
