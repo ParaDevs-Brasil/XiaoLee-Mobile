@@ -22,6 +22,9 @@ N_CLIPS = 3
 MIN_LEN_S = 15.0
 MAX_LEN_S = 90.0
 FFMPEG_TIMEOUT_S = 900
+# 2 threads do x264: mediu-se pico de ~700 MB com o padrão (1 thread por núcleo) e ~350 MB com 2, sem diferença
+# de tempo relevante (9,4 s vs 9,8 s por 40 s de corte). A RAM do servidor é o que limita renders simultâneos.
+FFMPEG_THREADS = 2
 CAPTION_FONT = "DejaVu Sans"  # instalado na imagem (fonts-dejavu-core); sem fonte o libass não desenha nada
 CAPTION_WORDS = 4  # palavras por legenda: curto o bastante para ler em tela vertical
 
@@ -284,7 +287,7 @@ async def render_clip(source: str, ass_path: str, start: float, end: float, dest
         raise ValueError(f"layout must be one of {LAYOUTS}")
     await run_ffmpeg(
         ["-ss", f"{start:.3f}", "-t", f"{end - start:.3f}", "-i", source, "-vf", video_filter(layout, ass_path),
-         "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
+         "-threads", str(FFMPEG_THREADS), "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
          "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", "-y", dest],
         source, FFMPEG_TIMEOUT_S,
     )
