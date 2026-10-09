@@ -252,3 +252,43 @@ class TestOnboardedFlag:
             client.get(URL, headers=h)
         rows = (await db.execute(select(User).where(User.twitter_user_id == "privy_a"))).scalars().all()
         assert len(rows) == 1
+
+
+class TestGlossary:
+    """Glossário do creator (termos que a transcrição deve acertar)."""
+
+    @pytest.mark.asyncio
+    async def test_default_empty_and_roundtrip(self, db):
+        h = await _login(db, "g1")
+        assert client.get(URL, headers=h).json()["glossary"] == []
+        out = client.patch(URL, json={"glossary": ["Vetto", "Egocentric Video"]}, headers=h).json()
+        assert out["glossary"] == ["Vetto", "Egocentric Video"]
+        assert client.get(URL, headers=h).json()["glossary"] == ["Vetto", "Egocentric Video"]
+
+    @pytest.mark.asyncio
+    async def test_cleaned_dedup_ignoring_case_keeps_order(self, db):
+        h = await _login(db, "g2")
+        terms = ["  Vetto ", "vetto", "", "   ", "Hub\nstaff", "x" * 41, "Arc  Network", "ARC NETWORK"]
+        out = client.patch(URL, json={"glossary": terms}, headers=h).json()
+        assert out["glossary"] == ["Vetto", "Hub staff", "Arc Network"]
+
+    @pytest.mark.asyncio
+    async def test_more_than_60_terms_is_422_and_nothing_changes(self, db):
+        h = await _login(db, "g3")
+        client.patch(URL, json={"glossary": ["keep"]}, headers=h)
+        assert client.patch(URL, json={"glossary": [f"t{i}" for i in range(61)]}, headers=h).status_code == 422
+        assert client.get(URL, headers=h).json()["glossary"] == ["keep"]
+
+    @pytest.mark.asyncio
+    async def test_other_fields_do_not_touch_it_and_empty_list_clears_it(self, db):
+        h = await _login(db, "g4")
+        client.patch(URL, json={"glossary": ["Vetto"]}, headers=h)
+        client.patch(URL, json={"city": "Santos"}, headers=h)
+        assert client.get(URL, headers=h).json()["glossary"] == ["Vetto"]
+        assert client.patch(URL, json={"glossary": []}, headers=h).json()["glossary"] == []
+
+    @pytest.mark.asyncio
+    async def test_is_per_user(self, db):
+        a, b = await _login(db, "ga"), await _login(db, "gb")
+        client.patch(URL, json={"glossary": ["SoDoA"]}, headers=a)
+        assert client.get(URL, headers=b).json()["glossary"] == []

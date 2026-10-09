@@ -148,7 +148,7 @@ async def test_full_flow_transcribes(db, monkeypatch):
     _object_exists(monkeypatch, 1000)
     _fake_extract(monkeypatch)
 
-    async def _tr(path):
+    async def _tr(path, glossary=None):
         return FAKE_RESULT
 
     monkeypatch.setattr(media_routes, "_transcribe", _tr)
@@ -168,7 +168,7 @@ async def test_failure_marks_failed_and_can_retry(db, monkeypatch):
     _object_exists(monkeypatch, 1000)
     _fake_extract(monkeypatch)
 
-    async def _boom(path):
+    async def _boom(path, glossary=None):
         raise RuntimeError("whisper down")
 
     monkeypatch.setattr(media_routes, "_transcribe", _boom)
@@ -176,7 +176,7 @@ async def test_failure_marks_failed_and_can_retry(db, monkeypatch):
     d = client.get(f"/v1/media/{aid}", headers=h).json()
     assert d["status"] == "failed" and "whisper down" in d["error"]
 
-    async def _ok(path):
+    async def _ok(path, glossary=None):
         return FAKE_RESULT
 
     monkeypatch.setattr(media_routes, "_transcribe", _ok)
@@ -193,7 +193,7 @@ async def test_retranscribe_replaces_the_single_transcript(db, monkeypatch):
     _object_exists(monkeypatch, 1000)
     _fake_extract(monkeypatch)
     for text in ("primeira", "segunda"):
-        async def _tr(path, text=text):
+        async def _tr(path, glossary=None, text=text):
             return {**FAKE_RESULT, "segments": [{"start": 0.0, "end": 1.0, "text": text}]}
 
         monkeypatch.setattr(media_routes, "_transcribe", _tr)
@@ -512,7 +512,7 @@ async def test_transcribe_in_chunks_offsets_times_and_fixes_language_by_majority
 
     calls = []
 
-    async def _whisper(client, path, language):
+    async def _whisper(client, path, language, prompt=None):
         calls.append(language)
         i = len(calls)
         # janela do meio "detectou" espanhol (errado) e só na 1.ª passada; com idioma forçado vem certo
@@ -552,3 +552,73 @@ async def test_clips_layout_is_validated_and_reaches_the_renderer(clips_env, mon
     seen.clear()
     assert client.post(f"/v1/media/{e.aid}/clips?regenerate=true", headers=e.h).status_code == 200
     assert seen == ["crop"] * 3                                              # padrão preservado
+
+
+def test_public_error_hides_provider_org_and_explains_rate_limit():
+    import httpx
+    import openai
+
+    req = httpx.Request("POST", "https://api.groq.com/x")
+    rl = openai.RateLimitError("429", response=httpx.Response(429, request=req), body=None)
+    assert "rate limit" in media_routes._public_error(rl) and "429" not in media_routes._public_error(rl)
+    leaked = RuntimeError("Rate limit reached for model x in organization org_01m4dzgd5be1h8d33v897abc service tier")
+    assert "org_01" not in media_routes._public_error(leaked) and "<org>" in media_routes._public_error(leaked)
+
+
+def test_whisper_prompt_is_a_plain_list_capped_in_order():
+    wp = media_routes.whisper_prompt
+    assert wp(None) is None and wp([]) is None
+    assert wp(["Vetto", "Arc Network"]) == "Vetto, Arc Network"               # sem rótulo e sem ponto final
+    many = [f"termo{i:03d}" for i in range(200)]
+    p = wp(many)
+    assert len(p) <= media_routes.GLOSSARY_PROMPT_CHARS and p.startswith("termo000, termo001")  # os primeiros mandam
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg ausente")
+@pytest.mark.asyncio
+async def test_transcribe_sends_glossary_prompt_to_every_window(tmp_path, monkeypatch):
+    f = tmp_path / "a.mp3"
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=300:duration=100",
+                    "-ac", "1", "-ar", "16000", "-b:a", "32k", "-y", str(f)], check=True)
+
+    async def _plan(path):
+        return [(0.0, 50.0), (50.0, 100.0)]
+
+    seen = []
+
+    async def _whisper(client, path, language, prompt=None):
+        seen.append(prompt)
+        return [{"start": 1.0, "end": 2.0, "text": "oi"}], [{"text": "oi", "start": 1.0, "end": 2.0}], "Portuguese"
+
+    monkeypatch.setattr(media_routes, "_plan_chunks", _plan)
+    monkeypatch.setattr(media_routes, "_whisper", _whisper)
+    monkeypatch.setattr(media_routes, "settings", __import__("dataclasses").replace(media_routes.settings, transcription_api_key="k"))
+    import openai
+
+    monkeypatch.setattr(openai, "AsyncOpenAI", lambda **kw: object())
+    await media_routes._transcribe(str(f), ["Vetto", "Hubstaff"])
+    assert seen == ["Vetto, Hubstaff"] * 2
+    seen.clear()
+    await media_routes._transcribe(str(f))
+    assert seen == [None, None]
+
+
+@pytest.mark.asyncio
+async def test_owner_glossary_reaches_the_transcription(db, monkeypatch):
+    h = await _login(db, "a")
+    aid = client.post("/v1/media", json=BODY, headers=h).json()["asset"]["id"]
+    asset = await db.get(MediaAsset, aid)
+    owner = await db.get(media_routes.User, asset.user_id)
+    owner.glossary = json.dumps(["Vetto", "Arc"])
+    await db.commit()
+    _object_exists(monkeypatch, 1000)
+    _fake_extract(monkeypatch)
+    got = []
+
+    async def _tr(path, glossary=None):
+        got.append(glossary)
+        return FAKE_RESULT
+
+    monkeypatch.setattr(media_routes, "_transcribe", _tr)
+    client.post(f"/v1/media/{aid}/complete", headers=h)
+    assert got == [["Vetto", "Arc"]]

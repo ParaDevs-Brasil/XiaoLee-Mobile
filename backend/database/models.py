@@ -29,6 +29,8 @@ class User(Base):
     bio: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     social_links: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     interest_profile: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Glossário do creator (JSON: lista de termos): nomes de projetos/marcas/jargão que o Whisper erra.
+    glossary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 class Wallet(Base):

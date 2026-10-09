@@ -154,7 +154,7 @@ const frameMs = D.clips[0]?.sync.frame.frame_ms ?? 40;
 const totalSecs = sum(Object.values(D.stages).map(s => s.seconds));
 const stageDefs = [
   ["audio", "Áudio", s => [["Formato", s.rate], ["Tamanho", mb(s.mp3_bytes)]]],
-  ["transcription", "Transcrição", s => [["Modelo", s.model], ["Idioma", s.language], ["Segmentos", s.segments], ["Palavras c/ tempo", s.words]]],
+  ["transcription", "Transcrição", s => [["Modelo", s.model], ["Idioma", s.language], ["Segmentos", s.segments], ["Palavras c/ tempo", s.words], ...(s.glossary ? [["Glossário", s.glossary + " termos"]] : [])]],
   ["highlights", "Highlights", s => [["Modelo", s.model], ["Propostas", s.proposed], ["Aceitas", s.accepted]]],
   ["render", "Render 9:16", s => [["Cortes", s.clips], ["Saída", s.size], ["Layout", s.layout === "fit" ? "inteiro + fundo desfocado" : "corte central"]]],
 ];

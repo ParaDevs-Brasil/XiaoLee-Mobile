@@ -37,7 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import database as _dbmod
 from database.database import get_db_session
-from database.models import MediaAsset, MediaClip, MediaTranscript
+from database.models import MediaAsset, MediaClip, MediaTranscript, User
 from database.repository import to_utc_iso
 from server import clipper, media_storage
 from server.campaigns_routes import _resolve_user
@@ -52,6 +52,7 @@ CHUNK_S = 60.0
 CHUNK_SNAP_S = 8.0        # procura silêncio até 8 s antes/depois do ponto de corte ideal
 CHUNK_CONCURRENCY = 4
 MAX_AUDIO_S = 4 * 3600    # teto de custo por mídia
+GLOSSARY_PROMPT_CHARS = 500  # o Whisper só lê as últimas ~224 palavras-token do prompt
 # nome que o Whisper devolve → código ISO que o parâmetro `language` aceita
 ISO_LANG = {"portuguese": "pt", "english": "en", "spanish": "es", "french": "fr", "german": "de", "italian": "it",
             "japanese": "ja", "korean": "ko", "chinese": "zh", "russian": "ru", "arabic": "ar", "hindi": "hi",
@@ -273,8 +274,24 @@ async def _plan_chunks(audio_path: str) -> list[tuple[float, float]]:
     return _chunk_bounds(duration, [(a + b) / 2 for a, b in zip(starts, ends)])
 
 
-async def _whisper(client, path: str, language: str | None) -> tuple[list[dict], list[dict], str | None]:
+def whisper_prompt(glossary: list[str] | None) -> str | None:
+    """Termos do creator como texto prévio: o Whisper tende a grafar esses nomes do jeito dado.
+    Medido num vídeo real (PT-BR): lista simples, SEM ponto final e sem rótulo, preserva o jeito de falar
+    ("pra", "né", "tá"); com ponto final o Whisper formaliza o texto todo, e um rótulo em português
+    poderia enviesar a detecção de idioma de um vídeo em inglês."""
+    terms, used = [], 0
+    for t in glossary or []:
+        if used + len(t) + 2 > GLOSSARY_PROMPT_CHARS:
+            break
+        terms.append(t)
+        used += len(t) + 2
+    return ", ".join(terms) if terms else None
+
+
+async def _whisper(client, path: str, language: str | None, prompt: str | None = None) -> tuple[list[dict], list[dict], str | None]:
     kw = {"language": language} if language else {}
+    if prompt:
+        kw["prompt"] = prompt
     with open(path, "rb") as f:
         r = await client.audio.transcriptions.create(
             model=settings.transcription_model, file=f,
@@ -285,7 +302,7 @@ async def _whisper(client, path: str, language: str | None) -> tuple[list[dict],
     return segments, words, getattr(r, "language", None)
 
 
-async def _transcribe(audio_path: str) -> dict:
+async def _transcribe(audio_path: str, glossary: list[str] | None = None) -> dict:
     if not settings.transcription_api_key:
         raise RuntimeError("TRANSCRIPTION_API_KEY (ou OPENAI_API_KEY) não configurada")
     import openai
@@ -294,10 +311,13 @@ async def _transcribe(audio_path: str) -> dict:
     duration = plan[-1][1]
     if duration > MAX_AUDIO_S:
         raise RuntimeError(f"media too long to transcribe (max {MAX_AUDIO_S // 3600} hours)")
+    # max_retries alto: o plano gratuito do Groq limita a 20 requisições/min e uma hora de vídeo são ~60 janelas;
+    # o cliente espera o tempo que a própria API manda (Retry-After) em vez de falhar no primeiro 429.
     client = openai.AsyncOpenAI(
-        api_key=settings.transcription_api_key, base_url=settings.transcription_base_url or None
+        api_key=settings.transcription_api_key, base_url=settings.transcription_base_url or None, max_retries=8
     )
     sem = asyncio.Semaphore(CHUNK_CONCURRENCY)
+    prompt = whisper_prompt(glossary)
 
     with tempfile.TemporaryDirectory() as tmp:
         async def one(i: int, a: float, b: float, language: str | None):
@@ -309,7 +329,7 @@ async def _transcribe(audio_path: str) -> dict:
                     await clipper.run_ffmpeg(
                         ["-ss", f"{a:.3f}", "-t", f"{b - a:.3f}", "-i", audio_path, "-ac", "1", "-ar", "16000",
                          "-b:a", "32k", "-y", part], audio_path, FFMPEG_TIMEOUT_S)
-                return await _whisper(client, part, language)
+                return await _whisper(client, part, language, prompt)
 
         results = await asyncio.gather(*(one(i, a, b, None) for i, (a, b) in enumerate(plan)))
         # idioma: cada janela detecta sozinha, e uma janela só de música/silêncio erra. Vale a maioria
@@ -334,6 +354,15 @@ async def _transcribe(audio_path: str) -> dict:
     return {"language": language.capitalize() if language else None, "duration": duration, "segments": segments}
 
 
+def _public_error(exc: Exception) -> str:
+    """Mensagem de erro que o app pode ver: sem ID de organização/chave do provedor, e legível no 429."""
+    import openai
+
+    if isinstance(exc, openai.RateLimitError):
+        return "transcription provider is busy (rate limit), try again in a few minutes"
+    return re.sub(r"org_[A-Za-z0-9]+", "<org>", str(exc))[:500]
+
+
 async def transcribe_asset(asset_id: int) -> None:
     async with _session() as db:
         asset = await db.get(MediaAsset, asset_id)
@@ -343,7 +372,8 @@ async def transcribe_asset(asset_id: int) -> None:
             with tempfile.TemporaryDirectory() as tmp:
                 audio = os.path.join(tmp, "audio.mp3")
                 await _extract_audio(media_storage.presign_get(asset.r2_key), audio)
-                result = await _transcribe(audio)
+                owner = await db.get(User, asset.user_id)
+                result = await _transcribe(audio, json.loads(owner.glossary) if owner and owner.glossary else None)
             await db.execute(delete(MediaTranscript).where(MediaTranscript.media_id == asset.id))  # refazer substitui
             db.add(MediaTranscript(
                 media_id=asset.id, segments_json=json.dumps(result["segments"], ensure_ascii=False),
@@ -353,7 +383,7 @@ async def transcribe_asset(asset_id: int) -> None:
             asset.status, asset.error = "transcribed", None
         except Exception as exc:  # o status 'failed' + erro é o canal de feedback ao app
             logger.exception("transcription failed for media %s", asset_id)
-            asset.status, asset.error = "failed", str(exc)[:500]
+            asset.status, asset.error = "failed", _public_error(exc)
         await db.commit()
 
 

@@ -14,7 +14,7 @@ Sincronia, medida de três formas independentes:
     ambos contra a mesma referência de áudio
 
 Uso (GROQ_API_KEY e ANTHROPIC_API_KEY no ambiente; NUNCA imprime segredos):
-    cd backend && ../.venv/bin/python scripts/clipper_report.py <video> <pasta_de_saida> [crop|fit]
+    cd backend && ../.venv/bin/python scripts/clipper_report.py <video> <pasta_de_saida> [crop|fit] [--glossary=Termo1,Termo2]
     (fit = vídeo inteiro sobre fundo desfocado: gravação de tela, gráficos)
     abra <pasta_de_saida>/index.html no navegador
 """
@@ -147,7 +147,7 @@ def frame_sync(series, groups, fps: float) -> dict:
             "frame_ms": round(frame * 1000, 1), "groups_checked": len(onsets)}
 
 
-async def main(src: Path, out: Path, layout: str = "crop") -> int:
+async def main(src: Path, out: Path, layout: str = "crop", glossary: list[str] | None = None) -> int:
     if not (settings.transcription_api_key and settings.anthropic_api_key):
         print("FAIL: precisa de GROQ_API_KEY (ou TRANSCRIPTION_API_KEY) e ANTHROPIC_API_KEY no ambiente")
         return 2
@@ -177,12 +177,12 @@ async def main(src: Path, out: Path, layout: str = "crop") -> int:
 
     media_routes._attach_words = spy
     t = time.time()
-    tr = await media_routes._transcribe(str(audio))
+    tr = await media_routes._transcribe(str(audio), glossary)
     media_routes._attach_words = real_attach
     segs = tr["segments"]
     n_words = sum(len(s.get("words", [])) for s in segs)
     stage("transcription", time.time() - t, model=settings.transcription_model, language=tr["language"],
-          segments=len(segs), words=n_words)
+          segments=len(segs), words=n_words, glossary=len(glossary or []))
 
     t = time.time()
     raw = await clipper.ask_claude(segs)
@@ -258,6 +258,9 @@ async def main(src: Path, out: Path, layout: str = "crop") -> int:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) not in (3, 4) or (len(sys.argv) == 4 and sys.argv[3] not in clipper.LAYOUTS):
+    gl = [a for a in sys.argv[1:] if a.startswith("--glossary=")]
+    args = [a for a in sys.argv[1:] if not a.startswith("--glossary=")]
+    if len(args) not in (2, 3) or (len(args) == 3 and args[2] not in clipper.LAYOUTS):
         sys.exit(__doc__)
-    sys.exit(asyncio.run(main(Path(sys.argv[1]), Path(sys.argv[2]), *(sys.argv[3:]))))
+    terms = [t.strip() for t in gl[0].split("=", 1)[1].split(",") if t.strip()] if gl else None
+    sys.exit(asyncio.run(main(Path(args[0]), Path(args[1]), *args[2:], glossary=terms)))
