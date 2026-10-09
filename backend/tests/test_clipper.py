@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import shutil
 import subprocess
 from dataclasses import replace
@@ -89,20 +90,71 @@ def test_pick_highlights_without_key_fails_clearly(monkeypatch):
         asyncio.run(clipper.pick_highlights(SEGS))
 
 
-def test_caption_events_are_relative_to_clip_and_clipped_to_window():
-    ev = clipper.caption_events(SEGS, start=15.0, end=35.0)
-    assert ev[0][0] == 0.0 and ev[-1][1] == pytest.approx(20.0)
-    assert all(0 <= a < b <= 20.0 + 1e-6 for a, b, _ in ev)
-    assert all(len(t.split()) <= clipper.CAPTION_WORDS for _, _, t in ev)
-    assert clipper.caption_events(SEGS, start=100.0, end=130.0) == []
+def _w(text, a, b):
+    return {"text": text, "start": a, "end": b}
+
+
+# fala real: 2 s de silêncio no começo do segmento, depois "Hello brave new world. Next one"
+WORDED = [{
+    "start": 0.0, "end": 10.0, "text": "Hello brave new world. Next one",
+    "words": [_w("Hello", 2.0, 2.4), _w("brave", 2.4, 2.8), _w("new", 2.8, 3.0), _w("world.", 3.0, 3.5),
+              _w("Next", 4.0, 4.2), _w("one", 4.2, 4.6)],
+}]
+
+
+def test_captions_follow_real_word_times_not_segment_edges():
+    g = clipper.caption_groups(WORDED, 1.0, 6.0)
+    assert g[0][0] == pytest.approx(1.0)  # 2.0 (1.ª palavra) - 1.0 (início do corte); NÃO 0 = início do segmento
+    assert [w[0] for w in g[0][2]] == ["Hello", "brave", "new", "world."]
+    assert g[0][1] == pytest.approx(2.5)  # fecha na última palavra (o vão até a próxima é de 0,5 s: não 'ponteia')
+    assert g[1][0] == pytest.approx(3.0)
+
+
+def test_groups_split_on_sentence_end_pause_and_word_cap():
+    segs = [{"start": 0, "end": 30, "text": "x", "words": [
+        _w("one", 0, .3), _w("two", .3, .6), _w("three.", .6, 1.0), _w("four", 1.0, 1.3),   # frase acaba → novo grupo
+        _w("five", 3.0, 3.3),                                                               # pausa longa → novo grupo
+        _w("a", 3.3, 3.4), _w("b", 3.4, 3.5), _w("c", 3.5, 3.6), _w("d", 3.6, 3.7), _w("e", 3.7, 3.8),  # teto de 4
+    ]}]
+    sizes = [len(g[2]) for g in clipper.caption_groups(segs, 0, 30)]
+    assert sizes == [3, 1, 4, 2]
+
+
+def test_groups_bridge_small_gaps_but_not_large_ones():
+    segs = [{"start": 0, "end": 9, "text": "x", "words": [
+        _w("a.", 0, 1), _w("b.", 1.3, 2), _w("c.", 4, 5)]}]
+    g = clipper.caption_groups(segs, 0, 9)
+    assert g[0][1] == pytest.approx(1.3)  # vão de 0,3 s: fica até a próxima
+    assert g[1][1] == pytest.approx(2.0)  # vão de 2 s: some quando a fala acaba
+
+
+def test_groups_are_clipped_to_the_window():
+    g = clipper.caption_groups(WORDED, 2.5, 4.3)
+    assert g[0][0] == 0.0 and g[-1][1] <= 1.8 + 1e-9
+    assert clipper.caption_groups(WORDED, 100.0, 130.0) == []
+
+
+def test_segments_without_words_fall_back_to_proportional_timing():
+    g = clipper.caption_groups(SEGS, 15.0, 35.0)  # transcrição antiga, sem words
+    assert g and g[0][0] == 0.0 and g[-1][1] == pytest.approx(20.0)
+    assert all(len(grp) <= clipper.CAPTION_WORDS for _, _, grp in g)
+
+
+def test_ass_karaoke_durations_fill_each_caption_and_highlight_is_wired():
+    ass = clipper.build_ass(WORDED, 1.0, 6.0)
+    first = [l for l in ass.splitlines() if l.startswith("Dialogue")][0]
+    assert "0:00:01.00,0:00:02.50" in first
+    ks = [int(x) for x in re.findall(r"\\k(\d+)", first)]
+    assert ks == [40, 40, 20, 50] and sum(ks) == 150  # = 1,5 s = duração da legenda
+    assert f"Style: Default,{clipper.CAPTION_FONT},84,{clipper.HIGHLIGHT_COLOR},&H00FFFFFF" in ass
 
 
 def test_ass_strips_override_chars_and_formats_times():
-    segs = [{"start": 0.0, "end": 4.0, "text": "olá {\\an8} mundo\ncruel"}]
+    segs = [{"start": 0.0, "end": 4.0, "text": "olá {\\an8} mundo\\ncruel"}]
     ass = clipper.build_ass(segs, 0.0, 4.0)
     dialogue = [l for l in ass.splitlines() if l.startswith("Dialogue")]
-    assert dialogue and all("{" not in l.split(",,", 1)[1] and "\\" not in l.split(",,", 1)[1] for l in dialogue)
-    assert "0:00:00.00" in dialogue[0] and "PlayResY: 1920" in ass
+    texts = [re.sub(r"\{\\k\d+\}", "", l.split(",,", 1)[1]) for l in dialogue]  # tira só as tags \k legítimas
+    assert dialogue and all("{" not in t and "\\" not in t for t in texts)
     assert clipper._ass_time(3725.5) == "1:02:05.50"
 
 
@@ -157,3 +209,14 @@ def test_render_failure_does_not_leak_the_source_url(tmp_path):
     with pytest.raises(RuntimeError) as exc:
         asyncio.run(clipper.render_clip(url, str(ass), 0, 5, str(tmp_path / "o.mp4")))
     assert "deadbeef" not in str(exc.value)
+
+
+def test_ffmpeg_timeout_kills_the_process_and_fails_clearly(tmp_path):
+    import time
+
+    t = time.time()
+    with pytest.raises(RuntimeError, match="timed out"):
+        # entrada infinita: sem o timeout isso nunca termina
+        asyncio.run(clipper.run_ffmpeg(
+            ["-f", "lavfi", "-i", "testsrc=size=1920x1080:rate=60", "-f", "null", "-"], "src", timeout=1.5))
+    assert time.time() - t < 10

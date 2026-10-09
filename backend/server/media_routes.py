@@ -193,7 +193,7 @@ async def get_media(
     row = (await db.execute(select(MediaTranscript).where(MediaTranscript.media_id == asset.id))).scalars().first()
     transcript = None
     if row:
-        segments = json.loads(row.segments_json)
+        segments = [{k: v for k, v in seg.items() if k != "words"} for seg in json.loads(row.segments_json)]
         transcript = {
             "text": " ".join(seg["text"] for seg in segments),
             "language": row.language, "model": row.model, "segments": segments,
@@ -209,19 +209,27 @@ def _session():
 
 async def _extract_audio(source: str, dest: str) -> None:
     """`source` é caminho local ou URL (ffmpeg lê ambos). Só áudio, mono 16 kHz, 32 kbps."""
-    proc = await asyncio.create_subprocess_exec(
-        "ffmpeg", "-nostdin", "-v", "error", "-i", source,
-        "-vn", "-ac", "1", "-ar", "16000", "-b:a", "32k", "-y", dest,
-        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
+    await clipper.run_ffmpeg(
+        ["-i", source, "-vn", "-ac", "1", "-ar", "16000", "-b:a", "32k", "-y", dest], source, FFMPEG_TIMEOUT_S
     )
-    try:
-        _, err = await asyncio.wait_for(proc.communicate(), FFMPEG_TIMEOUT_S)
-    except asyncio.TimeoutError:
-        proc.kill()
-        raise RuntimeError("ffmpeg timed out")
-    if proc.returncode != 0:
-        # a URL pré-assinada vem na linha de erro do ffmpeg — não vazar para o banco/cliente
-        raise RuntimeError("ffmpeg failed: " + err.decode(errors="replace")[-300:].replace(source, "<media>"))
+
+
+def _attach_words(segments: list[dict], words: list[dict]) -> list[dict]:
+    """Pendura cada palavra (timestamp real do Whisper) no segmento que contém o seu ponto médio e
+    aperta o segmento para a fala de fato. Sem isso o Whisper devolve segmentos que começam no silêncio
+    anterior (ex.: segmento em 0 s, primeira palavra em 8 s) e corte/legenda nascem dessincronizados."""
+    if not segments or not words:
+        return segments
+    ptr = 0
+    for w in words:
+        mid = (w["start"] + w["end"]) / 2
+        while ptr + 1 < len(segments) and mid >= segments[ptr + 1]["start"]:
+            ptr += 1
+        segments[ptr].setdefault("words", []).append(w)
+    for seg in segments:
+        if seg.get("words"):
+            seg["start"], seg["end"] = seg["words"][0]["start"], seg["words"][-1]["end"]
+    return segments
 
 
 async def _transcribe(audio_path: str) -> dict:
@@ -235,12 +243,14 @@ async def _transcribe(audio_path: str) -> dict:
     with open(audio_path, "rb") as f:
         r = await client.audio.transcriptions.create(
             model=settings.transcription_model, file=f,
-            response_format="verbose_json", timestamp_granularities=["segment"],
+            response_format="verbose_json", timestamp_granularities=["segment", "word"],
         )
+    segments = [{"start": s.start, "end": s.end, "text": s.text.strip()} for s in (r.segments or [])]
+    words = [{"text": w.word.strip(), "start": w.start, "end": w.end} for w in (getattr(r, "words", None) or []) if w.word.strip()]
     return {
         "language": getattr(r, "language", None),
         "duration": getattr(r, "duration", None),
-        "segments": [{"start": s.start, "end": s.end, "text": s.text.strip()} for s in (r.segments or [])],
+        "segments": _attach_words(segments, words),
     }
 
 

@@ -426,3 +426,40 @@ async def test_inflight_render_blocks_but_stale_one_does_not(clips_env, monkeypa
     clip.updated_at = datetime.utcnow() - timedelta(hours=1)  # processo morreu no meio
     await e.db.commit()
     assert client.post(f"/v1/media/{e.aid}/clips?regenerate=true", headers=e.h).status_code == 200
+
+
+def test_attach_words_tightens_segments_to_real_speech():
+    segs = [{"start": 0.0, "end": 13.0, "text": "a b"}, {"start": 13.0, "end": 20.0, "text": "c"}]
+    words = [{"text": "a", "start": 8.4, "end": 9.0}, {"text": "b", "start": 9.0, "end": 12.5},
+             {"text": "c", "start": 14.0, "end": 15.0}]
+    out = media_routes._attach_words(segs, words)
+    assert (out[0]["start"], out[0]["end"]) == (8.4, 12.5)  # sem o silêncio do começo
+    assert [w["text"] for w in out[0]["words"]] == ["a", "b"] and [w["text"] for w in out[1]["words"]] == ["c"]
+    assert media_routes._attach_words([], words) == [] and media_routes._attach_words(segs[:1], []) == segs[:1]
+
+
+@pytest.mark.asyncio
+async def test_transcribe_requests_word_timestamps_and_get_hides_them(db, monkeypatch):
+    seen = {}
+
+    class _T:
+        async def create(self, **kw):
+            seen.update(kw)
+            seg = SimpleNamespace(start=0.0, end=5.0, text=" ola mundo ")
+            w = [SimpleNamespace(word=" ola", start=1.0, end=1.4), SimpleNamespace(word=" mundo", start=1.4, end=2.0)]
+            return SimpleNamespace(language="pt", duration=5.0, segments=[seg], words=w)
+
+    import openai
+
+    monkeypatch.setattr(openai, "AsyncOpenAI", lambda **kw: SimpleNamespace(audio=SimpleNamespace(transcriptions=_T())))
+    monkeypatch.setattr(media_routes, "settings", __import__("dataclasses").replace(media_routes.settings, transcription_api_key="k"))
+    res = await media_routes._transcribe(__file__)
+    assert seen["timestamp_granularities"] == ["segment", "word"]
+    assert res["segments"][0]["start"] == 1.0 and [w["text"] for w in res["segments"][0]["words"]] == ["ola", "mundo"]
+
+    h = await _login(db, "a")
+    aid = client.post("/v1/media", json=BODY, headers=h).json()["asset"]["id"]
+    db.add(MediaTranscript(media_id=aid, segments_json=json.dumps(res["segments"]), language="pt", model="m"))
+    await db.commit()
+    seg = client.get(f"/v1/media/{aid}", headers=h).json()["transcript"]["segments"][0]
+    assert "words" not in seg and seg["text"] == "ola mundo"

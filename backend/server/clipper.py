@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import subprocess
 from dataclasses import dataclass
 
 from server.settings import settings
@@ -74,41 +75,54 @@ def transcript_for_prompt(segments: list[dict]) -> str:
     return "\n".join(f"[{s['start']:.1f}] {s['text']}" for s in segments)
 
 
-def validate_highlights(raw: list[dict], segments: list[dict]) -> list[Highlight]:
+def validate_highlights(raw: list[dict], segments: list[dict], rejected: list | None = None) -> list[Highlight]:
     """Aceita só o que presta: dentro da mídia, 15-90 s, sem sobreposição. Ajusta as bordas aos
-    limites de segmento (nunca corta uma frase ao meio) e mantém a ordem de qualidade do modelo."""
+    limites de segmento (nunca corta uma frase ao meio) e mantém a ordem de qualidade do modelo.
+    `rejected`, se dado, recebe (proposta, motivo) — para inspecionar o que o modelo errou."""
     if not segments:
         return []
     media_end = segments[-1]["end"]
     out: list[Highlight] = []
+
+    def reject(h, why):
+        if rejected is not None:
+            rejected.append((h, why))
+
     for h in raw:
+        if len(out) == N_CLIPS:
+            reject(h, f"já há {N_CLIPS} cortes")
+            continue
         try:
             start, end = float(h["start"]), float(h["end"])
             title, reason = str(h["title"]).strip(), str(h["reason"]).strip()
         except (KeyError, TypeError, ValueError):
+            reject(h, "proposta malformada")
             continue
         if not (0 <= start < end <= media_end + 1) or not title:
+            reject(h, "fora da mídia ou sem título")
             continue
         # início = começo do segmento que contém `start`; fim = fim do segmento que contém `end`
         first = next((s for s in segments if s["end"] > start), None)
         last = next((s for s in reversed(segments) if s["start"] < end), None)
         if first is None or last is None:
+            reject(h, "fora da mídia")
             continue
         start, end = first["start"], min(last["end"], media_end)
         # se o ajuste estourou o teto, volta a janela do modelo (segmentos longos de fala contínua)
         if end - start > MAX_LEN_S:
             start, end = float(h["start"]), min(float(h["end"]), media_end)
         if not (MIN_LEN_S <= end - start <= MAX_LEN_S):
+            reject(h, f"duração {end - start:.0f}s fora de {MIN_LEN_S:.0f}-{MAX_LEN_S:.0f}s")
             continue
         if any(start < o.end and o.start < end for o in out):
+            reject(h, "sobrepõe um corte melhor")
             continue
         out.append(Highlight(start, end, title[:120], reason[:300]))
-        if len(out) == N_CLIPS:
-            break
     return out
 
 
-async def pick_highlights(segments: list[dict]) -> list[Highlight]:
+async def ask_claude(segments: list[dict]) -> list[dict]:
+    """Propostas CRUAS do modelo (ainda não validadas)."""
     if not settings.anthropic_api_key:
         raise RuntimeError("ANTHROPIC_API_KEY não configurada")
     import anthropic
@@ -127,11 +141,19 @@ async def pick_highlights(segments: list[dict]) -> list[Highlight]:
         }],
     )
     block = next((b for b in msg.content if b.type == "tool_use"), None)
-    raw = (block.input.get("highlights") if block else None) or []
-    return validate_highlights(raw, segments)
+    return (block.input.get("highlights") if block else None) or []
+
+
+async def pick_highlights(segments: list[dict]) -> list[Highlight]:
+    return validate_highlights(await ask_claude(segments), segments)
 
 
 # ── Legendas ─────────────────────────────────────────────────────────────────
+
+CAPTION_PAUSE_S = 0.8  # pausa maior que isso entre palavras abre uma legenda nova
+CAPTION_BRIDGE_S = 0.5  # vão menor que isso entre legendas: a anterior fica até a próxima (sem piscar)
+HIGHLIGHT_COLOR = "&H0000D7FF"  # ouro (ASS é BGR); a palavra falada muda de branco para ouro
+
 
 def _ass_time(t: float) -> str:
     cs = round(max(t, 0) * 100)
@@ -143,27 +165,51 @@ def _ass_text(s: str) -> str:
     return re.sub(r"[{}\\]", "", s).replace("\n", " ").strip()
 
 
-def caption_events(segments: list[dict], start: float, end: float) -> list[tuple[float, float, str]]:
-    """Fala dentro de [start, end] → (t0, t1, texto) relativos ao corte. Cada segmento é
-    fatiado em grupos de CAPTION_WORDS palavras com o tempo repartido pelo tamanho do texto
-    (a transcrição só tem timestamps por segmento, não por palavra)."""
-    events = []
+def _words_of(seg: dict) -> list[tuple[str, float, float]]:
+    """Palavras com tempo. Se a transcrição trouxe `words` (timestamps reais do Whisper), usa; senão
+    reparte o tempo do segmento pelo tamanho de cada palavra (mais frouxo — transcrições antigas)."""
+    if seg.get("words"):
+        return [(_ass_text(w["text"]), w["start"], w["end"]) for w in seg["words"] if _ass_text(w["text"])]
+    toks = _ass_text(seg["text"]).split()
+    total = sum(len(t) for t in toks) or 1
+    out, t = [], seg["start"]
+    for tok in toks:
+        dur = (seg["end"] - seg["start"]) * len(tok) / total
+        out.append((tok, t, t + dur))
+        t += dur
+    return out
+
+
+def caption_groups(segments: list[dict], start: float, end: float) -> list[tuple[float, float, list[tuple[str, float, float]]]]:
+    """Fala em [start, end] → grupos (t0, t1, [(palavra, t0, t1)]) com tempos relativos ao corte.
+    Um grupo fecha com CAPTION_WORDS palavras, fim de frase (. ? ! …) ou pausa longa."""
+    dur = end - start
+    groups, cur = [], []
+
+    def close():
+        if cur:
+            groups.append(list(cur))
+            cur.clear()
+
     for seg in segments:
-        if seg["end"] <= start or seg["start"] >= end:
-            continue
-        words = _ass_text(seg["text"]).split()
-        if not words:
-            continue
-        groups = [words[i:i + CAPTION_WORDS] for i in range(0, len(words), CAPTION_WORDS)]
-        total = sum(len(" ".join(g)) for g in groups)
-        t = seg["start"]
-        for g in groups:
-            dur = (seg["end"] - seg["start"]) * len(" ".join(g)) / total
-            t0, t1 = max(t, start) - start, min(t + dur, end) - start
-            t += dur
-            if t1 > t0:
-                events.append((t0, t1, " ".join(g)))
-    return events
+        for text, w0, w1 in _words_of(seg):
+            if w1 <= start or w0 >= end:
+                continue
+            w0, w1 = max(w0 - start, 0.0), min(w1 - start, dur)
+            if cur and w0 - cur[-1][2] > CAPTION_PAUSE_S:
+                close()
+            cur.append((text, w0, w1))
+            if len(cur) >= CAPTION_WORDS or text[-1] in ".?!…":
+                close()
+    close()
+    out = []
+    for i, g in enumerate(groups):
+        t1 = g[-1][2]
+        nxt = groups[i + 1][0][1] if i + 1 < len(groups) else None
+        if nxt is not None and 0 < nxt - t1 < CAPTION_BRIDGE_S:
+            t1 = nxt
+        out.append((g[0][1], t1, g))
+    return out
 
 
 def build_ass(segments: list[dict], start: float, end: float) -> str:
@@ -173,13 +219,17 @@ def build_ass(segments: list[dict], start: float, end: float) -> str:
         "Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,"
         "Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,"
         "MarginV,Encoding\n"
-        f"Style: Default,{CAPTION_FONT},84,&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,6,2,2,80,80,420,1\n\n"
+        # \k: palavra ainda não falada = SecondaryColour (branco); depois de falada = PrimaryColour (ouro)
+        f"Style: Default,{CAPTION_FONT},84,{HIGHLIGHT_COLOR},&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,6,2,2,80,80,420,1\n\n"
         "[Events]\nFormat: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text\n"
     )
-    lines = [
-        f"Dialogue: 0,{_ass_time(a)},{_ass_time(b)},Default,,0,0,0,,{text}"
-        for a, b, text in caption_events(segments, start, end)
-    ]
+    lines = []
+    for t0, t1, words in caption_groups(segments, start, end):
+        parts = []
+        for i, (text, w0, _) in enumerate(words):
+            until = words[i + 1][1] if i + 1 < len(words) else t1
+            parts.append(f"{{\\k{max(round((until - w0) * 100), 1)}}}{text}")
+        lines.append(f"Dialogue: 0,{_ass_time(t0)},{_ass_time(t1)},Default,,0,0,0,,{' '.join(parts)}")
     return head + "\n".join(lines) + "\n"
 
 
@@ -190,6 +240,25 @@ def _filter_path(p: str) -> str:
     return re.sub(r"([\\:'\[\],;])", r"\\\1", p)
 
 
+async def run_ffmpeg(args: list[str], source: str, timeout: float) -> None:
+    """ffmpeg numa thread (`subprocess.run`) em vez de `asyncio.create_subprocess_exec`: o child watcher
+    do asyncio às vezes não percebe a saída do processo (zumbi, `communicate()` pendura para sempre — visto
+    aqui em Python 3.12 depois de várias chamadas). Aqui o timeout mata o ffmpeg de verdade e não depende disso."""
+    def _run():
+        return subprocess.run(
+            ["ffmpeg", "-nostdin", "-v", "error", *args],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=timeout,
+        )
+
+    try:
+        r = await asyncio.to_thread(_run)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("ffmpeg timed out")
+    if r.returncode != 0:
+        # a URL pré-assinada vem na linha de erro do ffmpeg — não vazar para o banco/cliente
+        raise RuntimeError("ffmpeg failed: " + r.stderr.decode(errors="replace")[-300:].replace(source, "<media>"))
+
+
 async def render_clip(source: str, ass_path: str, start: float, end: float, dest: str) -> None:
     """`source` é caminho local ou URL. -ss antes do -i: busca rápida e timestamps do corte começam em 0
     (por isso o .ass é relativo ao início). Crop central 9:16 — bom para quem fala para a câmera."""
@@ -197,17 +266,9 @@ async def render_clip(source: str, ass_path: str, start: float, end: float, dest
         "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
         f"ass={_filter_path(ass_path)}"
     )
-    proc = await asyncio.create_subprocess_exec(
-        "ffmpeg", "-nostdin", "-v", "error", "-ss", f"{start:.3f}", "-t", f"{end - start:.3f}", "-i", source,
-        "-vf", vf, "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", "-y", dest,
-        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
+    await run_ffmpeg(
+        ["-ss", f"{start:.3f}", "-t", f"{end - start:.3f}", "-i", source, "-vf", vf,
+         "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
+         "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", "-y", dest],
+        source, FFMPEG_TIMEOUT_S,
     )
-    try:
-        _, err = await asyncio.wait_for(proc.communicate(), FFMPEG_TIMEOUT_S)
-    except asyncio.TimeoutError:
-        proc.kill()
-        raise RuntimeError("ffmpeg timed out")
-    if proc.returncode != 0:
-        # a URL pré-assinada vem na linha de erro do ffmpeg — não vazar para o banco/cliente
-        raise RuntimeError("ffmpeg failed: " + err.decode(errors="replace")[-300:].replace(source, "<media>"))
