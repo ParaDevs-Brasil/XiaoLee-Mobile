@@ -7,7 +7,6 @@ import {
   Easing,
   Keyboard,
   KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -188,10 +187,11 @@ export default function LoginScreen() {
       <SparkleStar size={16} color="#F472B6" style={styles.sparkleTopRight} />
       <SparkleStar size={12} color="#FBCFE8" style={styles.sparkleMidRight} />
 
-      <KeyboardAvoidingView
-        style={styles.keyboardView}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      {/* `padding` nas duas plataformas, como o composer do chat e o sheet de
+          carteira: desde o edge-to-edge obrigatório (SDK 54) a janela do
+          Android não encolhe mais sozinha, e sem isto o teclado cobre o campo
+          de e-mail e o do código. */}
+      <KeyboardAvoidingView style={styles.keyboardView} behavior="padding">
         <ScrollView
           contentContainerStyle={[
             styles.scrollContent,

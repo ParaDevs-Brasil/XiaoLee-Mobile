@@ -353,7 +353,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   // sessão que o backend não reconhece só empurraria o erro para a próxima
   // tela. Falhou → `sessionError`, e o login oferece tentar de novo.
   useEffect(() => {
-    if (!isReady || !address || sessionLoading || hasSession) return;
+    // `user` na condição: depois do logout a carteira pode sobreviver por um
+    // render, e uma troca disparada nessa janela falharia (sem token) e deixaria
+    // um `sessionError` velho que faria o PRÓXIMO login cair direto em "couldn't
+    // finish signing you in".
+    if (!isReady || !user || !address || sessionLoading || hasSession) return;
     if (exchanging.current) return;
     exchanging.current = true;
     const currentSeq = ++exchangeSeq.current;
@@ -390,7 +394,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         }
       }
     })();
-  }, [isReady, address, sessionLoading, hasSession, attempt, getAccessToken]);
+  }, [isReady, user, address, sessionLoading, hasSession, attempt, getAccessToken]);
 
   const retrySession = () => {
     setSessionError(null);
