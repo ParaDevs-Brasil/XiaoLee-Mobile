@@ -5,25 +5,38 @@ const DISCOVERY = "https://api.circle.com/v2/x402/discovery/resources";
 const clean = (s, n) => String(s ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, n);
 const usdc = (atomic) => Number(BigInt(atomic)) / 1e6;
 
-export function createBuyer(cfg, { makeClient, fetchFn = fetch, now = () => new Date() }) {
+export function createBuyer(cfg, { makeClient, fetchFn = fetch, now = () => new Date(), sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
   const seen = new Set(); // recursos devolvidos pela busca: só esses podem ser comprados
   let day = "", spent = 0n;
   const dayKey = () => now().toISOString().slice(0, 10);
 
-  // O Discovery tem milhares de recursos (limit máx. 100 por página): varre as páginas e guarda 5 min.
-  let cache = { at: 0, items: [] };
-  async function allResources() {
-    if (cache.items.length && now() - cache.at < 300_000) return cache.items;
-    const all = [];
-    for (let page = 0; page < 40; page++) {
-      const r = await fetchFn(`${DISCOVERY}?limit=100&offset=${page * 100}`, { signal: AbortSignal.timeout(15000) });
-      if (!r.ok) throw new Error(`discovery_${r.status}`);
-      const d = await r.json();
-      all.push(...(d.items ?? []));
-      if ((d.items ?? []).length < 100 || all.length >= (d.pagination?.total ?? Infinity)) break;
+  // O Discovery tem milhares de recursos (limit máx. 100 por página) e responde 429 a rajadas:
+  // varre devagar, espera no 429, guarda 5 min e, se cair no meio, usa o que já veio.
+  let cache = { at: 0, items: [], complete: false };
+  async function page(off) {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const r = await fetchFn(`${DISCOVERY}?limit=100&offset=${off}`, { signal: AbortSignal.timeout(15000) });
+      if (r.status !== 429) { if (!r.ok) throw new Error(`discovery_${r.status}`); return r.json(); }
+      await sleep(Math.min(Number(r.headers?.get?.("retry-after")) * 1000 || 1500 * (attempt + 1), 8000));
     }
-    cache = { at: now(), items: all };
-    return all;
+    throw new Error("discovery_429");
+  }
+  async function allResources() {
+    const ttl = cache.complete ? 300_000 : 30_000;
+    if (cache.items.length && now() - cache.at < ttl) return cache.items;
+    const all = []; let complete = false;
+    try {
+      for (let pg = 0; pg < 40; pg++) {
+        if (pg) await sleep(250);
+        const d = await page(pg * 100);
+        all.push(...(d.items ?? []));
+        if ((d.items ?? []).length < 100 || all.length >= (d.pagination?.total ?? Infinity)) { complete = true; break; }
+      }
+    } catch (e) {
+      if (!all.length && !cache.items.length) throw e; // nada para mostrar
+    }
+    if (all.length >= cache.items.length) cache = { at: now(), items: all, complete };
+    return cache.items;
   }
 
   async function search({ q = "", limit = 10 } = {}) {
@@ -76,5 +89,7 @@ export function createBuyer(cfg, { makeClient, fetchFn = fetch, now = () => new 
     }
   }
 
-  return { search, buy, spentToday: () => usdc(spent) };
+  // aquece o cache em segundo plano (a 1ª varredura leva ~15 s)
+  const warm = () => allResources().then(() => true, () => false);
+  return { search, buy, warm, spentToday: () => usdc(spent) };
 }

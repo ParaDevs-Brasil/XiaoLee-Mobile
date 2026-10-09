@@ -25,6 +25,7 @@ const buyer = env.BUYER_PRIVATE_KEY ? createBuyer(
   { makeClient: () => new GatewayClient({ chain: env.X402_CHAIN ?? "arcTestnet", privateKey: env.BUYER_PRIVATE_KEY, rpcUrl: env.ARC_RPC }) },
 ) : null;
 
+buyer?.warm();
 const srv = createApp(cfg, buyer).listen(Number(env.PORT ?? 3100), () => console.log("x402-gateway up"));
 // Deploy envia SIGTERM: termina os pedidos em andamento (já pagos) antes de sair.
 process.on("SIGTERM", () => {

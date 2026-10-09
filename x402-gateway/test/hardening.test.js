@@ -28,7 +28,7 @@ test("busca: pagina o Discovery, filtra pela rede do comprador e usa o preço de
   ];
   const urls = [];
   const fetchFn = async (u) => { urls.push(u); const off = Number(new URL(u).searchParams.get("offset")); return { ok: true, json: async () => ({ items: pages[off / 100] ?? [], pagination: { total: 101 } }) }; };
-  const mkb = (network) => createBuyer({ maxPerCallUsdc: 1, dailyCapUsdc: 1, network }, { makeClient: () => ({}), fetchFn });
+  const mkb = (network) => createBuyer({ maxPerCallUsdc: 1, dailyCapUsdc: 1, network }, { makeClient: () => ({}), fetchFn, sleep: async () => {} });
   const testnet = await mkb("eip155:5042002").search({ limit: 20 });
   assert.deepEqual(testnet.map((i) => [i.resource, i.price_usdc]), [["https://t/1", 0.07]]); // o item da página 2 aparece
   assert.equal(urls.length, 2);
@@ -65,4 +65,18 @@ test("deliver: 4xx do upstream depois de liquidar vai para a reconciliação", a
 
 test("openapi 3.1 (exclusiveMinimum numérico é válido)", () => {
   assert.equal(openapi(cfg).openapi, "3.1.0");
+});
+
+test("busca: 429 do Discovery espera e tenta de novo; falha no meio devolve o parcial", async () => {
+  let n = 0;
+  const full = Array.from({ length: 100 }, (_, i) => item(`https://m/${i}`, [{ network: "eip155:5042", amount: "100" }]));
+  // 1ª chamada: 429; depois página 1 ok; página 2 sempre 500
+  const fetchFn = async (u) => {
+    n++;
+    if (n === 1) return { ok: false, status: 429, headers: new Headers() };
+    if (new URL(u).searchParams.get("offset") === "0") return { ok: true, status: 200, json: async () => ({ items: full, pagination: { total: 250 } }) };
+    return { ok: false, status: 500 };
+  };
+  const b = createBuyer({ maxPerCallUsdc: 1, dailyCapUsdc: 1, network: "eip155:5042" }, { makeClient: () => ({}), fetchFn, sleep: async () => {} });
+  assert.equal((await b.search({ limit: 20 })).length, 20); // parcial (100 itens) em vez de erro
 });
