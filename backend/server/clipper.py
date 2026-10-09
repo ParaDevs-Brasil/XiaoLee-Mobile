@@ -39,7 +39,7 @@ _HIGHLIGHT_TOOL = {
                         "start": {"type": "number", "description": "start, in seconds"},
                         "end": {"type": "number", "description": "end, in seconds"},
                         "title": {"type": "string", "description": "catchy title, max 80 chars, same language as the transcript"},
-                        "reason": {"type": "string", "description": "why it works as a short, max 200 chars"},
+                        "reason": {"type": "string", "description": "why it works as a short, max 200 chars, same language as the transcript"},
                     },
                     "required": ["start", "end", "title", "reason"],
                 },
@@ -260,15 +260,30 @@ async def run_ffmpeg(args: list[str], source: str, timeout: float) -> str:
     return r.stderr.decode(errors="replace")
 
 
-async def render_clip(source: str, ass_path: str, start: float, end: float, dest: str) -> None:
+LAYOUTS = ("crop", "fit")
+
+
+def video_filter(layout: str, ass_path: str) -> str:
+    """crop: preenche 9:16 cortando o centro — bom para quem fala para a câmera.
+    fit: vídeo inteiro no meio sobre o próprio vídeo desfocado — para gravação de tela, gráficos e
+    planos abertos, onde o corte central joga fora o conteúdo (visto num vídeo real de screencast)."""
+    sub = f"ass={_filter_path(ass_path)}"
+    if layout == "fit":
+        return (
+            "split[a][b];[a]scale=270:480:force_original_aspect_ratio=increase,crop=270:480,boxblur=8:2,scale=1080:1920[bg];"
+            # desfoque calculado em 1/4 da resolução e ampliado: ~4x mais barato que desfocar em 1080x1920
+            f"[b]scale=1080:-2[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,{sub}"
+        )
+    return f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,{sub}"
+
+
+async def render_clip(source: str, ass_path: str, start: float, end: float, dest: str, layout: str = "crop") -> None:
     """`source` é caminho local ou URL. -ss antes do -i: busca rápida e timestamps do corte começam em 0
-    (por isso o .ass é relativo ao início). Crop central 9:16 — bom para quem fala para a câmera."""
-    vf = (
-        "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
-        f"ass={_filter_path(ass_path)}"
-    )
+    (por isso o .ass é relativo ao início)."""
+    if layout not in LAYOUTS:
+        raise ValueError(f"layout must be one of {LAYOUTS}")
     await run_ffmpeg(
-        ["-ss", f"{start:.3f}", "-t", f"{end - start:.3f}", "-i", source, "-vf", vf,
+        ["-ss", f"{start:.3f}", "-t", f"{end - start:.3f}", "-i", source, "-vf", video_filter(layout, ass_path),
          "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
          "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", "-y", dest],
         source, FFMPEG_TIMEOUT_S,

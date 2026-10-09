@@ -14,7 +14,8 @@ Sincronia, medida de três formas independentes:
     ambos contra a mesma referência de áudio
 
 Uso (GROQ_API_KEY e ANTHROPIC_API_KEY no ambiente; NUNCA imprime segredos):
-    cd backend && ../.venv/bin/python scripts/clipper_report.py <video> <pasta_de_saida>
+    cd backend && ../.venv/bin/python scripts/clipper_report.py <video> <pasta_de_saida> [crop|fit]
+    (fit = vídeo inteiro sobre fundo desfocado: gravação de tela, gráficos)
     abra <pasta_de_saida>/index.html no navegador
 """
 
@@ -146,7 +147,7 @@ def frame_sync(series, groups, fps: float) -> dict:
             "frame_ms": round(frame * 1000, 1), "groups_checked": len(onsets)}
 
 
-async def main(src: Path, out: Path) -> int:
+async def main(src: Path, out: Path, layout: str = "crop") -> int:
     if not (settings.transcription_api_key and settings.anthropic_api_key):
         print("FAIL: precisa de GROQ_API_KEY (ou TRANSCRIPTION_API_KEY) e ANTHROPIC_API_KEY no ambiente")
         return 2
@@ -199,11 +200,11 @@ async def main(src: Path, out: Path) -> int:
         dest, dest_blank = out / f"clip{i}.mp4", tmp / "blank.mp4"
         print(f"  clip{i}: render ({h.end - h.start:.0f}s)…")
         t = time.time()
-        await clipper.render_clip(str(src), str(ass), h.start, h.end, str(dest))
+        await clipper.render_clip(str(src), str(ass), h.start, h.end, str(dest), layout)
         render_s = time.time() - t
         render_total += render_s
         print(f"  clip{i}: render sem legenda (referência para os quadros)…")
-        await clipper.render_clip(str(src), str(blank), h.start, h.end, str(dest_blank))
+        await clipper.render_clip(str(src), str(blank), h.start, h.end, str(dest_blank), layout)
 
         cmeta = probe(dest)
         first = clipper.caption_groups(segs, h.start, h.end)
@@ -235,7 +236,7 @@ async def main(src: Path, out: Path) -> int:
         s = clips[-1]["sync"]
         print(f"  clip{i} {h.end - h.start:.0f}s render {render_s:.1f}s · quadros {s['frame']['agree_pct']}% · "
               f"áudio mediana novo {s['audio_new']['median_ms']} ms vs antigo {s['audio_old']['median_ms']} ms")
-    stage("render", render_total, clips=len(clips), size="1080x1920 H.264/AAC")
+    stage("render", render_total, clips=len(clips), size="1080x1920 H.264/AAC", layout=layout)
 
     data = {
         "generated": datetime.now().strftime("%Y-%m-%d %H:%M"), "source": {"name": src.name, **meta},
@@ -257,6 +258,6 @@ async def main(src: Path, out: Path) -> int:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
+    if len(sys.argv) not in (3, 4) or (len(sys.argv) == 4 and sys.argv[3] not in clipper.LAYOUTS):
         sys.exit(__doc__)
-    sys.exit(asyncio.run(main(Path(sys.argv[1]), Path(sys.argv[2]))))
+    sys.exit(asyncio.run(main(Path(sys.argv[1]), Path(sys.argv[2]), *(sys.argv[3:]))))

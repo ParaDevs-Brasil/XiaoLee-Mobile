@@ -156,7 +156,7 @@ const stageDefs = [
   ["audio", "Áudio", s => [["Formato", s.rate], ["Tamanho", mb(s.mp3_bytes)]]],
   ["transcription", "Transcrição", s => [["Modelo", s.model], ["Idioma", s.language], ["Segmentos", s.segments], ["Palavras c/ tempo", s.words]]],
   ["highlights", "Highlights", s => [["Modelo", s.model], ["Propostas", s.proposed], ["Aceitas", s.accepted]]],
-  ["render", "Render 9:16", s => [["Cortes", s.clips], ["Saída", s.size]]],
+  ["render", "Render 9:16", s => [["Cortes", s.clips], ["Saída", s.size], ["Layout", s.layout === "fit" ? "inteiro + fundo desfocado" : "corte central"]]],
 ];
 const src = D.source;
 const stageCards = [

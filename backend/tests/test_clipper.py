@@ -220,3 +220,25 @@ def test_ffmpeg_timeout_kills_the_process_and_fails_clearly(tmp_path):
         asyncio.run(clipper.run_ffmpeg(
             ["-f", "lavfi", "-i", "testsrc=size=1920x1080:rate=60", "-f", "null", "-"], "src", timeout=1.5))
     assert time.time() - t < 10
+
+
+def test_fit_layout_keeps_the_whole_frame_on_a_blurred_background(tmp_path, source):
+    ass = tmp_path / "s.ass"
+    ass.write_text(clipper.build_ass([], 0, 10), encoding="utf-8")
+    crop, fit = str(tmp_path / "crop.mp4"), str(tmp_path / "fit.mp4")
+    asyncio.run(clipper.render_clip(source, str(ass), 2.0, 6.0, crop, "crop"))
+    asyncio.run(clipper.render_clip(source, str(ass), 2.0, 6.0, fit, "fit"))
+    stream, duration = _probe(fit)
+    assert (stream["width"], stream["height"]) == (1080, 1920) and duration == pytest.approx(4.0, abs=0.5)
+    assert _frame(fit, 1) != _frame(crop, 1)  # layouts de fato diferentes
+    # no 'fit' o topo é fundo desfocado (não preto) e o vídeo inteiro aparece no meio: a faixa do meio tem
+    # muito mais variação (conteúdo do testsrc) que o topo desfocado
+    raw = _frame(fit, 1)
+    top, mid = raw[: 1080 * 200], raw[1080 * 900: 1080 * 1100]
+    spread = lambda b: max(b) - min(b)  # noqa: E731
+    assert max(top) > 10 and spread(mid) > spread(top)
+
+
+def test_unknown_layout_is_refused(tmp_path):
+    with pytest.raises(ValueError):
+        asyncio.run(clipper.render_clip("x", "y", 0, 1, str(tmp_path / "o.mp4"), "stretch"))

@@ -383,7 +383,7 @@ async def test_one_failed_render_does_not_sink_the_others(clips_env, monkeypatch
     e = clips_env
     calls = []
 
-    async def _render(source, ass, start, end, dest):
+    async def _render(source, ass, start, end, dest, layout="crop"):
         calls.append(start)
         if start == 40.0:
             raise RuntimeError("ffmpeg failed: <media> broke")
@@ -400,7 +400,7 @@ async def test_one_failed_render_does_not_sink_the_others(clips_env, monkeypatch
 async def test_regenerate_guard_replaces_and_cleans_old_objects(clips_env, monkeypatch):
     e = clips_env
 
-    async def _render(source, ass, start, end, dest):
+    async def _render(source, ass, start, end, dest, layout="crop"):
         open(dest, "wb").write(b"mp4")
 
     monkeypatch.setattr(clipper, "render_clip", _render)
@@ -419,7 +419,7 @@ async def test_regenerate_guard_replaces_and_cleans_old_objects(clips_env, monke
 async def test_inflight_render_blocks_but_stale_one_does_not(clips_env, monkeypatch):
     e = clips_env
 
-    async def _render(source, ass, start, end, dest):
+    async def _render(source, ass, start, end, dest, layout="crop"):
         open(dest, "wb").write(b"mp4")
 
     monkeypatch.setattr(clipper, "render_clip", _render)
@@ -533,3 +533,22 @@ async def test_transcribe_in_chunks_offsets_times_and_fixes_language_by_majority
     assert [w["start"] for s in res["segments"] for w in s["words"]][:2] == [1.0, 1.5]
     assert res["segments"][1]["words"][0]["start"] == 51.0
     assert calls.count("pt") == 1 and calls.count(None) == 3                   # só a janela divergente foi refeita, com 'pt'
+
+
+@pytest.mark.asyncio
+async def test_clips_layout_is_validated_and_reaches_the_renderer(clips_env, monkeypatch):
+    e = clips_env
+    seen = []
+
+    async def _render(source, ass, start, end, dest, layout="crop"):
+        seen.append(layout)
+        open(dest, "wb").write(b"mp4")
+
+    monkeypatch.setattr(clipper, "render_clip", _render)
+    assert client.post(f"/v1/media/{e.aid}/clips?layout=stretch", headers=e.h).status_code == 422
+    assert (await e.db.execute(select(MediaClip))).scalars().all() == []     # recusado antes de gastar o Claude
+    assert client.post(f"/v1/media/{e.aid}/clips?layout=fit", headers=e.h).status_code == 200
+    assert seen == ["fit"] * 3
+    seen.clear()
+    assert client.post(f"/v1/media/{e.aid}/clips?regenerate=true", headers=e.h).status_code == 200
+    assert seen == ["crop"] * 3                                              # padrão preservado

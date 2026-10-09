@@ -7,7 +7,7 @@ Fluxo (o arquivo nunca passa pelo backend):
     POST /v1/media/{id}/complete  → confere o objeto no bucket e dispara a transcrição
     GET  /v1/media[/{id}]         → lista / detalhe (com transcrição quando pronta)
 
-    POST /v1/media/{id}/clips     → Claude escolhe 3 highlights; renderiza em background (9:16 legendado)
+    POST /v1/media/{id}/clips     → Claude escolhe 3 highlights; renderiza em background (9:16 legendado; ?layout=crop|fit)
     GET  /v1/media/{id}/clips     → cortes + URL de download dos prontos
 
 Transcrição: ffmpeg extrai áudio mono 16 kHz/32 kbps do vídeo (lido por URL
@@ -391,11 +391,15 @@ async def create_clips(
     asset_id: int,
     background: BackgroundTasks,
     regenerate: bool = False,
+    layout: str = "crop",
     authorization: Optional[str] = Header(default=None),
     db: AsyncSession = Depends(get_db_session),
 ):
     """Escolhe os highlights na hora (a lista volta já com títulos) e renderiza em background.
-    Cada chamada custa uma ida ao Claude: se já há cortes, exige `regenerate=true`."""
+    Cada chamada custa uma ida ao Claude: se já há cortes, exige `regenerate=true`.
+    `layout=crop` (padrão, quem fala para a câmera) | `fit` (gravação de tela/gráficos: vídeo inteiro sobre fundo desfocado)."""
+    if layout not in clipper.LAYOUTS:
+        raise HTTPException(422, f"layout must be one of {', '.join(clipper.LAYOUTS)}")
     asset = await _owned(db, authorization, asset_id)
     if asset.kind != "video":
         raise HTTPException(422, "clips need a video, not audio")
@@ -435,14 +439,14 @@ async def create_clips(
     ]
     db.add_all(clips)
     await db.commit()
-    background.add_task(render_clips, asset.id, old_keys)
+    background.add_task(render_clips, asset.id, old_keys, layout)
     try:
         return [_clip_out(c) for c in clips]
     except media_storage.StorageNotConfigured as exc:
         raise HTTPException(503, str(exc))
 
 
-async def render_clips(asset_id: int, old_keys: list[str] | None = None) -> None:
+async def render_clips(asset_id: int, old_keys: list[str] | None = None, layout: str = "crop") -> None:
     """Um corte por vez (ffmpeg 1080x1920 é pesado); cada corte tem o próprio status."""
     for key in old_keys or []:
         try:
@@ -464,7 +468,7 @@ async def render_clips(asset_id: int, old_keys: list[str] | None = None) -> None
                     ass, out = os.path.join(tmp, "subs.ass"), os.path.join(tmp, "clip.mp4")
                     with open(ass, "w", encoding="utf-8") as f:
                         f.write(clipper.build_ass(segments, clip.start_s, clip.end_s))
-                    await clipper.render_clip(media_storage.presign_get(asset.r2_key), ass, clip.start_s, clip.end_s, out)
+                    await clipper.render_clip(media_storage.presign_get(asset.r2_key), ass, clip.start_s, clip.end_s, out, layout)
                     key = f"clips/{asset.user_id}/{asset.id}/{uuid.uuid4().hex}.mp4"
                     await media_storage.upload_file(out, key, "video/mp4")
                     clip.r2_key, clip.size_bytes = key, os.path.getsize(out)
