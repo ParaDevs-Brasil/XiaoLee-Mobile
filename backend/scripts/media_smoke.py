@@ -88,7 +88,9 @@ async def main(path_arg: str | None) -> int:
             await media_routes._extract_audio(media_storage.presign_get(key), str(audio))
             check(audio.exists() and audio.stat().st_size > 0, "ffmpeg extrai áudio pela URL do bucket",
                   f"{audio.stat().st_size} bytes em {time.monotonic() - t0:.1f}s")
-            check(audio.stat().st_size <= media_routes.MAX_AUDIO_BYTES, "áudio dentro do limite do Whisper (24 MiB)")
+            plan = await media_routes._plan_chunks(str(audio))
+            check(plan[-1][1] <= media_routes.MAX_AUDIO_S, f"duração dentro do teto ({media_routes.MAX_AUDIO_S // 3600} h)",
+                  f"{plan[-1][1]:.0f}s em {len(plan)} janela(s) de ~{media_routes.CHUNK_S:.0f}s")
 
             print("transcrição")
             if not asr_ok:
@@ -101,6 +103,9 @@ async def main(path_arg: str | None) -> int:
                       f"{len(segs)} segmentos, língua={result.get('language')}, duração={result.get('duration')}s, {time.monotonic() - t0:.1f}s")
                 if segs:
                     check(all(s["end"] >= s["start"] for s in segs), "timestamps coerentes")
+                    check(all(a["end"] <= b["start"] + 0.5 for a, b in zip(segs, segs[1:])), "segmentos em ordem entre as janelas")
+                    check(any(s.get("words") for s in segs), "palavras com timestamp",
+                          f"{sum(len(s.get('words', [])) for s in segs)} palavras")
                     print(f"  amostra: [{segs[0]['start']:.1f}s] {segs[0]['text'][:80]!r}")
                 elif not path_arg:
                     print("  (tom puro: sem fala, segmentos vazios é esperado — passe um vídeo com fala)")
