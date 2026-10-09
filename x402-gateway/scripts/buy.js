@@ -1,10 +1,11 @@
-// Compra de teste: node scripts/buy.js [profile-analysis|campaign-plan] [base-url]. Chave do COMPRADOR em BUYER_PRIVATE_KEY (carteira com USDC de teste).
+// Compra de teste: node scripts/buy.js [profile-analysis|campaign-plan|task-verification] [base-url]. Chave do COMPRADOR em BUYER_PRIVATE_KEY (carteira com USDC de teste).
 import { GatewayClient } from "@circle-fin/x402-batching/client";
 
 const svc = process.argv[2] ?? "profile-analysis";
 const base = process.argv[3] ?? "http://localhost:3100";
 const url = `${base}/v1/x402/${svc}`;
 const bodies = {
+  "task-verification": { platform: "x", post_url: "https://x.com/fontz/status/1", handle: "@fontz", post_text: "Testando o #XiaoLee com @arc_network, nanopayments na veia", required_hashtags: ["XiaoLee"], required_mentions: ["arc_network"], required_keywords: ["nanopayments"] },
   "profile-analysis": { handle: "@fontz", niche: "defi", platforms: ["tiktok"], followers: 12000, posts_per_week: 2 },
   "campaign-plan": { goal: "lançar token X", budget_usdc: 500, platforms: ["tiktok", "x"], duration_days: 7 },
 };

@@ -38,3 +38,14 @@ test("deliver: esgotou as tentativas -> 502 com tx e registro p/ reconciliação
   assert.equal(failures.length, 1);
   assert.equal(failures[0].payment_tx, "tx-1"); assert.equal(failures[0].service, "profile-analysis");
 });
+
+test("validate: minLength, enum e itens de array (iguais ao Pydantic, antes de cobrar)", () => {
+  const svc = (id) => catalog.find((s) => s.id === id).schema;
+  assert.match(validate(svc("campaign-plan"), { goal: "", budget_usdc: 10 }), /too short/);
+  assert.match(validate(svc("profile-analysis"), { handle: "@a", niche: "x", followers: 2_000_000_000 }), /above maximum/);
+  const t = { platform: "x", post_url: "https://x.com/a", post_text: "t", handle: "@a" };
+  assert.equal(validate(svc("task-verification"), t), null);
+  assert.match(validate(svc("task-verification"), { ...t, platform: "myspace" }), /not one of/);
+  assert.match(validate(svc("task-verification"), { ...t, required_hashtags: ["x".repeat(65)] }), /invalid item/);
+  assert.match(validate(svc("task-verification"), { ...t, required_hashtags: [1] }), /invalid item/);
+});

@@ -14,12 +14,14 @@ from __future__ import annotations
 
 import hmac
 import os
+import re
 import uuid
 from decimal import Decimal
-from typing import Optional
+from typing import Literal, Optional
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -104,6 +106,68 @@ def plan_campaign(p: CampaignPlanIn) -> dict:
     }
 
 
+_PLATFORM_HOSTS = {
+    "x": ("x.com", "twitter.com"), "tiktok": ("tiktok.com",), "instagram": ("instagram.com",),
+    "youtube": ("youtube.com", "youtu.be"), "telegram": ("t.me",),
+}
+
+
+class TaskVerificationIn(BaseModel):
+    platform: Literal["x", "tiktok", "instagram", "youtube", "telegram"]
+    post_url: str = Field(min_length=1, max_length=300)
+    post_text: str = Field(min_length=1, max_length=2000)
+    handle: str = Field(min_length=1, max_length=64)
+    required_hashtags: list[str] = Field(default_factory=list, max_length=10)
+    required_mentions: list[str] = Field(default_factory=list, max_length=10)
+    required_keywords: list[str] = Field(default_factory=list, max_length=10)
+    min_chars: int = Field(default=0, ge=0, le=2000)
+
+    @field_validator("required_hashtags", "required_mentions", "required_keywords")
+    @classmethod
+    def _items_limit(cls, v: list[str]) -> list[str]:
+        # o gateway já recusa item > 64 antes de cobrar; aqui só garante o contrato
+        if any(len(x) > 64 for x in v):
+            raise ValueError("item too long")
+        return v
+
+
+def verify_task(p: TaskVerificationIn) -> dict:
+    """Verificação determinística sobre a EVIDÊNCIA enviada (texto do post). Não busca a URL:
+    sem SSRF e sem depender de API de plataforma.
+    # ponytail: para tarefas de alto valor, buscar o conteúdo ao vivo (API da plataforma) antes de liberar."""
+    text = p.post_text.lower()
+    parsed = urlparse(p.post_url)
+    host = (parsed.hostname or "").lower()
+    hosts = _PLATFORM_HOSTS[p.platform]
+    handle = p.handle.lstrip("@").lower()
+    checks: list[dict] = [
+        {"id": "url_platform", "passed": parsed.scheme == "https" and any(host == h or host.endswith("." + h) for h in hosts),
+         "detail": f"https e domínio de {p.platform}"},
+        {"id": "handle", "passed": handle in p.post_url.lower() or f"@{handle}" in text,
+         "detail": f"@{handle} aparece na URL ou no texto"},
+    ]
+    for tag in p.required_hashtags:
+        t = tag.lstrip("#").lower()
+        checks.append({"id": f"hashtag:{t}", "passed": bool(re.search(rf"(?<![\w#])#{re.escape(t)}(?!\w)", text)), "detail": f"#{t}"})
+    for m in p.required_mentions:
+        u = m.lstrip("@").lower()
+        checks.append({"id": f"mention:{u}", "passed": bool(re.search(rf"(?<![\w@])@{re.escape(u)}(?!\w)", text)), "detail": f"@{u}"})
+    for kw in p.required_keywords:
+        checks.append({"id": f"keyword:{kw.lower()}", "passed": kw.lower() in text, "detail": kw})
+    if p.min_chars:
+        checks.append({"id": "min_chars", "passed": len(p.post_text) >= p.min_chars, "detail": f">= {p.min_chars} caracteres"})
+    passed = sum(c["passed"] for c in checks)
+    approved = passed == len(checks)
+    return {
+        "verdict": "approved" if approved else "rejected",
+        "score": round(100 * passed / len(checks)),
+        "checks": checks,
+        "payout_recommendation": "release" if approved else "hold",
+        "evidence_source": "submitted_text",
+        "note": "A URL não foi acessada: o texto foi enviado pelo comprador. Em tarefas de alto valor, confira o conteúdo ao vivo antes de pagar.",
+    }
+
+
 async def _paid(request: Request, db: AsyncSession, result: dict) -> dict:
     """Parte comum dos serviços pagos: trilha de auditoria e recibo PQC (o segredo é checado antes, na rota)."""
     h = request.headers
@@ -151,3 +215,9 @@ async def profile_analysis(body: ProfileAnalysisIn, request: Request, db: AsyncS
 async def campaign_plan(body: CampaignPlanIn, request: Request, db: AsyncSession = Depends(get_db_session)):
     _require_internal(request.headers.get("x-internal-secret"))
     return await _paid(request, db, plan_campaign(body))
+
+
+@router.post("/task-verification")
+async def task_verification(body: TaskVerificationIn, request: Request, db: AsyncSession = Depends(get_db_session)):
+    _require_internal(request.headers.get("x-internal-secret"))
+    return await _paid(request, db, verify_task(body))

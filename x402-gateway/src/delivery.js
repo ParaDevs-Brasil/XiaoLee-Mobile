@@ -12,11 +12,14 @@ export function validate(schema, body) {
       integer: Number.isInteger(v), array: Array.isArray(v), object: v && typeof v === "object" && !Array.isArray(v) }[s.type] ?? true;
     if (!ok) return `${k}: expected ${s.type}`;
     if (s.maxLength !== undefined && v.length > s.maxLength) return `${k}: too long`;
+    if (s.minLength !== undefined && v.length < s.minLength) return `${k}: too short`;
+    if (s.enum && !s.enum.includes(v)) return `${k}: not one of ${s.enum.join(", ")}`;
     if (s.minimum !== undefined && v < s.minimum) return `${k}: below minimum`;
     if (s.maximum !== undefined && v > s.maximum) return `${k}: above maximum`;
     if (s.exclusiveMinimum !== undefined && v <= s.exclusiveMinimum) return `${k}: must be > ${s.exclusiveMinimum}`;
     if (s.minItems !== undefined && v.length < s.minItems) return `${k}: too few items`;
     if (s.maxItems !== undefined && v.length > s.maxItems) return `${k}: too many items`;
+    if (s.type === "array" && s.items?.type === "string" && v.some((x) => typeof x !== "string" || x.length > (s.items.maxLength ?? Infinity))) return `${k}: invalid item`;
   }
   return null;
 }
