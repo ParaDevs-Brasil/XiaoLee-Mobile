@@ -550,8 +550,8 @@ async def test_clips_layout_is_validated_and_reaches_the_renderer(clips_env, mon
     assert client.post(f"/v1/media/{e.aid}/clips?layout=fit", headers=e.h).status_code == 200
     assert seen == ["fit"] * 3
     seen.clear()
-    assert client.post(f"/v1/media/{e.aid}/clips?regenerate=true", headers=e.h).status_code == 200
-    assert seen == ["crop"] * 3                                              # padrão preservado
+    assert client.post(f"/v1/media/{e.aid}/clips?regenerate=true&layout=crop", headers=e.h).status_code == 200
+    assert seen == ["crop"] * 3
 
 
 def test_public_error_hides_provider_org_and_explains_rate_limit():
@@ -622,3 +622,184 @@ async def test_owner_glossary_reaches_the_transcription(db, monkeypatch):
     monkeypatch.setattr(media_routes, "_transcribe", _tr)
     client.post(f"/v1/media/{aid}/complete", headers=h)
     assert got == [["Vetto", "Arc"]]
+
+
+# ── Faxina, fila, layout automático, glossário ───────────────────────────────
+
+@pytest.mark.asyncio
+async def test_reaper_fails_orphans_but_leaves_finished_work(db):
+    from server import media_maintenance as mm
+
+    h = await _login(db, "a")
+    uid = None
+    for st in ("transcribing", "transcribed", "pending"):
+        aid = client.post("/v1/media", json=BODY, headers=h).json()["asset"]["id"]
+        a = await db.get(MediaAsset, aid)
+        a.status, uid = st, a.user_id
+    for i, st in enumerate(("rendering", "pending", "ready"), 1):
+        db.add(MediaClip(user_id=uid, media_id=aid, rank=i, start_s=0, end_s=20, title="t", reason="r", status=st))
+    await db.commit()
+
+    assert await mm.reap_interrupted(db) == (1, 2)
+    assert [a.status for a in (await db.execute(select(MediaAsset).order_by(MediaAsset.id))).scalars()] == [
+        "failed", "transcribed", "pending"]
+    assert [c.status for c in (await db.execute(select(MediaClip).order_by(MediaClip.rank))).scalars()] == [
+        "failed", "failed", "ready"]
+
+
+@pytest.mark.asyncio
+async def test_purge_expires_old_media_and_abandoned_uploads_only(db, monkeypatch):
+    import dataclasses
+
+    from server import media_maintenance as mm
+
+    deleted = []
+
+    async def _del(key):
+        deleted.append(key)
+
+    monkeypatch.setattr(mm.media_storage, "delete_object", _del)
+    monkeypatch.setattr(mm, "settings", dataclasses.replace(mm.settings, media_retention_days=30))
+    h = await _login(db, "a")
+    now = datetime.utcnow()
+    ids = {}
+    for name, age, status in (("old", 40, "transcribed"), ("fresh", 5, "transcribed"),
+                              ("abandoned", 3, "pending"), ("waiting", 1, "pending")):
+        aid = client.post("/v1/media", json=BODY, headers=h).json()["asset"]["id"]
+        a = await db.get(MediaAsset, aid)
+        a.status, a.created_at = status, now - timedelta(days=age)
+        ids[name] = aid
+    old = await db.get(MediaAsset, ids["old"])
+    db.add(MediaClip(user_id=old.user_id, media_id=old.id, rank=1, start_s=0, end_s=20, title="t", reason="r",
+                     status="ready", r2_key="clips/x.mp4", size_bytes=9))
+    db.add(MediaTranscript(media_id=old.id, segments_json="[]", language="pt", model="m"))
+    await db.commit()
+
+    assert await mm.purge_expired(db, now) == 2
+    st = {n: (await db.get(MediaAsset, i)).status for n, i in ids.items()}
+    assert st == {"old": "expired", "fresh": "transcribed", "abandoned": "expired", "waiting": "pending"}
+    assert "clips/x.mp4" in deleted and old.r2_key in deleted and len(deleted) == 3
+    clip = (await db.execute(select(MediaClip))).scalars().one()
+    assert (clip.status, clip.r2_key) == ("expired", None)
+    assert (await db.execute(select(MediaTranscript))).scalars().all() == []
+    assert await mm.purge_expired(db, now) == 0  # idempotente
+
+
+@pytest.mark.asyncio
+async def test_purge_keeps_the_row_when_the_bucket_fails(db, monkeypatch):
+    from server import media_maintenance as mm
+
+    async def _boom(key):
+        raise RuntimeError("r2 down")
+
+    monkeypatch.setattr(mm.media_storage, "delete_object", _boom)
+    h = await _login(db, "a")
+    aid = client.post("/v1/media", json=BODY, headers=h).json()["asset"]["id"]
+    a = await db.get(MediaAsset, aid)
+    a.created_at = datetime.utcnow() - timedelta(days=5)
+    await db.commit()
+    assert await mm.purge_expired(db) == 0
+    assert (await db.get(MediaAsset, aid)).status == "pending"  # tenta de novo no próximo ciclo
+
+
+@pytest.mark.asyncio
+async def test_expired_media_cannot_be_clipped(clips_env, monkeypatch):
+    e = clips_env
+    (await e.db.get(MediaAsset, e.aid)).status = "expired"
+    await e.db.commit()
+    assert client.post(f"/v1/media/{e.aid}/clips", headers=e.h).status_code == 409
+
+
+def test_ffmpeg_failure_is_explained_without_the_raw_stderr():
+    msg = media_routes._public_error(RuntimeError("ffmpeg failed: <media> Invalid data found when processing input"))
+    assert "corrupt or unsupported" in msg and "Invalid data" not in msg
+
+
+@pytest.mark.asyncio
+async def test_default_layout_is_auto_and_resolved_once_per_media(clips_env, monkeypatch):
+    e = clips_env
+    seen, asked = [], []
+
+    async def _render(source, ass, start, end, dest, layout="crop"):
+        seen.append(layout)
+        open(dest, "wb").write(b"mp4")
+
+    async def _detect(source, start, end):
+        asked.append((start, end))
+        return "fit"
+
+    monkeypatch.setattr(clipper, "render_clip", _render)
+    monkeypatch.setattr(clipper, "detect_layout", _detect)
+    assert client.post(f"/v1/media/{e.aid}/clips", headers=e.h).status_code == 200
+    assert seen == ["fit"] * 3 and asked == [(0.0, 30.0)]                      # uma decisão, no 1.º corte
+    seen.clear()
+    assert client.post(f"/v1/media/{e.aid}/clips?regenerate=true&layout=crop", headers=e.h).status_code == 200
+    assert seen == ["crop"] * 3 and len(asked) == 1                            # explícito não gasta o Claude
+
+
+@pytest.mark.asyncio
+async def test_detect_layout_falls_back_to_fit_and_reads_the_models_answer(monkeypatch, tmp_path):
+    import dataclasses
+
+    # sem chave: fit, sem tentar nada
+    monkeypatch.setattr(clipper, "settings", dataclasses.replace(clipper.settings, anthropic_api_key=""))
+    assert await clipper.detect_layout("x.mp4", 0, 30) == "fit"
+
+    monkeypatch.setattr(clipper, "settings", dataclasses.replace(clipper.settings, anthropic_api_key="k"))
+
+    async def _frames(source, start, end, n=3):
+        return [b"\xff\xd8jpeg"] * n
+
+    monkeypatch.setattr(clipper, "grab_frames", _frames)
+    import anthropic
+
+    answers = iter(["crop", "banana"])
+
+    class _M:
+        async def create(self, **kw):
+            assert sum(1 for b in kw["messages"][0]["content"] if b["type"] == "image") == 3
+            assert kw["tool_choice"] == {"type": "tool", "name": "report_layout"}
+            return SimpleNamespace(content=[SimpleNamespace(type="tool_use", input={"layout": next(answers)})])
+
+    monkeypatch.setattr(anthropic, "AsyncAnthropic", lambda **kw: SimpleNamespace(messages=_M()))
+    assert await clipper.detect_layout("x.mp4", 0, 30) == "crop"
+    assert await clipper.detect_layout("x.mp4", 0, 30) == "fit"                # resposta inválida → fit
+
+    async def _broken(source, start, end, n=3):
+        raise RuntimeError("ffmpeg failed")
+
+    monkeypatch.setattr(clipper, "grab_frames", _broken)
+    assert await clipper.detect_layout("x.mp4", 0, 30) == "fit"
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg ausente")
+@pytest.mark.asyncio
+async def test_grab_frames_returns_real_jpegs(tmp_path):
+    v = tmp_path / "v.mp4"
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc=size=1280x720:rate=10:duration=10",
+                    "-pix_fmt", "yuv420p", "-y", str(v)], check=True)
+    frames = await clipper.grab_frames(str(v), 0, 10)
+    assert len(frames) == 3 and all(f[:2] == b"\xff\xd8" for f in frames)
+
+
+def test_suggest_glossary_picks_repeated_proper_nouns_only():
+    segs = [[
+        {"text": "Hoje eu falo da Vetto e do projeto Arc."},
+        {"text": "Ontem a Vetto lançou. A API do Arc mudou, mas Vetto segue."},
+        {"text": "Depois conversei com Maria uma vez."},
+    ]]
+    out = media_routes.suggest_glossary(segs, known=["arc"])
+    assert [(s["term"], s["count"]) for s in out] == [("Vetto", 3)]          # API só 1x; Arc já conhecido
+    # início de segmento/frase e termo único não entram
+    assert all(s["term"] not in ("Hoje", "Ontem", "Depois", "Maria") for s in out)
+
+
+@pytest.mark.asyncio
+async def test_glossary_suggestions_endpoint_is_scoped_to_the_owner(db):
+    h, other = await _login(db, "a"), await _login(db, "b")
+    aid = client.post("/v1/media", json=BODY, headers=h).json()["asset"]["id"]
+    segs = [{"start": 0, "end": 5, "text": "falo da Vetto agora"}, {"start": 5, "end": 9, "text": "ver a Vetto de novo"}]
+    db.add(MediaTranscript(media_id=aid, segments_json=json.dumps(segs), language="pt", model="m"))
+    await db.commit()
+    assert client.get("/v1/media/glossary/suggestions", headers=h).json() == {"suggestions": [{"term": "Vetto", "count": 2}]}
+    assert client.get("/v1/media/glossary/suggestions", headers=other).json() == {"suggestions": []}

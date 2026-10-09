@@ -297,7 +297,8 @@ class NotificationEvent(Base):
 class MediaAsset(Base):
     """Vídeo/áudio bruto do criador (bucket R2) — insumo do Clipper.
 
-    status: pending (URL de upload emitida) → uploaded → transcribing → transcribed | failed.
+    status: pending (URL de upload emitida) → uploaded → transcribing → transcribed | failed;
+    expired = original e cortes apagados do bucket (retenção, ver server/media_maintenance.py).
     `r2_key` é o URI no storage; `sha256` é declarado pelo cliente (não verificado no servidor).
     """
     __tablename__ = 'media_assets'
@@ -327,7 +328,7 @@ class MediaTranscript(Base):
 class MediaClip(Base):
     """Corte vertical (9:16, legendado) de um MediaAsset — saída do Clipper (#29).
 
-    status: pending → rendering → ready | failed. `start_s`/`end_s` são na mídia original;
+    status: pending → rendering → ready | failed | expired. `start_s`/`end_s` são na mídia original;
     `r2_key` é o mp4 renderizado (só existe quando `ready`).
     """
     __tablename__ = 'media_clips'
