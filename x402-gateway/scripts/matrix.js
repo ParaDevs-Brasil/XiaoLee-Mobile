@@ -68,14 +68,20 @@ await run("5 saldo insuficiente: carteira nova sem fundos falha", async () => {
 });
 
 await run("6 replay do mesmo pagamento não é entregue de novo", async () => {
-  let payload, accepted, resource;
-  const c = mk(); c.onAfterPaymentCreation(async (ctx) => { payload = ctx.paymentPayload; resource = ctx.paymentRequired?.resource; if (process.env.MATRIX_DEBUG) console.error("ctx keys:", Object.keys(ctx), "payload keys:", Object.keys(ctx.paymentPayload ?? {})); accepted = ctx.selectedRequirements ?? ctx.paymentPayload?.accepted; });
-  await c.pay(url("profile-analysis"), { method: "POST", body: PROFILE });
-  const header = Buffer.from(JSON.stringify({ ...payload, accepted: payload?.accepted ?? accepted, resource: payload?.resource ?? resource })).toString("base64");
+  // captura o header REAL que o SDK envia (sem remontar) e reenvia idêntico
+  const realFetch = globalThis.fetch; let header = null;
+  globalThis.fetch = async (input, init) => {
+    const h = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
+    const sig = h.get("payment-signature") ?? h.get("x-payment");
+    if (sig) header = sig;
+    return realFetch(input, init);
+  };
+  try { await mk().pay(url("profile-analysis"), { method: "POST", body: PROFILE }); } finally { globalThis.fetch = realFetch; }
+  if (!header) return { pass: false, note: "não consegui capturar o header de pagamento" };
   const r = await fetch(url("profile-analysis"), { method: "POST", headers: { "content-type": "application/json", "payment-signature": header }, body: JSON.stringify(PROFILE) });
-  const text = (await r.text()).slice(0, 160);
-  // conclusivo só se a resposta indicar nonce/uso repetido; um 400 genérico pode ser formato do header
-  return { pass: r.status !== 200, replay_status: r.status, replay_body: text, conclusive: /nonce|used|already|replay/i.test(text) };
+  const text = (await r.text()).slice(0, 200);
+  // conclusivo: a Circle recusou por nonce/uso repetido (e não por formato)
+  return { pass: r.status !== 200, replay_status: r.status, replay_body: text, conclusive: /nonce|used|already|replay|duplicate/i.test(text) };
 });
 
 report.endGateway = (await avail(buyer)).toString();
