@@ -11,8 +11,8 @@ Fluxo (o arquivo nunca passa pelo backend):
     GET  /v1/media/{id}/clips     → cortes + URL de download dos prontos
 
 Transcrição: ffmpeg extrai áudio mono 16 kHz/32 kbps do vídeo (lido por URL
-pré-assinada) e um endpoint Whisper OpenAI-compatível devolve segmentos com
-timestamps — insumo da detecção de highlights.
+pré-assinada), corta em janelas de ~60 s nos silêncios e um endpoint Whisper
+OpenAI-compatível devolve segmentos e palavras com timestamps — insumo da detecção de highlights.
 
 O dono vem SEMPRE do Bearer emitido pelo backend (strict), nunca de URL/corpo.
 """
@@ -24,6 +24,7 @@ import json
 import logging
 import os
 import re
+import subprocess
 import tempfile
 import uuid
 from datetime import datetime, timedelta
@@ -45,9 +46,16 @@ from server.settings import settings
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/media", tags=["media"])
 
-# 24 MiB: limite do Whisper é 25 MB por arquivo. A 32 kbps isso é ~104 min de áudio.
-# ponytail: sem chunking — vídeo acima de ~100 min falha com mensagem clara; dividir o áudio se precisar.
-MAX_AUDIO_BYTES = 24 * 1024 * 1024
+# O áudio vai ao Whisper em janelas de ~60 s (cortadas em silêncios): numa chamada só, vídeos de vários
+# minutos degradam o texto (palavras cortadas: "edi", "crian") e o limite de 25 MB por arquivo travava em ~100 min.
+CHUNK_S = 60.0
+CHUNK_SNAP_S = 8.0        # procura silêncio até 8 s antes/depois do ponto de corte ideal
+CHUNK_CONCURRENCY = 4
+MAX_AUDIO_S = 4 * 3600    # teto de custo por mídia
+# nome que o Whisper devolve → código ISO que o parâmetro `language` aceita
+ISO_LANG = {"portuguese": "pt", "english": "en", "spanish": "es", "french": "fr", "german": "de", "italian": "it",
+            "japanese": "ja", "korean": "ko", "chinese": "zh", "russian": "ru", "arabic": "ar", "hindi": "hi",
+            "turkish": "tr", "dutch": "nl", "polish": "pl", "indonesian": "id", "ukrainian": "uk"}
 FFMPEG_TIMEOUT_S = 1800
 STALE_TRANSCRIBING = timedelta(minutes=30)  # transcrição "presa" por restart do processo pode ser refeita
 
@@ -232,26 +240,98 @@ def _attach_words(segments: list[dict], words: list[dict]) -> list[dict]:
     return segments
 
 
+def _chunk_bounds(duration: float, silences: list[float]) -> list[tuple[float, float]]:
+    """Janelas de ~CHUNK_S. Cada corte vai para o silêncio mais próximo do ponto ideal (±CHUNK_SNAP_S),
+    para não partir uma palavra no meio; sem silêncio por perto, corta no ponto ideal."""
+    if duration <= CHUNK_S + 5:
+        return [(0.0, duration)]
+    cuts, t = [0.0], CHUNK_S
+    while t < duration - 5:  # sobra de menos de 5 s fica na última janela
+        near = [x for x in silences if abs(x - t) <= CHUNK_SNAP_S]
+        c = max(min(near, key=lambda x: abs(x - t)) if near else t, cuts[-1] + 10)
+        cuts.append(c)
+        t = c + CHUNK_S
+    cuts.append(duration)
+    return list(zip(cuts, cuts[1:]))
+
+
+async def _plan_chunks(audio_path: str) -> list[tuple[float, float]]:
+    """Duração (ffprobe) + silêncios (ffmpeg silencedetect) → janelas."""
+    probe = await asyncio.to_thread(
+        subprocess.run, ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", audio_path],
+        capture_output=True, text=True, check=True, timeout=60,
+    )
+    duration = float(probe.stdout.strip())
+    if duration <= CHUNK_S + 5:
+        return [(0.0, duration)]
+    log = await clipper.run_ffmpeg(
+        ["-v", "info", "-i", audio_path, "-af", "silencedetect=noise=-35dB:d=0.3", "-f", "null", "-"],
+        audio_path, FFMPEG_TIMEOUT_S,
+    )
+    starts = [float(x) for x in re.findall(r"silence_start: (-?[\d.]+)", log)]
+    ends = [float(x) for x in re.findall(r"silence_end: ([\d.]+)", log)]
+    return _chunk_bounds(duration, [(a + b) / 2 for a, b in zip(starts, ends)])
+
+
+async def _whisper(client, path: str, language: str | None) -> tuple[list[dict], list[dict], str | None]:
+    kw = {"language": language} if language else {}
+    with open(path, "rb") as f:
+        r = await client.audio.transcriptions.create(
+            model=settings.transcription_model, file=f,
+            response_format="verbose_json", timestamp_granularities=["segment", "word"], **kw,
+        )
+    segments = [{"start": s.start, "end": s.end, "text": s.text.strip()} for s in (r.segments or [])]
+    words = [{"text": w.word.strip(), "start": w.start, "end": w.end} for w in (getattr(r, "words", None) or []) if w.word.strip()]
+    return segments, words, getattr(r, "language", None)
+
+
 async def _transcribe(audio_path: str) -> dict:
     if not settings.transcription_api_key:
         raise RuntimeError("TRANSCRIPTION_API_KEY (ou OPENAI_API_KEY) não configurada")
     import openai
 
+    plan = await _plan_chunks(audio_path)
+    duration = plan[-1][1]
+    if duration > MAX_AUDIO_S:
+        raise RuntimeError(f"media too long to transcribe (max {MAX_AUDIO_S // 3600} hours)")
     client = openai.AsyncOpenAI(
         api_key=settings.transcription_api_key, base_url=settings.transcription_base_url or None
     )
-    with open(audio_path, "rb") as f:
-        r = await client.audio.transcriptions.create(
-            model=settings.transcription_model, file=f,
-            response_format="verbose_json", timestamp_granularities=["segment", "word"],
-        )
-    segments = [{"start": s.start, "end": s.end, "text": s.text.strip()} for s in (r.segments or [])]
-    words = [{"text": w.word.strip(), "start": w.start, "end": w.end} for w in (getattr(r, "words", None) or []) if w.word.strip()]
-    return {
-        "language": getattr(r, "language", None),
-        "duration": getattr(r, "duration", None),
-        "segments": _attach_words(segments, words),
-    }
+    sem = asyncio.Semaphore(CHUNK_CONCURRENCY)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        async def one(i: int, a: float, b: float, language: str | None):
+            part = os.path.join(tmp, f"part{i}.mp3")
+            async with sem:
+                if len(plan) == 1:
+                    part = audio_path
+                else:
+                    await clipper.run_ffmpeg(
+                        ["-ss", f"{a:.3f}", "-t", f"{b - a:.3f}", "-i", audio_path, "-ac", "1", "-ar", "16000",
+                         "-b:a", "32k", "-y", part], audio_path, FFMPEG_TIMEOUT_S)
+                return await _whisper(client, part, language)
+
+        results = await asyncio.gather(*(one(i, a, b, None) for i, (a, b) in enumerate(plan)))
+        # idioma: cada janela detecta sozinha, e uma janela só de música/silêncio erra. Vale a maioria
+        # (por palavras); janelas que discordaram são refeitas com o idioma forçado.
+        votes: dict[str, int] = {}
+        for _, words, lang in results:
+            if lang:
+                votes[lang.lower()] = votes.get(lang.lower(), 0) + len(words)
+        language = max(votes, key=votes.get) if votes else None
+        iso = ISO_LANG.get(language or "")
+        if iso:
+            redo = [i for i, (_, words, lang) in enumerate(results) if words and (lang or "").lower() != language]
+            for i, res in zip(redo, await asyncio.gather(*(one(i, *plan[i], iso) for i in redo))):
+                results[i] = res
+
+    segments: list[dict] = []
+    for (a, _), (segs, words, _) in zip(plan, results):
+        for x in segs + words:
+            x["start"] += a
+            x["end"] += a
+        segments += _attach_words(segs, words)
+    return {"language": language.capitalize() if language else None, "duration": duration, "segments": segments}
 
 
 async def transcribe_asset(asset_id: int) -> None:
@@ -263,8 +343,6 @@ async def transcribe_asset(asset_id: int) -> None:
             with tempfile.TemporaryDirectory() as tmp:
                 audio = os.path.join(tmp, "audio.mp3")
                 await _extract_audio(media_storage.presign_get(asset.r2_key), audio)
-                if os.path.getsize(audio) > MAX_AUDIO_BYTES:
-                    raise RuntimeError("media too long to transcribe (max ~100 minutes)")
                 result = await _transcribe(audio)
             await db.execute(delete(MediaTranscript).where(MediaTranscript.media_id == asset.id))  # refazer substitui
             db.add(MediaTranscript(

@@ -216,12 +216,17 @@ async def test_kind_and_sha256(db):
 
 
 @pytest.mark.asyncio
-async def test_audio_over_whisper_limit_fails_clearly(db, monkeypatch):
+async def test_media_over_duration_cap_fails_clearly(db, monkeypatch):
     h = await _login(db, "a")
     aid = client.post("/v1/media", json=BODY, headers=h).json()["asset"]["id"]
     _object_exists(monkeypatch, 1000)
     _fake_extract(monkeypatch, b"x" * 100)
-    monkeypatch.setattr(media_routes, "MAX_AUDIO_BYTES", 50)
+
+    async def _plan(path):
+        return [(0.0, media_routes.MAX_AUDIO_S + 60)]
+
+    monkeypatch.setattr(media_routes, "_plan_chunks", _plan)
+    monkeypatch.setattr(media_routes, "settings", __import__("dataclasses").replace(media_routes.settings, transcription_api_key="k"))
     client.post(f"/v1/media/{aid}/complete", headers=h)
     d = client.get(f"/v1/media/{aid}", headers=h).json()
     assert d["status"] == "failed" and "too long" in d["error"]
@@ -439,7 +444,9 @@ def test_attach_words_tightens_segments_to_real_speech():
 
 
 @pytest.mark.asyncio
-async def test_transcribe_requests_word_timestamps_and_get_hides_them(db, monkeypatch):
+async def test_transcribe_requests_word_timestamps_and_get_hides_them(db, monkeypatch, tmp_path):
+    mp3 = tmp_path / "a.mp3"
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=300:duration=3", "-y", str(mp3)], check=True)
     seen = {}
 
     class _T:
@@ -453,7 +460,7 @@ async def test_transcribe_requests_word_timestamps_and_get_hides_them(db, monkey
 
     monkeypatch.setattr(openai, "AsyncOpenAI", lambda **kw: SimpleNamespace(audio=SimpleNamespace(transcriptions=_T())))
     monkeypatch.setattr(media_routes, "settings", __import__("dataclasses").replace(media_routes.settings, transcription_api_key="k"))
-    res = await media_routes._transcribe(__file__)
+    res = await media_routes._transcribe(str(mp3))
     assert seen["timestamp_granularities"] == ["segment", "word"]
     assert res["segments"][0]["start"] == 1.0 and [w["text"] for w in res["segments"][0]["words"]] == ["ola", "mundo"]
 
@@ -463,3 +470,66 @@ async def test_transcribe_requests_word_timestamps_and_get_hides_them(db, monkey
     await db.commit()
     seg = client.get(f"/v1/media/{aid}", headers=h).json()["transcript"]["segments"][0]
     assert "words" not in seg and seg["text"] == "ola mundo"
+
+
+# ── Transcrição em janelas ───────────────────────────────────────────────────
+
+def test_chunk_bounds_snap_to_silence_and_always_progress():
+    cb = media_routes._chunk_bounds
+    assert cb(50, []) == [(0.0, 50)] and cb(64, []) == [(0.0, 64)]            # curto: uma janela só
+    b = cb(200, [57.0, 118.5, 300.0])                                         # silêncios perto de 60 e 120
+    assert [round(x, 1) for x, _ in b] == [0.0, 57.0, 118.5, 178.5] and b[-1][1] == 200
+    assert all(x < y for x, y in b) and b[0][1] == b[1][0]                    # contíguo, sem buraco nem sobreposição
+    b = cb(200, [])                                                           # sem silêncio: corta no ponto ideal
+    assert [x for x, _ in b] == [0.0, 60.0, 120.0, 180.0] and b[-1][1] == 200
+    assert all(y - x >= 5 for x, y in b)                                      # nunca uma janela minúscula
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg ausente")
+@pytest.mark.asyncio
+async def test_plan_chunks_cuts_inside_real_silence(tmp_path):
+    # 150 s: tom de 55 s, silêncio 55-58, tom até 115, silêncio 115-118, tom até 150
+    f = tmp_path / "a.mp3"
+    subprocess.run(
+        ["ffmpeg", "-v", "error", "-f", "lavfi", "-i",
+         "sine=frequency=300:duration=150,volume='if(between(t,55,58)+between(t,115,118),0,1)':eval=frame",
+         "-ac", "1", "-ar", "16000", "-b:a", "32k", "-y", str(f)], check=True)
+    plan = await media_routes._plan_chunks(str(f))
+    cuts = [a for a, _ in plan][1:]
+    assert len(plan) == 3 and plan[-1][1] == pytest.approx(150, abs=0.5)
+    assert 55 <= cuts[0] <= 58.2 and 115 <= cuts[1] <= 118.2                  # cada corte caiu dentro do silêncio
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg ausente")
+@pytest.mark.asyncio
+async def test_transcribe_in_chunks_offsets_times_and_fixes_language_by_majority(tmp_path, monkeypatch):
+    f = tmp_path / "a.mp3"
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=300:duration=150",
+                    "-ac", "1", "-ar", "16000", "-b:a", "32k", "-y", str(f)], check=True)
+
+    async def _plan(path):
+        return [(0.0, 50.0), (50.0, 100.0), (100.0, 150.0)]
+
+    calls = []
+
+    async def _whisper(client, path, language):
+        calls.append(language)
+        i = len(calls)
+        # janela do meio "detectou" espanhol (errado) e só na 1.ª passada; com idioma forçado vem certo
+        lang = "Spanish" if (language is None and i == 2) else "Portuguese"
+        seg = {"start": 1.0, "end": 3.0, "text": f"fala {i}"}
+        return [seg], [{"text": "fala", "start": 1.0, "end": 1.5}, {"text": str(i), "start": 1.5, "end": 3.0}], lang
+
+    monkeypatch.setattr(media_routes, "_plan_chunks", _plan)
+    monkeypatch.setattr(media_routes, "_whisper", _whisper)
+    monkeypatch.setattr(media_routes, "settings", __import__("dataclasses").replace(media_routes.settings, transcription_api_key="k"))
+    import openai
+
+    monkeypatch.setattr(openai, "AsyncOpenAI", lambda **kw: object())
+    res = await media_routes._transcribe(str(f))
+    assert res["language"] == "Portuguese" and res["duration"] == 150.0
+    starts = [s["start"] for s in res["segments"]]
+    assert starts == [1.0, 51.0, 101.0] and starts == sorted(starts)           # tempos somados ao início da janela
+    assert [w["start"] for s in res["segments"] for w in s["words"]][:2] == [1.0, 1.5]
+    assert res["segments"][1]["words"][0]["start"] == 51.0
+    assert calls.count("pt") == 1 and calls.count(None) == 3                   # só a janela divergente foi refeita, com 'pt'

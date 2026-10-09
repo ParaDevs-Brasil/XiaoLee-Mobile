@@ -240,7 +240,7 @@ def _filter_path(p: str) -> str:
     return re.sub(r"([\\:'\[\],;])", r"\\\1", p)
 
 
-async def run_ffmpeg(args: list[str], source: str, timeout: float) -> None:
+async def run_ffmpeg(args: list[str], source: str, timeout: float) -> str:
     """ffmpeg numa thread (`subprocess.run`) em vez de `asyncio.create_subprocess_exec`: o child watcher
     do asyncio às vezes não percebe a saída do processo (zumbi, `communicate()` pendura para sempre — visto
     aqui em Python 3.12 depois de várias chamadas). Aqui o timeout mata o ffmpeg de verdade e não depende disso."""
@@ -257,6 +257,7 @@ async def run_ffmpeg(args: list[str], source: str, timeout: float) -> None:
     if r.returncode != 0:
         # a URL pré-assinada vem na linha de erro do ffmpeg — não vazar para o banco/cliente
         raise RuntimeError("ffmpeg failed: " + r.stderr.decode(errors="replace")[-300:].replace(source, "<media>"))
+    return r.stderr.decode(errors="replace")
 
 
 async def render_clip(source: str, ass_path: str, start: float, end: float, dest: str) -> None:
