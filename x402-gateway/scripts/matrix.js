@@ -17,7 +17,9 @@ const PROFILE = { handle: "@matrix", niche: "defi", platforms: ["tiktok"], follo
 const PLAN = { goal: "teste matriz", budget_usdc: 100, platforms: ["x"], duration_days: 3 };
 const url = (s) => `${base}/v1/x402/${s}`;
 const report = { label, chain, base, at: new Date().toISOString(), results: [] };
+const only = process.env.MATRIX_ONLY; // ex.: MATRIX_ONLY=6 roda só o cenário 6
 const run = async (name, fn) => {
+  if (only && !name.startsWith(only)) return;
   try { report.results.push({ name, ...(await fn()) }); }
   catch (e) { report.results.push({ name, pass: false, error: String(e?.message ?? e).slice(0, 200) }); }
 };
@@ -66,10 +68,10 @@ await run("5 saldo insuficiente: carteira nova sem fundos falha", async () => {
 });
 
 await run("6 replay do mesmo pagamento não é entregue de novo", async () => {
-  let payload;
-  const c = mk(); c.onAfterPaymentCreation(async (ctx) => { payload = ctx.paymentPayload; });
+  let payload, accepted, resource;
+  const c = mk(); c.onAfterPaymentCreation(async (ctx) => { payload = ctx.paymentPayload; resource = ctx.paymentRequired?.resource; if (process.env.MATRIX_DEBUG) console.error("ctx keys:", Object.keys(ctx), "payload keys:", Object.keys(ctx.paymentPayload ?? {})); accepted = ctx.selectedRequirements ?? ctx.paymentPayload?.accepted; });
   await c.pay(url("profile-analysis"), { method: "POST", body: PROFILE });
-  const header = Buffer.from(JSON.stringify(payload)).toString("base64");
+  const header = Buffer.from(JSON.stringify({ ...payload, accepted: payload?.accepted ?? accepted, resource: payload?.resource ?? resource })).toString("base64");
   const r = await fetch(url("profile-analysis"), { method: "POST", headers: { "content-type": "application/json", "payment-signature": header }, body: JSON.stringify(PROFILE) });
   const text = (await r.text()).slice(0, 160);
   // conclusivo só se a resposta indicar nonce/uso repetido; um 400 genérico pode ser formato do header
