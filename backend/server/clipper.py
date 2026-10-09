@@ -12,11 +12,14 @@ Nada aqui toca banco ou rota — media_routes orquestra.
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 import subprocess
 from dataclasses import dataclass
 
 from server.settings import settings
+
+log = logging.getLogger(__name__)
 
 N_CLIPS = 3
 MIN_LEN_S = 15.0
@@ -148,7 +151,12 @@ async def ask_claude(segments: list[dict]) -> list[dict]:
 
 
 async def pick_highlights(segments: list[dict]) -> list[Highlight]:
-    return validate_highlights(await ask_claude(segments), segments)
+    raw, rejected = await ask_claude(segments), []
+    picks = validate_highlights(raw, segments, rejected)
+    log.info("clipper: Claude propôs %d, %d válidos", len(raw), len(picks))
+    for h, why in rejected:
+        log.info("clipper: proposta recusada (%s): %s", why, h)
+    return picks
 
 
 # ── Legendas ─────────────────────────────────────────────────────────────────
