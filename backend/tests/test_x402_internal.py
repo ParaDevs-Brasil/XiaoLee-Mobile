@@ -95,3 +95,16 @@ def test_campaign_plan_rejects_bad_input(db):
     h = {**PAID, "x-internal-secret": "s3cret"}
     assert client.post(PLAN_URL, json={**PLAN, "budget_usdc": 0}, headers=h).status_code == 422
     assert client.post(PLAN_URL, json={**PLAN, "platforms": []}, headers=h).status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_same_payment_tx_twice_is_idempotent(db):
+    """Retry do gateway reenvia o mesmo tx: ambos respondem 200 e a auditoria registra uma vez só."""
+    from sqlalchemy import func, select
+    from database.models import UsedPayment
+
+    h = {**PAID, "x-internal-secret": "s3cret", "x-payment-tx": "settle-dup"}
+    assert client.post(URL, json=BODY, headers=h).status_code == 200
+    assert client.post(URL, json=BODY, headers=h).status_code == 200
+    n = (await db.execute(select(func.count()).select_from(UsedPayment).where(UsedPayment.tx_hash.like("%settle-dup")))).scalar()
+    assert n == 1

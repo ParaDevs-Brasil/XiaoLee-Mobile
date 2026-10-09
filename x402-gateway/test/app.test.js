@@ -58,3 +58,24 @@ test("comprador interno: 503 sem chave, 403 sem segredo, 200 com segredo", async
     assert.equal((await (await fetch(u, { headers: { "x-internal-secret": "s" } })).json()).items[0].resource, "r");
   } finally { srv.close(); }
 });
+
+test("entrada inválida COM pagamento no pedido: 400 antes de cobrar; sonda sem pagamento segue 402", async () => {
+  const srv = createApp(cfg).listen(0);
+  try {
+    const u = `http://127.0.0.1:${srv.address().port}/v1/x402/campaign-plan`;
+    const h = { "content-type": "application/json" };
+    const r = await fetch(u, { method: "POST", body: JSON.stringify({ goal: "x" }), headers: { ...h, "payment-signature": "e30=" } });
+    assert.equal(r.status, 400);
+    assert.equal(r.headers.get("payment-required"), null);
+    assert.equal((await fetch(u, { method: "POST", body: "{}", headers: h })).status, 402);
+  } finally { srv.close(); }
+});
+
+test("/internal/reconcile exige o segredo mesmo sem comprador", async () => {
+  const srv = createApp({ ...cfg, internalSecret: "s" }).listen(0);
+  try {
+    const u = `http://127.0.0.1:${srv.address().port}/internal/reconcile`;
+    assert.equal((await fetch(u)).status, 403);
+    assert.ok(Array.isArray((await (await fetch(u, { headers: { "x-internal-secret": "s" } })).json()).failures));
+  } finally { srv.close(); }
+});
