@@ -4,7 +4,7 @@ import { openapi } from "./openapi.js";
 import { catalog } from "./catalog.js";
 import { timingSafeEqual } from "node:crypto";
 import { deliver, validate, failures } from "./delivery.js";
-import { createLimiter, guardMiddleware } from "./guard.js";
+import { createLimiter, guardMiddleware, payerKey } from "./guard.js";
 
 // Gateway x402 (Circle) na frente do FastAPI. O pagamento é liquidado ANTES do handler;
 // o upstream só é chamado com o segredo interno + dados do pagador (anti-bypass no FastAPI).
@@ -12,7 +12,10 @@ export function createApp(cfg, buyer = null) {
   const app = express();
   app.set("trust proxy", 1); // Railway: IP real do cliente
   const state = { paused: Boolean(cfg.paused) };
-  const guard = guardMiddleware(state, createLimiter({ max: cfg.rateLimitPerMin ?? 30, windowMs: 60_000 }));
+  // O `from` do header é forjável: a cota por IP fecha esse desvio; a por pagador protege o upstream.
+  const byIp = createLimiter({ max: cfg.ipRateLimitPerMin ?? 120, windowMs: 60_000 });
+  const byPayer = createLimiter({ max: cfg.rateLimitPerMin ?? 30, windowMs: 60_000 });
+  const guard = guardMiddleware(state, (req) => byIp(`ip:${req.ip}`) && byPayer(payerKey(req)));
   app.use(express.json({ limit: "64kb" }));
 
   const gateway = createGatewayMiddleware({

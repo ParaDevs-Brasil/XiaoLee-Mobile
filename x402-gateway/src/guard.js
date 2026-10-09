@@ -29,10 +29,10 @@ export function createLimiter({ max, windowMs, now = Date.now }) {
 }
 
 // state.paused: ligado por X402_PAUSED=true ou em runtime via POST /internal/pause.
-export function guardMiddleware(state, allow) {
+export function guardMiddleware(state, allow) { // allow(req) -> bool
   return (req, res, next) => {
     if (state.paused) return res.status(503).json({ error: "paused", detail: "service temporarily disabled; no charge was made" });
-    if (!allow(payerKey(req))) {
+    if (!allow(req)) {
       res.set("retry-after", "60");
       return res.status(429).json({ error: "rate_limited", detail: "too many requests; no charge was made" });
     }

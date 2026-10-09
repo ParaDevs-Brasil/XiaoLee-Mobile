@@ -43,8 +43,16 @@ export async function deliver(cfg, svc, p, body, { fetchFn = fetch, sleep = (ms)
         body: JSON.stringify(body ?? {}),
         signal: AbortSignal.timeout(cfg.upstreamTimeoutMs),
       });
-      if (up.status < 500) return { status: up.status, body: await up.json() };
-      last = `upstream_${up.status}`;
+      if (up.status < 500) {
+        const body = await up.json().catch(() => null);
+        if (body !== null) {
+          // já liquidado: 4xx (segredo errado, 422...) também precisa de rastro para reembolso
+          if (up.status >= 400) record({ at: new Date().toISOString(), service: svc.id, payment_tx: p.transaction ?? null,
+            payer: p.payer ?? null, network: p.network ?? null, amount: p.amount ?? null, reason: `upstream_${up.status}` });
+          return { status: up.status, body };
+        }
+        last = "upstream_bad_json";
+      } else last = `upstream_${up.status}`;
     } catch (e) { last = String(e?.name ?? e).slice(0, 80); }
     if (i < attempts) await sleep(300 * i);
   }

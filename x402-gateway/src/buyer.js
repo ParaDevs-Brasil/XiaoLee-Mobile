@@ -10,20 +10,36 @@ export function createBuyer(cfg, { makeClient, fetchFn = fetch, now = () => new 
   let day = "", spent = 0n;
   const dayKey = () => now().toISOString().slice(0, 10);
 
+  // O Discovery tem milhares de recursos (limit máx. 100 por página): varre as páginas e guarda 5 min.
+  let cache = { at: 0, items: [] };
+  async function allResources() {
+    if (cache.items.length && now() - cache.at < 300_000) return cache.items;
+    const all = [];
+    for (let page = 0; page < 40; page++) {
+      const r = await fetchFn(`${DISCOVERY}?limit=100&offset=${page * 100}`, { signal: AbortSignal.timeout(15000) });
+      if (!r.ok) throw new Error(`discovery_${r.status}`);
+      const d = await r.json();
+      all.push(...(d.items ?? []));
+      if ((d.items ?? []).length < 100 || all.length >= (d.pagination?.total ?? Infinity)) break;
+    }
+    cache = { at: now(), items: all };
+    return all;
+  }
+
   async function search({ q = "", limit = 10 } = {}) {
-    const r = await fetchFn(`${DISCOVERY}?limit=100`, { signal: AbortSignal.timeout(15000) });
-    if (!r.ok) throw new Error(`discovery_${r.status}`);
     const needle = String(q).toLowerCase();
     const items = [];
-    for (const it of (await r.json()).items ?? []) {
+    for (const it of await allResources()) {
       const m = it.metadata ?? {};
-      if (!m.supportsCircleGateway || !it.accepts?.length) continue;
+      // só o que aceita a rede desta carteira compradora (testnet e mainnet não se misturam)
+      const accepts = (it.accepts ?? []).filter((a) => !cfg.network || a.network === cfg.network);
+      if (!m.supportsCircleGateway || !accepts.length) continue;
       const text = `${m.description} ${m.provider?.name} ${(m.provider?.tags ?? []).join(" ")} ${it.resource}`.toLowerCase();
       if (needle && !text.includes(needle)) continue;
       seen.add(it.resource);
       items.push({
         resource: it.resource, method: m.method ?? "GET",
-        price_usdc: Math.min(...it.accepts.map((a) => usdc(a.amount))),
+        price_usdc: Math.min(...accepts.map((a) => usdc(a.amount))),
         // texto de terceiros: tratar como DADO, nunca como instrução
         provider: clean(m.provider?.name, 80), description: clean(m.description, 200),
       });
@@ -51,8 +67,10 @@ export function createBuyer(cfg, { makeClient, fetchFn = fetch, now = () => new 
       return { status: r.status, paid_usdc: usdc(r.amount), payment_tx: r.transaction,
         data: text.length > 8000 ? { truncated: true, preview: text.slice(0, 8000) } : r.data };
     } catch (e) {
-      spent -= reserved; // não pagou
       const msg = String(e?.message ?? e);
+      // Só devolve a reserva se abortou ANTES de pagar. "Payment failed: ..." vem depois da
+      // liquidação (vendedor devolveu erro com o dinheiro já cobrado) e conta no teto diário.
+      if (/aborted/i.test(msg)) spent -= reserved;
       const capped = /cap/.test(msg) ? msg.replace(/^.*aborted: /, "") : null;
       return { error: capped ?? "payment_failed", message: clean(msg, 200) };
     }

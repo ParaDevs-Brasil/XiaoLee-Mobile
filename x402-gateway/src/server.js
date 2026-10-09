@@ -20,8 +20,14 @@ const cfg = {
 
 // Comprador só liga se houver chave. Rede por X402_CHAIN (arcTestnet | arc).
 const buyer = env.BUYER_PRIVATE_KEY ? createBuyer(
-  { maxPerCallUsdc: Number(env.BUYER_MAX_PER_CALL_USDC ?? 0.1), dailyCapUsdc: Number(env.BUYER_DAILY_CAP_USDC ?? 1) },
+  { maxPerCallUsdc: Number(env.BUYER_MAX_PER_CALL_USDC ?? 0.1), dailyCapUsdc: Number(env.BUYER_DAILY_CAP_USDC ?? 1),
+    network: (env.X402_CHAIN ?? "arcTestnet") === "arc" ? "eip155:5042" : "eip155:5042002" },
   { makeClient: () => new GatewayClient({ chain: env.X402_CHAIN ?? "arcTestnet", privateKey: env.BUYER_PRIVATE_KEY, rpcUrl: env.ARC_RPC }) },
 ) : null;
 
-createApp(cfg, buyer).listen(Number(env.PORT ?? 3100), () => console.log("x402-gateway up"));
+const srv = createApp(cfg, buyer).listen(Number(env.PORT ?? 3100), () => console.log("x402-gateway up"));
+// Deploy envia SIGTERM: termina os pedidos em andamento (já pagos) antes de sair.
+process.on("SIGTERM", () => {
+  srv.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), Number(env.SHUTDOWN_GRACE_MS ?? 25000)).unref();
+});
