@@ -1,6 +1,6 @@
 # Login e gate de acesso — Mobile (Privy)
 
-> **Status:** implementado na branch `feat/s2-auth-onboarding` (PR #3), revisado em 2026-10-04.
+> **Status:** mesclado na `develop` pelo PR #3; documentação revisada em 2026-10-09.
 > **Contexto:** o app não tinha tela de login: quem não tinha conta entrava como convidado e só via
 > a opção de conectar pelo menu de perfil. Agora o app abre na tela de login e só libera o resto
 > depois que existe uma sessão do backend. Task: XIAOLEEACE-9.
@@ -189,8 +189,12 @@ no backend, `pytest` completo (546 passam, 6 são pulados), incluindo `test_auth
 
 | item | detalhe |
 |---|---|
-| Gate só no cliente | o backend continua aceitando um Bearer desconhecido como identidade (já era assim antes). "Sem conta cai no login" é garantia de UX, não de segurança do servidor. |
+| Bearer desconhecido no backend | `GET/PATCH /user/me/profile` exigem sessão emitida (`strict=True`, commit `01fd528`). `/chat` e `/v1/chat/sessions` ainda aceitam um Bearer desconhecido como `twitter_user_id` — escolha explícita para não quebrar builds antigos (review do PR #3). Sem Bearer, `/chat` usa o `user_id` do corpo da requisição. Enquanto o fallback existir (remover quando as sessões legadas de 30 dias expirarem), o gate de login nessas rotas é garantia de UX, não de segurança do servidor. |
+| `social_links` sem validação de esquema | o `PATCH` do perfil só faz `strip()[:255]` e não limita o número de chaves. Nenhum componente lê o campo hoje; antes de renderizar num `href`, aceitar só `https?://` e limitar as chaves. |
 | Sem senha | ver a seção 1. |
-| Tela de login clara | usa cores fixas (do Figma) enquanto o app é dark-only; se isso não era intenção, migrar para os tokens de `constants/theme.ts`. |
+| Cores fixas na tela de login | `login.tsx` usa hex direto (do Figma) em vez dos tokens de `constants/theme.ts`; se o tema do app mudar (há a flag `DARK_MODE`), a tela de login não acompanha. |
+| Teclado no Android (a verificar) | `login.tsx` usa `KeyboardAvoidingView` com `behavior` indefinido no Android, enquanto o chat e o sheet de carteira usam `padding` (por causa do edge-to-edge). Provável que o teclado cubra os campos; falta testar em aparelho e, se confirmar, usar `padding` nas duas plataformas. |
+| Erro de sessão após sair e entrar (a verificar) | a troca de token em `lib/wallet.tsx` não exige usuário Privy autenticado. Se a carteira sobreviver um render ao logout, uma troca dispararia sem token e deixaria um `sessionError` velho que faria o próximo login cair em "couldn't finish". Mitigação: incluir `user` na condição do efeito. Não reproduzido. |
+| Mensagens do código (OTP) | falha ao reenviar o código mostra "That code didn't work", e digitar o 6º dígito e tocar em Verify logo em seguida pode disparar duas verificações. |
 | Pontos de entrada antigos | "Connect Wallet" no menu de perfil, em `wallet.tsx` e em `feedback.tsx` ficam obsoletos com o gate — limpeza futura. |
-| Onboarding | a checagem `onboarded` ainda está no `index.tsx` da branch `feat/s2-onboarding-ui` e deixa passar convidados; ao integrar, virar um segundo guard no layout (login → onboarding → app). |
+| Onboarding (PR #1) | a rota `onboarding` fica dentro do `Stack.Protected`, mas a checagem `onboarded` vive só em `index.tsx`: quem abre outra rota por deep link não passa pelo questionário, e o chat aparece por um instante antes do redirect. Mover para um segundo guard no layout (login → onboarding → app). |
