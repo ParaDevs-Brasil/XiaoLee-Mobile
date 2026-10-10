@@ -29,8 +29,6 @@ class User(Base):
     bio: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     social_links: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     interest_profile: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    # Glossário do creator (JSON: lista de termos): nomes de projetos/marcas/jargão que o Whisper erra.
-    glossary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 class Wallet(Base):
@@ -323,6 +321,15 @@ class MediaTranscript(Base):
     segments_json: Mapped[str] = mapped_column(Text)
     language: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
     model: Mapped[str] = mapped_column(String(100))
+
+
+class MediaGlossary(Base):
+    """Termos do creator que a transcrição deve acertar (marcas, projetos, jargão). Uma linha por usuário;
+    `terms` é JSON (lista de strings). Fica fora de `users` para não se misturar ao perfil do onboarding."""
+    __tablename__ = 'media_glossaries'
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True)
+    terms: Mapped[str] = mapped_column(Text)
 
 
 class MediaClip(Base):

@@ -37,7 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import database as _dbmod
 from database.database import get_db_session
-from database.models import MediaAsset, MediaClip, MediaTranscript, User
+from database.models import MediaAsset, MediaClip, MediaGlossary, MediaTranscript, User
 from database.repository import to_utc_iso
 from server import clipper, media_storage
 from server.campaigns_routes import _resolve_user
@@ -185,6 +185,8 @@ async def complete_upload(
     return _out(asset)
 
 
+GLOSSARY_MAX_TERMS = 60
+GLOSSARY_MAX_TERM_LEN = 40
 GLOSSARY_SUGGESTIONS = 20
 GLOSSARY_MIN_COUNT = 2
 GLOSSARY_SCAN_ASSETS = 20
@@ -211,12 +213,60 @@ def suggest_glossary(segments_per_media: list[list[dict]], known: list[str] | No
     return [{"term": w, "count": n} for w, n in ranked[:GLOSSARY_SUGGESTIONS]]
 
 
+class GlossaryIn(BaseModel):
+    terms: list[str] = Field(max_length=GLOSSARY_MAX_TERMS)
+
+
+def clean_glossary(terms: list[str]) -> list[str]:
+    """Tira espaço/quebra de linha, descarta vazio, repetido (sem diferenciar maiúscula) e o que passa de
+    GLOSSARY_MAX_TERM_LEN. Ordem preservada: o que vem primeiro tem prioridade quando o prompt é cortado."""
+    seen, out = set(), []
+    for t in terms:
+        t = " ".join(str(t).split())
+        if t and len(t) <= GLOSSARY_MAX_TERM_LEN and t.lower() not in seen:
+            seen.add(t.lower())
+            out.append(t)
+    return out
+
+
+async def _glossary_terms(db, user_id: int) -> list[str]:
+    row = (await db.execute(select(MediaGlossary).where(MediaGlossary.user_id == user_id))).scalar_one_or_none()
+    return json.loads(row.terms) if row else []
+
+
+@router.get("/glossary")
+async def get_glossary(
+    authorization: Optional[str] = Header(default=None),
+    db: AsyncSession = Depends(get_db_session),
+):
+    user = await _resolve_user(db, authorization, strict=True)
+    return {"terms": await _glossary_terms(db, user.id)}
+
+
+@router.put("/glossary")
+async def put_glossary(
+    payload: GlossaryIn,
+    authorization: Optional[str] = Header(default=None),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Substitui a lista inteira (lista vazia limpa). Vale para as próximas transcrições."""
+    user = await _resolve_user(db, authorization, strict=True)
+    terms = json.dumps(clean_glossary(payload.terms), ensure_ascii=False)
+    row = (await db.execute(select(MediaGlossary).where(MediaGlossary.user_id == user.id))).scalar_one_or_none()
+    if row:
+        row.terms = terms
+    else:
+        db.add(MediaGlossary(user_id=user.id, terms=terms))
+    await db.commit()
+    return {"terms": json.loads(terms)}
+
+
 @router.get("/glossary/suggestions")
 async def glossary_suggestions(
     authorization: Optional[str] = Header(default=None),
     db: AsyncSession = Depends(get_db_session),
 ):
-    """Sugestões para o glossário (PATCH /user/me/profile) a partir das últimas transcrições do próprio creator."""
+    """Sugestões para o glossário (PUT /v1/media/glossary) a partir das últimas transcrições do próprio creator."""
     user = await _resolve_user(db, authorization, strict=True)
     rows = (await db.execute(
         select(MediaTranscript.segments_json)
@@ -224,7 +274,7 @@ async def glossary_suggestions(
         .where(MediaAsset.user_id == user.id)
         .order_by(MediaAsset.id.desc()).limit(GLOSSARY_SCAN_ASSETS)
     )).scalars().all()
-    known = json.loads(user.glossary) if user.glossary else []
+    known = await _glossary_terms(db, user.id)
     return {"suggestions": suggest_glossary([json.loads(r) for r in rows], known)}
 
 
@@ -422,8 +472,7 @@ async def transcribe_asset(asset_id: int) -> None:
             with tempfile.TemporaryDirectory() as tmp:
                 audio = os.path.join(tmp, "audio.mp3")
                 await _extract_audio(media_storage.presign_get(asset.r2_key), audio)
-                owner = await db.get(User, asset.user_id)
-                result = await _transcribe(audio, json.loads(owner.glossary) if owner and owner.glossary else None)
+                result = await _transcribe(audio, await _glossary_terms(db, asset.user_id) or None)
             await db.execute(delete(MediaTranscript).where(MediaTranscript.media_id == asset.id))  # refazer substitui
             db.add(MediaTranscript(
                 media_id=asset.id, segments_json=json.dumps(result["segments"], ensure_ascii=False),

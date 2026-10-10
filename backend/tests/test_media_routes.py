@@ -608,10 +608,7 @@ async def test_transcribe_sends_glossary_prompt_to_every_window(tmp_path, monkey
 async def test_owner_glossary_reaches_the_transcription(db, monkeypatch):
     h = await _login(db, "a")
     aid = client.post("/v1/media", json=BODY, headers=h).json()["asset"]["id"]
-    asset = await db.get(MediaAsset, aid)
-    owner = await db.get(media_routes.User, asset.user_id)
-    owner.glossary = json.dumps(["Vetto", "Arc"])
-    await db.commit()
+    assert client.put("/v1/media/glossary", json={"terms": ["Vetto", "Arc"]}, headers=h).status_code == 200
     _object_exists(monkeypatch, 1000)
     _fake_extract(monkeypatch)
     got = []
@@ -804,3 +801,24 @@ async def test_glossary_suggestions_endpoint_is_scoped_to_the_owner(db):
     await db.commit()
     assert client.get("/v1/media/glossary/suggestions", headers=h).json() == {"suggestions": [{"term": "Vetto", "count": 2}]}
     assert client.get("/v1/media/glossary/suggestions", headers=other).json() == {"suggestions": []}
+
+
+@pytest.mark.asyncio
+async def test_glossary_roundtrip_clean_and_per_user(db):
+    a, b = await _login(db, "ga"), await _login(db, "gb")
+    assert client.get("/v1/media/glossary", headers=a).json() == {"terms": []}
+    terms = ["  Vetto ", "vetto", "", "Hub\nstaff", "x" * 41, "Arc  Network", "ARC NETWORK"]
+    assert client.put("/v1/media/glossary", json={"terms": terms}, headers=a).json() == {"terms": ["Vetto", "Hub staff", "Arc Network"]}
+    assert client.get("/v1/media/glossary", headers=a).json()["terms"] == ["Vetto", "Hub staff", "Arc Network"]
+    assert client.get("/v1/media/glossary", headers=b).json() == {"terms": []}
+    assert client.put("/v1/media/glossary", json={"terms": []}, headers=a).json() == {"terms": []}  # lista vazia limpa
+
+
+@pytest.mark.asyncio
+async def test_glossary_limits_and_auth(db):
+    h = await _login(db, "gl")
+    client.put("/v1/media/glossary", json={"terms": ["keep"]}, headers=h)
+    assert client.put("/v1/media/glossary", json={"terms": [f"t{i}" for i in range(61)]}, headers=h).status_code == 422
+    assert client.get("/v1/media/glossary", headers=h).json() == {"terms": ["keep"]}
+    assert client.get("/v1/media/glossary").status_code in (401, 403)
+    assert client.put("/v1/media/glossary", json={"terms": []}, headers={"Authorization": "Bearer raw_id"}).status_code in (401, 403)
