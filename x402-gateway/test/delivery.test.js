@@ -67,3 +67,15 @@ test("ledger: erro de escrita não derruba a entrega paga", async () => {
   const r = await deliver(cfg, svc, P, {}, { ledger: broken, fetchFn: async () => res(200) });
   assert.equal(r.status, 200);
 });
+
+test("ledger: resolve fecha caso aberto, não reabre e não rebaixa", async () => {
+  const ledger = memoryLedger();
+  await deliver(cfg, svc, P, {}, { ledger, fetchFn: async () => res(503), sleep: noSleep, attempts: 1 });
+  assert.equal((await ledger.open()).length, 1);
+  assert.equal(await ledger.resolve("tx-1", { note: "refunded", refund_tx: "0xrefund" }), true);
+  assert.equal((await ledger.open()).length, 0);
+  assert.equal(await ledger.resolve("tx-1", { note: "again" }), false); // já fechado
+  await ledger.begin(svc, P); // mesmo pagamento reapresentado não reabre
+  assert.equal((await ledger.open()).length, 0);
+  assert.equal(await ledger.resolve("nope", { note: "x" }), false);
+});

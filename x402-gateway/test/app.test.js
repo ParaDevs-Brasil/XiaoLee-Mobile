@@ -1,3 +1,4 @@
+import { memoryLedger } from "../src/ledger.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createApp } from "../src/app.js";
@@ -109,5 +110,21 @@ test("limite de taxa: excedeu -> 429 antes de cobrar; pagadores distintos têm c
     assert.notEqual(await st(hdr(A)), 429);
     assert.equal(await st(hdr(A)), 429);
     assert.notEqual(await st(hdr(B)), 429);
+  } finally { srv.close(); }
+});
+
+test("reconcile/resolve: exige segredo e nota, fecha caso aberto e 404 se não está aberto", async () => {
+  const ledger = memoryLedger();
+  await ledger.begin({ id: "profile-analysis" }, { payer: "0xabc", transaction: "tx-r" });
+  const srv = createApp({ ...cfg, internalSecret: "s" }, null, ledger).listen(0);
+  const base = `http://127.0.0.1:${srv.address().port}`;
+  const post = (tx, headers, body) => fetch(`${base}/internal/reconcile/${tx}/resolve`, { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json", ...headers } });
+  const H = { "x-internal-secret": "s" };
+  try {
+    assert.equal((await post("tx-r", {}, { note: "x" })).status, 403);
+    assert.equal((await post("tx-r", H, {})).status, 400);
+    assert.equal((await post("tx-r", H, { note: "refunded", refund_tx: "0xr" })).status, 200);
+    assert.equal((await post("tx-r", H, { note: "again" })).status, 404);
+    assert.equal((await post("nope", H, { note: "x" })).status, 404);
   } finally { srv.close(); }
 });

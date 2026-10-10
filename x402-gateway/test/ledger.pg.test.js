@@ -23,9 +23,17 @@ test("pg ledger: begin/finish/open, idempotência e sobrevivência a novo pool",
   open = (await l2.open()).filter((r) => r.payment_tx === tx);
   assert.equal(open[0].status, "failed"); assert.equal(open[0].reason, "upstream_502");
 
-  await l2.finish(tx, "delivered");
+  assert.equal(await l2.resolve(tx, { note: "refunded manually", refund_tx: "0xr" }), true);
+  assert.equal(await l2.resolve(tx, { note: "twice" }), false);
   assert.equal((await l2.open()).filter((r) => r.payment_tx === tx).length, 0);
-  await l2.begin(svc, P(tx)); // entregue não é rebaixado
+  await l2.begin(svc, P(tx)); // resolvido não reabre
   assert.equal((await l2.open()).filter((r) => r.payment_tx === tx).length, 0);
+
+  const tx2 = `${tx}-b`;
+  await l2.begin(svc, P(tx2));
+  await l2.finish(tx2, "delivered");
+  assert.equal((await l2.open()).filter((r) => r.payment_tx === tx).length, 0);
+  await l2.begin(svc, P(tx2)); // entregue não é rebaixado
+  assert.equal((await l2.open()).filter((r) => r.payment_tx === tx2).length, 0);
   await l2.close();
 });

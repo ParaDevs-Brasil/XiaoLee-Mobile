@@ -42,6 +42,16 @@ export function createApp(cfg, buyer = null, ledger = defaultLedger) {
     try { res.json({ durable: ledger.durable, failures: await ledger.open() }); }
     catch (e) { res.status(503).json({ error: "ledger_unavailable" }); }
   });
+  // fecha um caso aberto depois do reembolso manual: nota obrigatória, hash do reembolso opcional
+  app.post("/internal/reconcile/:tx/resolve", auth, async (req, res) => {
+    const note = typeof req.body?.note === "string" ? req.body.note.trim() : "";
+    const refund_tx = req.body?.refund_tx == null ? null : String(req.body.refund_tx);
+    if (!note || note.length > 500 || (refund_tx && refund_tx.length > 200)) return res.status(400).json({ error: "invalid_resolution" });
+    try {
+      const ok = await ledger.resolve(req.params.tx, { note, refund_tx });
+      res.status(ok ? 200 : 404).json(ok ? { resolved: req.params.tx } : { error: "not_open" });
+    } catch (e) { res.status(503).json({ error: "ledger_unavailable" }); }
+  });
   app.get("/internal/market/search", internal, async (req, res) => {
     try { res.json({ items: await buyer.search({ q: req.query.q, limit: req.query.limit }) }); }
     catch (e) { res.status(502).json({ error: "discovery_failed" }); }
