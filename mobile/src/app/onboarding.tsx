@@ -1,12 +1,14 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,6 +16,22 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getMyProfile, updateMyProfile } from '@/api/backend';
 import { ApiError } from '@/api/client';
 import { ErrorState } from '@/components/feedback';
+import {
+  IconBuilding,
+  IconCheck,
+  IconCube,
+  IconEdit,
+  IconGamepad,
+  IconInstagram,
+  IconMapPin,
+  IconSmile,
+  IconTrendingUp,
+  IconUser,
+  IconWallet,
+  IconXSocial,
+  type IconProps,
+} from '@/components/icons';
+import { BackgroundGlow, IconArrowRight, SparkleStar } from '@/components/login-decorations';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { useKeyboard } from '@/hooks/use-keyboard';
 
@@ -42,6 +60,15 @@ const INTERESTS: { id: string; label: string }[] = [
   { id: 'memecoins', label: 'Memecoins' },
 ];
 
+/** Só apresentação — o que vai para o backend continua sendo o `id` acima. */
+const INTEREST_ICONS: Record<string, ComponentType<IconProps>> = {
+  defi: IconCube,
+  games: IconGamepad,
+  cards: IconWallet,
+  trader: IconTrendingUp,
+  memecoins: IconSmile,
+};
+
 interface FormState {
   full_name: string;
   state: string;
@@ -64,6 +91,9 @@ export default function OnboardingScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const keyboard = useKeyboard();
+  // Telas estreitas (< 340dp): os pares State/City e X/Instagram empilham.
+  const { width } = useWindowDimensions();
+  const rowStyle = width < 340 ? styles.stack : styles.row;
   // `/onboarding?edit=1` — link do `ProfileMenu` para quem já passou pelo
   // questionário e quer atualizar o perfil depois.
   const { edit } = useLocalSearchParams<{ edit?: string }>();
@@ -157,121 +187,186 @@ export default function OnboardingScreen() {
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top, paddingBottom: keyboard.height }]}>
+      {/* Mesmo fundo suave da tela de login: manchas rosadas discretas atrás do
+          formulário, sem competir com os campos. */}
+      <BackgroundGlow />
+      <SparkleStar
+        size={14}
+        color={Colors.light.accent}
+        style={[styles.sparkle, { top: insets.top + 64 }]}
+      />
+
       <ScrollView
-        contentContainerStyle={[
-          styles.content,
-          { paddingBottom: Spacing.five + (keyboard.visible ? 0 : insets.bottom) },
-        ]}
+        style={styles.flex}
+        contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.title}>
-          {isEditing ? 'Edit your profile' : 'Welcome to Xiaolee'}
-        </Text>
-        <Text style={styles.subtitle}>
-          {isEditing
-            ? 'Update your info — Xiaolee uses it to point you to the right campaigns and content ideas.'
-            : 'Tell us a bit about yourself so Xiaolee can point you to the right campaigns and content ideas.'}
-        </Text>
-
-        {error ? <ErrorState title="Couldn't save your profile" message={error} /> : null}
-
-        <Field
-          label="Full name"
-          required
-          value={form.full_name}
-          onChange={(v) => set('full_name', v)}
-          placeholder="Your full name"
-          maxLength={255}
-        />
-
-        <View style={styles.row}>
-          <Field
-            label="State"
-            value={form.state}
-            onChange={(v) => set('state', v)}
-            placeholder="Ex: SP"
-            style={styles.flex}
-            maxLength={64}
-          />
-          <Field
-            label="City"
-            value={form.city}
-            onChange={(v) => set('city', v)}
-            placeholder="Ex: São Paulo"
-            style={styles.flex}
-            maxLength={128}
-          />
-        </View>
-
-        <View style={styles.field}>
-          <Text style={styles.label}>
-            Interest profile<Text style={styles.required}> *</Text>
-          </Text>
-          <View style={styles.chips}>
-            {INTERESTS.map(({ id, label }) => {
-              const active = interests.includes(id);
-              return (
-                <Pressable
-                  key={id}
-                  onPress={() => toggleInterest(id)}
-                  style={[styles.chip, active && styles.chipActive]}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                >
-                  <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
-                </Pressable>
-              );
-            })}
+        <View style={styles.column}>
+          <View style={styles.header}>
+            <View
+              style={styles.logoRow}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            >
+              <Text style={styles.wordmark}>
+                Xiao<Text style={styles.wordmarkAccent}>lee</Text>
+              </Text>
+              <SparkleStar size={14} color={Colors.light.accent} style={styles.wordmarkSpark} />
+            </View>
+            <Text style={styles.title} accessibilityRole="header">
+              {isEditing ? 'Edit your profile' : 'Welcome to Xiaolee'}
+            </Text>
+            <Text style={styles.subtitle}>
+              {isEditing
+                ? 'Update your info — Xiaolee uses it to point you to the right campaigns and content ideas.'
+                : 'Tell us a bit about yourself so Xiaolee can point you to the right campaigns and content ideas.'}
+            </Text>
           </View>
-        </View>
 
-        <View style={styles.row}>
           <Field
-            label="X / Twitter"
-            value={form.twitter}
-            onChange={(v) => set('twitter', v)}
-            placeholder="@handle"
-            autoCapitalize="none"
-            style={styles.flex}
+            label="Full name"
+            required
+            value={form.full_name}
+            onChange={(v) => set('full_name', v)}
+            placeholder="Your full name"
+            maxLength={255}
+            disabled={submitting}
+            icon={(color) => <IconUser size={18} color={color} />}
           />
+
+          <View style={rowStyle}>
+            <Field
+              label="State"
+              value={form.state}
+              onChange={(v) => set('state', v)}
+              placeholder="Ex: SP"
+              style={styles.flex}
+              maxLength={64}
+              disabled={submitting}
+              icon={(color) => <IconMapPin size={18} color={color} />}
+            />
+            <Field
+              label="City"
+              value={form.city}
+              onChange={(v) => set('city', v)}
+              placeholder="Ex: São Paulo"
+              style={styles.flex}
+              maxLength={128}
+              disabled={submitting}
+              icon={(color) => <IconBuilding size={18} color={color} />}
+            />
+          </View>
+
+          <View style={styles.field}>
+            <Text style={styles.label}>
+              Interest profile<Text style={styles.required}> *</Text>
+            </Text>
+            <View style={styles.chips}>
+              {INTERESTS.map(({ id, label }) => {
+                const active = interests.includes(id);
+                const Icon = INTEREST_ICONS[id];
+                return (
+                  <Pressable
+                    key={id}
+                    onPress={() => toggleInterest(id)}
+                    disabled={submitting}
+                    hitSlop={Spacing.one}
+                    style={({ pressed }) => [
+                      styles.chip,
+                      active && styles.chipActive,
+                      pressed && styles.chipPressed,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                  >
+                    {Icon ? (
+                      <Icon
+                        size={16}
+                        color={active ? Colors.light.accent : Colors.light.ink3}
+                      />
+                    ) : null}
+                    <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
+                    {active ? (
+                      <View style={styles.chipCheck}>
+                        <IconCheck size={11} sw={3.2} color={Colors.light.card} />
+                      </View>
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
+          <View style={rowStyle}>
+            <Field
+              label="X / Twitter"
+              value={form.twitter}
+              onChange={(v) => set('twitter', v)}
+              placeholder="@handle"
+              autoCapitalize="none"
+              style={styles.flex}
+              disabled={submitting}
+              icon={(color) => <IconXSocial size={16} color={color} />}
+            />
+            <Field
+              label="Instagram"
+              value={form.instagram}
+              onChange={(v) => set('instagram', v)}
+              placeholder="@handle"
+              autoCapitalize="none"
+              style={styles.flex}
+              disabled={submitting}
+              icon={(color) => <IconInstagram size={18} color={color} />}
+            />
+          </View>
+
           <Field
-            label="Instagram"
-            value={form.instagram}
-            onChange={(v) => set('instagram', v)}
-            placeholder="@handle"
-            autoCapitalize="none"
-            style={styles.flex}
+            label="Bio"
+            value={form.bio}
+            onChange={(v) => set('bio', v)}
+            placeholder="A short description about you…"
+            multiline
+            maxLength={1000}
+            disabled={submitting}
+            icon={(color) => <IconEdit size={17} color={color} />}
           />
         </View>
-
-        <Field
-          label="Bio"
-          value={form.bio}
-          onChange={(v) => set('bio', v)}
-          placeholder="A short description about you…"
-          multiline
-          maxLength={1000}
-        />
-
-        <Pressable
-          onPress={submit}
-          disabled={!valid || submitting}
-          style={({ pressed }) => [
-            styles.submit,
-            (!valid || submitting) && styles.submitIdle,
-            pressed && valid && !submitting && styles.pressed,
-          ]}
-          accessibilityRole="button"
-          accessibilityState={{ disabled: !valid || submitting }}
-        >
-          {submitting ? (
-            <ActivityIndicator color={Colors.light.card} />
-          ) : (
-            <Text style={styles.submitText}>{isEditing ? 'Save changes' : 'Continue'}</Text>
-          )}
-        </Pressable>
       </ScrollView>
+
+      {/* Rodapé fixo: o botão fica sempre ao alcance do polegar e acima do
+          teclado (o `paddingBottom` da tela já empurra tudo pela altura dele). */}
+      <View
+        style={[
+          styles.footer,
+          { paddingBottom: Spacing.three - 4 + (keyboard.visible ? 0 : insets.bottom) },
+        ]}
+      >
+        <View style={styles.footerInner}>
+          {error ? <ErrorState title="Couldn't save your profile" message={error} /> : null}
+          <Pressable
+            onPress={submit}
+            disabled={!valid || submitting}
+            style={({ pressed }) => [
+              styles.submit,
+              valid || submitting ? styles.submitEnabled : styles.submitIdle,
+              pressed && valid && !submitting && styles.submitPressed,
+            ]}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !valid || submitting, busy: submitting }}
+          >
+            {submitting ? (
+              <ActivityIndicator color={Colors.light.card} />
+            ) : (
+              <View style={styles.submitContent}>
+                <Text style={styles.submitText}>{isEditing ? 'Save changes' : 'Continue'}</Text>
+                <IconArrowRight size={18} color={Colors.light.card} />
+              </View>
+            )}
+          </Pressable>
+        </View>
+      </View>
     </View>
   );
 }
@@ -286,6 +381,8 @@ function Field({
   autoCapitalize,
   maxLength,
   style,
+  icon,
+  disabled,
 }: {
   label: string;
   value: string;
@@ -297,89 +394,218 @@ function Field({
   /** Mesmos limites do `ProfileUpdate` no backend — evita o 422 de campo longo demais. */
   maxLength?: number;
   style?: object;
+  /** Ícone à esquerda; recebe a cor do estado atual (neutro, foco/preenchido, inválido). */
+  icon: (color: string) => ReactNode;
+  disabled?: boolean;
 }) {
+  const inputRef = useRef<TextInput>(null);
+  const [focused, setFocused] = useState(false);
+  const [touched, setTouched] = useState(false);
+
+  // Só acusa erro depois que a pessoa passou pelo campo e saiu dele vazio —
+  // nunca no primeiro render, para o formulário não nascer "vermelho".
+  const invalid = !!required && touched && !focused && value.trim().length === 0;
+  const iconColor = invalid
+    ? Colors.light.danger
+    : focused || value.length > 0
+      ? Colors.light.accent
+      : Colors.light.ink3;
+
   return (
     <View style={[styles.field, style]}>
       <Text style={styles.label}>
         {label}
         {required ? <Text style={styles.required}> *</Text> : null}
       </Text>
-      <TextInput
-        value={value}
-        onChangeText={onChange}
-        placeholder={placeholder}
-        placeholderTextColor={Colors.light.ink3}
-        style={[styles.input, multiline && styles.inputMultiline]}
-        multiline={multiline}
-        autoCapitalize={autoCapitalize}
-        maxLength={maxLength}
-      />
+      {/* O contêiner inteiro foca o campo (ícone e margens incluídos): alvo de
+          toque maior do que só a linha de texto. */}
+      <Pressable
+        accessible={false}
+        onPress={() => inputRef.current?.focus()}
+        disabled={disabled}
+        style={[
+          styles.inputBox,
+          multiline && styles.inputBoxMultiline,
+          focused && styles.inputBoxFocused,
+          invalid && styles.inputBoxInvalid,
+          disabled && styles.inputBoxDisabled,
+        ]}
+      >
+        <View style={[styles.inputIcon, multiline && styles.inputIconMultiline]}>
+          {icon(iconColor)}
+        </View>
+        <TextInput
+          ref={inputRef}
+          value={value}
+          onChangeText={onChange}
+          onFocus={() => setFocused(true)}
+          onBlur={() => {
+            setFocused(false);
+            setTouched(true);
+          }}
+          placeholder={placeholder}
+          placeholderTextColor={Colors.light.ink3}
+          selectionColor={Colors.light.accent}
+          cursorColor={Colors.light.accent}
+          style={[styles.input, multiline && styles.inputMultiline]}
+          multiline={multiline}
+          autoCapitalize={autoCapitalize}
+          maxLength={maxLength}
+          editable={!disabled}
+          accessibilityLabel={required ? `${label}, required` : label}
+        />
+      </Pressable>
     </View>
   );
 }
 
+const INPUT_HEIGHT = 52;
+
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Colors.light.bg },
-  flex: { flex: 1 },
-  content: {
-    padding: Spacing.three - 4,
-    paddingTop: Spacing.four,
-    gap: Spacing.three - 4,
-  },
-  pressed: { opacity: 0.7 },
+  flex: { flex: 1, minWidth: 0 },
+  sparkle: { position: 'absolute', right: 28 },
 
-  title: { fontFamily: Fonts.bold, fontSize: 22, color: Colors.light.ink },
+  content: {
+    paddingHorizontal: Spacing.three + 4,
+    paddingTop: Spacing.three,
+    paddingBottom: Spacing.four,
+  },
+  // Largura máxima para tablets/web: o formulário não estica indefinidamente.
+  column: { width: '100%', maxWidth: 480, alignSelf: 'center', gap: Spacing.three + 4 },
+
+  // ── Cabeçalho ──────────────────────────────────────────────────────────
+  header: { gap: Spacing.two, marginBottom: Spacing.one },
+  logoRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: Spacing.three - 4 },
+  wordmark: {
+    fontFamily: Fonts.brand,
+    fontSize: 30,
+    lineHeight: 36,
+    color: Colors.light.ink,
+  },
+  wordmarkAccent: { color: Colors.light.accent },
+  wordmarkSpark: { marginLeft: 2, marginTop: 2 },
+  title: {
+    fontFamily: Fonts.bold,
+    fontSize: 30,
+    lineHeight: 36,
+    letterSpacing: -0.5,
+    color: Colors.light.ink,
+  },
   subtitle: {
     fontFamily: Fonts.medium,
-    fontSize: 13,
+    fontSize: 15,
+    lineHeight: 22,
     color: Colors.light.ink2,
-    marginBottom: Spacing.two,
   },
 
   // ── Campos ─────────────────────────────────────────────────────────────
-  field: { gap: Spacing.two - 2 },
+  field: { gap: Spacing.two },
   row: { flexDirection: 'row', gap: Spacing.three - 4 },
-  label: { fontFamily: Fonts.semibold, fontSize: 12, color: Colors.light.ink2 },
+  // Telas muito estreitas: empilha em vez de espremer placeholder e ícone.
+  stack: { flexDirection: 'column', gap: Spacing.three + 4 },
+  label: { fontFamily: Fonts.semibold, fontSize: 14, color: Colors.light.ink },
   required: { color: Colors.light.accent },
-  input: {
-    minHeight: 44,
+
+  inputBox: {
+    minHeight: INPUT_HEIGHT,
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: Spacing.three - 2,
-    paddingVertical: Spacing.two + 2,
-    borderRadius: Radius.md,
+    gap: Spacing.two + 2,
+    borderRadius: Radius.lg,
     backgroundColor: Colors.light.card,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1.5,
     borderColor: Colors.light.border,
+  },
+  inputBoxMultiline: { minHeight: 120, alignItems: 'flex-start' },
+  inputBoxFocused: {
+    borderColor: Colors.light.accent,
+    ...Platform.select({
+      ios: {
+        shadowColor: Colors.light.accent,
+        shadowOpacity: 0.16,
+        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 2 },
+      },
+      default: {},
+    }),
+  },
+  inputBoxInvalid: { borderColor: Colors.light.danger },
+  inputBoxDisabled: { backgroundColor: Colors.light.bg, opacity: 0.7 },
+  inputIcon: { width: 20, alignItems: 'center', justifyContent: 'center' },
+  inputIconMultiline: { height: INPUT_HEIGHT - 3, justifyContent: 'center' },
+  input: {
+    flex: 1,
+    minWidth: 0,
+    alignSelf: 'stretch',
+    paddingVertical: 0,
     fontFamily: Fonts.medium,
-    fontSize: 14,
+    fontSize: 15,
     color: Colors.light.ink,
   },
-  inputMultiline: { minHeight: 92, textAlignVertical: 'top' },
+  inputMultiline: {
+    minHeight: 96,
+    paddingTop: Spacing.three - 1,
+    paddingBottom: Spacing.three - 4,
+    textAlignVertical: 'top',
+  },
 
   // ── Chips (perfil de interesse) ──────────────────────────────────────────
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two - 2 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two + 2 },
   chip: {
-    height: 30,
-    paddingHorizontal: Spacing.three - 4,
+    height: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two - 1,
+    paddingHorizontal: Spacing.three - 2,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.light.card,
+    borderWidth: 1.5,
+    borderColor: Colors.light.border,
+  },
+  chipActive: { backgroundColor: Colors.light.accentSoft, borderColor: Colors.light.accent },
+  chipPressed: { opacity: 0.75 },
+  chipText: { fontFamily: Fonts.semibold, fontSize: 13, color: Colors.light.ink2 },
+  chipTextActive: { color: Colors.light.accentHover },
+  chipCheck: {
+    width: 18,
+    height: 18,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.light.accent,
+  },
+
+  // ── Rodapé / ação ────────────────────────────────────────────────────────
+  footer: {
+    paddingHorizontal: Spacing.three + 4,
+    paddingTop: Spacing.three - 4,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.light.border,
+  },
+  footerInner: { width: '100%', maxWidth: 480, alignSelf: 'center', gap: Spacing.three - 4 },
+  submit: {
+    height: 54,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.card,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
-  },
-  chipActive: { backgroundColor: Colors.light.accent, borderColor: Colors.light.accent },
-  chipText: { fontFamily: Fonts.semibold, fontSize: 12, color: Colors.light.ink2 },
-  chipTextActive: { color: Colors.light.card },
-
-  // ── Ações ──────────────────────────────────────────────────────────────
-  submit: {
-    height: 46,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: Radius.md,
     backgroundColor: Colors.light.accent,
-    marginTop: Spacing.two,
   },
-  submitIdle: { opacity: 0.45 },
-  submitText: { fontFamily: Fonts.bold, fontSize: 14, color: Colors.light.card },
+  submitEnabled: {
+    ...Platform.select({
+      ios: {
+        shadowColor: Colors.light.accent,
+        shadowOpacity: 0.3,
+        shadowRadius: 14,
+        shadowOffset: { width: 0, height: 6 },
+      },
+      android: { elevation: 4, shadowColor: Colors.light.accent },
+      default: {},
+    }),
+  },
+  submitIdle: { opacity: 0.4 },
+  submitPressed: { backgroundColor: Colors.light.accentHover, transform: [{ scale: 0.985 }] },
+  submitContent: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  submitText: { fontFamily: Fonts.bold, fontSize: 16, color: Colors.light.card },
 });
