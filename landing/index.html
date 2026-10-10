@@ -119,7 +119,87 @@
       .xl-grid--features { grid-template-columns: 1fr 1fr !important; }
     }
 
+    /* ── Waitlist modal ── */
+    .xl-wl { width: min(620px, calc(100vw - 32px)); max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); padding: 0; border: 0; border-radius: 24px; background: #f6f4f1; color: #1a1917; font-family: 'Quicksand', sans-serif; box-shadow: 0 40px 80px -24px rgba(26, 25, 23, .45); overflow: hidden; }
+    .xl-wl[open] { display: flex; flex-direction: column; animation: xlWlIn .35s cubic-bezier(.16, 1, .3, 1); }
+    .xl-wl::backdrop { background: rgba(26, 25, 23, .45); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+    @keyframes xlWlIn {
+      from { opacity: 0; transform: translateY(16px) scale(.98); }
+      to { opacity: 1; transform: none; }
+    }
+    .xl-wl__head { display: flex; align-items: center; gap: 14px; padding: 22px 24px 18px; border-bottom: 1px solid #ece9e4; }
+    .xl-wl__head img { width: 48px; height: 48px; border-radius: 999px; object-fit: cover; border: 3px solid #fff; box-shadow: 0 6px 14px -8px rgba(26, 25, 23, .35); }
+    .xl-wl__title { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+    .xl-wl__sub { margin: 2px 0 0; font-size: 14px; color: #6b6862; }
+    .xl-wl__close { margin-left: auto; align-self: flex-start; width: 36px; height: 36px; border: 0; border-radius: 999px; background: #ece9e4; color: #1a1917; font-size: 20px; line-height: 1; cursor: pointer; font-family: inherit; }
+    .xl-wl__close:hover { background: #e2ded8; }
+    .xl-wl__body { overflow-y: auto; padding: 20px 24px 24px; }
+    .xl-wl__sec { margin: 0 0 18px; padding: 0; border: 0; min-width: 0; }
+    .xl-wl__sec>legend,
+    .xl-wl__label { display: block; padding: 0; margin: 0 0 8px; font-size: 13px; font-weight: 700; color: #1a1917; }
+    .xl-wl__label small,
+    .xl-wl__sec>legend small { font-weight: 500; color: #9a968f; }
+    .xl-wl__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .xl-wl__field { display: block; margin: 0 0 14px; }
+    .xl-wl__grid .xl-wl__field { margin: 0; }
+    .xl-wl input[type=text],
+    .xl-wl input[type=email],
+    .xl-wl select,
+    .xl-wl textarea { width: 100%; box-sizing: border-box; padding: 12px 14px; border: 1.5px solid #e2ded8; border-radius: 12px; background: #fff; color: #1a1917; font: 500 15px/1.4 'Quicksand', sans-serif; outline: none; transition: border-color .2s ease, box-shadow .2s ease; }
+    .xl-wl textarea { min-height: 84px; resize: vertical; }
+    .xl-wl input:focus,
+    .xl-wl select:focus,
+    .xl-wl textarea:focus { border-color: #d81b78; box-shadow: 0 0 0 4px rgba(216, 27, 120, .12); }
+    .xl-wl input::placeholder,
+    .xl-wl textarea::placeholder { color: #b3afa8; }
+    .xl-wl__handle { position: relative; }
+    .xl-wl__handle span { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 12px; font-weight: 700; color: #9a968f; pointer-events: none; }
+    .xl-wl__handle input[type=text] { padding-left: 84px; }
+    .xl-wl__chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .xl-wl__chip { position: relative; }
+    .xl-wl__chip input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+    .xl-wl__chip span { display: inline-block; padding: 9px 16px; border: 1.5px solid #e2ded8; border-radius: 999px; background: #fff; font-size: 14px; font-weight: 600; color: #4a4741; transition: all .2s ease; }
+    .xl-wl__chip input:hover+span { border-color: #d81b78; }
+    .xl-wl__chip input:checked+span { background: #d81b78; border-color: #d81b78; color: #fff; }
+    .xl-wl__chip input:focus-visible+span { box-shadow: 0 0 0 4px rgba(216, 27, 120, .2); }
+    .xl-wl__hp { position: absolute !important; left: -9999px !important; width: 1px; height: 1px; overflow: hidden; }
+    .xl-wl__err { margin: 0 0 14px; padding: 10px 14px; border-radius: 12px; background: #fde8f1; color: #a3125a; font-size: 14px; font-weight: 600; }
+    .xl-wl__submit { width: 100%; justify-content: center; border: 0; cursor: pointer; font-family: inherit; display: inline-flex; align-items: center; gap: 8px; border-radius: 999px; padding: 16px 28px; font-size: 17px; font-weight: 700; color: #fff; background: #d81b78; box-shadow: 0 10px 26px -12px rgba(216, 27, 120, .45); }
+    .xl-wl__submit[disabled] { opacity: .6; cursor: progress; transform: none; }
+    .xl-wl__fine { margin: 12px 0 0; text-align: center; font-size: 12px; color: #9a968f; }
+    .xl-wl__fine a { color: inherit; }
+    .xl-wl__done { padding: 40px 28px 36px; text-align: center; }
+    .xl-wl__done img { width: 96px; height: 96px; border-radius: 999px; object-fit: cover; border: 4px solid #fff; box-shadow: 0 16px 32px -16px rgba(26, 25, 23, .4); }
+    .xl-wl__done h3 { margin: 18px 0 6px; font-size: 26px; font-weight: 700; }
+    .xl-wl__done p { margin: 0 auto 22px; max-width: 380px; color: #6b6862; font-size: 15px; line-height: 1.6; }
+
+    /* ── Etapa 2: "Boost your spot" ── */
+    .xl-wl__boost { margin: 0 0 20px; padding: 16px 18px; border-radius: 16px; background: #fff; border: 1.5px solid #f3d3e3; }
+    .xl-wl__boost h3 { margin: 0; font-size: 17px; font-weight: 700; }
+    .xl-wl__boost p { margin: 4px 0 12px; font-size: 14px; line-height: 1.5; color: #6b6862; }
+    .xl-wl__meter { display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 700; color: #d81b78; white-space: nowrap; }
+    .xl-wl__meter-bar { flex: 1; height: 8px; border-radius: 999px; background: #f3eef0; overflow: hidden; }
+    .xl-wl__meter-fill { height: 100%; width: 30%; border-radius: inherit; background: linear-gradient(90deg, #f28ab9, #d81b78); transition: width .35s cubic-bezier(.22, 1, .36, 1); }
+    /* campo da rede principal ganha destaque */
+    .xl-wl__handle--main input[type=text] { border-color: #d81b78; background: #fffafc; }
+    .xl-wl__handle--main span { color: #d81b78; }
+    .xl-wl__nudge { margin: 0 0 14px; padding: 14px 16px; border-radius: 14px; background: #fff6e8; border: 1.5px solid #f6dcae; font-size: 14px; line-height: 1.5; color: #6b4a12; }
+    .xl-wl__nudge strong { display: block; margin-bottom: 2px; color: #4a3208; }
+    .xl-wl__nudge-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .xl-wl__nudge-actions button { border: 0; cursor: pointer; font: 700 13px 'Quicksand', sans-serif; border-radius: 999px; padding: 8px 14px; }
+    .xl-wl__nudge-add { background: #d81b78; color: #fff; }
+    .xl-wl__nudge-skip { background: transparent; color: #6b4a12; text-decoration: underline; }
+    .xl-wl__skip { display: block; margin: 12px auto 0; border: 0; background: none; cursor: pointer; font: 600 14px 'Quicksand', sans-serif; color: #9a968f; text-decoration: underline; text-underline-offset: 3px; }
+    .xl-wl__skip:hover { color: #6b6862; }
+    @media (max-width: 560px) {
+      .xl-wl__grid { grid-template-columns: 1fr; }
+      .xl-wl__head { padding: 18px 18px 14px; }
+      .xl-wl__body { padding: 16px 18px 20px; }
+    }
+
     @media (prefers-reduced-motion: reduce) {
+      .xl-wl[open] { animation: none; }
+      .xl-wl__meter-fill { transition: none; }
       .xl-btn, .xl-card, .xl-chip, .xl-btn__arr, .xl-nav a::after { transition: none; }
       .xl-mascot { animation: none; }
       .xl-word { animation: none; opacity: 1; }
@@ -145,7 +225,10 @@
         <span class="xl-header__word" style="font-family:'Candice',cursive; font-size:28px; color:#1a1917;">Xiao<span style="color:#d81b78;">lee</span></span>
       </div>
       <div class="xl-header__actions" style="display:flex; align-items:center; gap:10px;">
+        <!-- Download temporariamente trocado pela waitlist — reativar descomentando:
         <a href="https://expo.dev/artifacts/eas/MrgaWr5FXRrA7NJbmNJJdXm7KA8-2TYSh51uGf7nPqs.apk" target="_blank" rel="noopener noreferrer" class="xl-btn xl-btn--dl" aria-label="Download app" style="display:inline-flex; align-items:center; gap:6px; white-space:nowrap; border-radius:999px; padding:14px 28px; font-size:16px; font-weight:700; color:#fff; text-decoration:none; background:#d81b78; box-shadow:0 10px 26px -12px rgba(216,27,120,.45), 0 1px 0 rgba(255,255,255,.25) inset;"><span class="xl-btn__label">Download app</span> <span class="xl-btn__dl" style="width:14px; height:14px;"></span></a>
+        -->
+        <button type="button" data-waitlist-open class="xl-btn" style="display:inline-flex; align-items:center; gap:6px; white-space:nowrap; border:0; cursor:pointer; font-family:inherit; border-radius:999px; padding:14px 28px; font-size:16px; font-weight:700; color:#fff; background:#d81b78; box-shadow:0 10px 26px -12px rgba(216,27,120,.45), 0 1px 0 rgba(255,255,255,.25) inset;">Join waitlist <span class="xl-btn__arr" aria-hidden="true">→</span></button>
       </div>
     </div>
   </header>
@@ -172,7 +255,10 @@
         </p>
 
         <div data-reveal="1" style="opacity:0; transform:translateY(24px); transition:opacity .7s cubic-bezier(.16,1,.3,1) .18s, transform .7s cubic-bezier(.16,1,.3,1) .18s; margin-top:36px; display:flex; flex-wrap:wrap; gap:12px;">
+          <!-- Download temporariamente trocado pela waitlist — reativar descomentando:
           <a href="https://expo.dev/artifacts/eas/MrgaWr5FXRrA7NJbmNJJdXm7KA8-2TYSh51uGf7nPqs.apk" target="_blank" rel="noopener noreferrer" class="xl-btn" style="display:inline-flex; align-items:center; gap:8px; white-space:nowrap; border-radius:999px; padding:19px 38px; font-size:19px; font-weight:700; color:#fff; text-decoration:none; background:#d81b78; box-shadow:0 10px 26px -12px rgba(216,27,120,.45), 0 1px 0 rgba(255,255,255,.25) inset;">Download app <span class="xl-btn__dl" style="width:16px; height:16px;"></span></a>
+          -->
+          <button type="button" data-waitlist-open class="xl-btn" style="display:inline-flex; align-items:center; gap:8px; white-space:nowrap; border:0; cursor:pointer; font-family:inherit; border-radius:999px; padding:19px 38px; font-size:19px; font-weight:700; color:#fff; background:#d81b78; box-shadow:0 10px 26px -12px rgba(216,27,120,.45), 0 1px 0 rgba(255,255,255,.25) inset;">Join waitlist <span class="xl-btn__arr" aria-hidden="true">→</span></button>
         </div>
       </div>
 
@@ -366,7 +452,10 @@
         <h2 style="margin:0; font-weight:700; letter-spacing:-0.02em; font-size:clamp(26px,3.6vw,36px); color:#fff;">Talk to your money.</h2>
         <p style="margin:8px 0 0; font-size:15px; color:rgba(255,255,255,.85);">Connect your wallet and say hi — Xiaolee never touches your keys.</p>
       </div>
+      <!-- Download temporariamente trocado pela waitlist — reativar descomentando:
       <a href="https://expo.dev/artifacts/eas/MrgaWr5FXRrA7NJbmNJJdXm7KA8-2TYSh51uGf7nPqs.apk" target="_blank" rel="noopener noreferrer" class="xl-btn" style="display:inline-flex; align-items:center; gap:6px; white-space:nowrap; border-radius:999px; padding:15px 28px; font-size:16px; font-weight:700; color:#d81b78; text-decoration:none; background:#fff;">Download app <span class="xl-btn__dl" style="width:14px; height:14px; display:inline-block; background-color:currentColor; -webkit-mask:url('assets/download-icon.png') center/contain no-repeat; mask:url('assets/download-icon.png') center/contain no-repeat;"></span></a>
+      -->
+      <button type="button" data-waitlist-open class="xl-btn" style="display:inline-flex; align-items:center; gap:6px; white-space:nowrap; border:0; cursor:pointer; font-family:inherit; border-radius:999px; padding:15px 28px; font-size:16px; font-weight:700; color:#d81b78; background:#fff;">Join waitlist <span class="xl-btn__arr" aria-hidden="true">→</span></button>
     </div>
   </section>
 
@@ -381,6 +470,366 @@
   </footer>
 
 </div>
+
+<!-- WAITLIST MODAL -->
+<dialog class="xl-wl" id="xl-waitlist" aria-labelledby="xl-wl-title">
+  <div class="xl-wl__head">
+    <img src="assets/xiaolee-icon-512.png" alt="" />
+    <div>
+      <h2 class="xl-wl__title" id="xl-wl-title">Join the waitlist</h2>
+      <p class="xl-wl__sub" id="xl-wl-sub">Be the first to turn your socials into revenue.</p>
+    </div>
+    <button type="button" class="xl-wl__close" data-waitlist-close aria-label="Close">×</button>
+  </div>
+
+  <form class="xl-wl__body" id="xl-wl-form" novalidate>
+    <!-- Etapa 1: o mínimo. Ao enviar, a pessoa já está na lista. -->
+    <div data-step="1">
+      <div class="xl-wl__grid" style="margin-bottom:14px;">
+        <label class="xl-wl__field"><span class="xl-wl__label">Name</span>
+          <input type="text" name="name" required maxlength="120" autocomplete="name" placeholder="Your name" /></label>
+        <label class="xl-wl__field"><span class="xl-wl__label">Email</span>
+          <input type="email" name="email" required maxlength="254" autocomplete="email"
+            placeholder="you@email.com" /></label>
+      </div>
+
+      <fieldset class="xl-wl__sec">
+        <legend>I am a…</legend>
+        <div class="xl-wl__chips">
+          <label class="xl-wl__chip"><input type="radio" name="role" value="creator" required /><span>Content
+              creator</span></label>
+          <label class="xl-wl__chip"><input type="radio" name="role" value="brand" /><span>Brand /
+              company</span></label>
+          <label class="xl-wl__chip"><input type="radio" name="role" value="agency" /><span>Agency</span></label>
+          <label class="xl-wl__chip"><input type="radio" name="role" value="other" /><span>Other</span></label>
+        </div>
+      </fieldset>
+
+      <p class="xl-wl__err" role="alert" hidden></p>
+      <button type="submit" class="xl-btn xl-wl__submit">Join waitlist <span class="xl-btn__arr"
+          aria-hidden="true">→</span></button>
+      <p class="xl-wl__fine">By joining you agree to our <a href="terms.html">Terms</a> and <a
+          href="privacy.html">Privacy Policy</a>. No spam, ever.</p>
+    </div>
+
+    <!-- Etapa 2: opcional, com barra de progresso. Salvar atualiza a mesma linha (pelo e-mail). -->
+    <div data-step="2" hidden>
+      <div class="xl-wl__boost">
+        <h3>You're on the list! Now boost your spot</h3>
+        <p>Tell us a bit more about you. Complete profiles help us invite you sooner and match you with the
+          right campaigns.</p>
+        <div class="xl-wl__meter" aria-live="polite">
+          <span>Profile</span>
+          <div class="xl-wl__meter-bar"><div class="xl-wl__meter-fill" id="xl-wl-meter"></div></div>
+          <span id="xl-wl-meter-text">30%</span>
+        </div>
+      </div>
+
+      <label class="xl-wl__field"><span class="xl-wl__label">Main social network</span>
+        <select name="main_platform">
+          <option value="">Select…</option>
+          <option value="x">X (Twitter)</option>
+          <option value="instagram">Instagram</option>
+          <option value="tiktok">TikTok</option>
+          <option value="youtube">YouTube</option>
+          <option value="telegram">Telegram</option>
+          <option value="other">Other</option>
+        </select></label>
+
+      <fieldset class="xl-wl__sec">
+        <legend>Your social profiles <small>— add at least one</small></legend>
+        <div class="xl-wl__grid">
+          <label class="xl-wl__handle" data-platform="x"><span>X</span><input type="text" name="h_x" maxlength="100"
+              placeholder="@handle" aria-label="X handle" /></label>
+          <label class="xl-wl__handle" data-platform="instagram"><span>Instagram</span><input type="text"
+              name="h_instagram" maxlength="100" placeholder="@handle" aria-label="Instagram handle" /></label>
+          <label class="xl-wl__handle" data-platform="tiktok"><span>TikTok</span><input type="text" name="h_tiktok"
+              maxlength="100" placeholder="@handle" aria-label="TikTok handle" /></label>
+          <label class="xl-wl__handle" data-platform="telegram"><span>Telegram</span><input type="text"
+              name="h_telegram" maxlength="100" placeholder="@handle" aria-label="Telegram handle" /></label>
+          <label class="xl-wl__handle" data-platform="youtube"><span>YouTube</span><input type="text"
+              name="h_youtube" maxlength="100" placeholder="@channel" aria-label="YouTube channel" /></label>
+        </div>
+      </fieldset>
+
+      <fieldset class="xl-wl__sec">
+        <legend>Audience size <small>— all networks combined</small></legend>
+        <div class="xl-wl__chips">
+          <label class="xl-wl__chip"><input type="radio" name="audience_size" value="<1k" /><span>&lt; 1K</span></label>
+          <label class="xl-wl__chip"><input type="radio" name="audience_size"
+              value="1k-10k" /><span>1K–10K</span></label>
+          <label class="xl-wl__chip"><input type="radio" name="audience_size"
+              value="10k-100k" /><span>10K–100K</span></label>
+          <label class="xl-wl__chip"><input type="radio" name="audience_size"
+              value="100k-1m" /><span>100K–1M</span></label>
+          <label class="xl-wl__chip"><input type="radio" name="audience_size" value="1m+" /><span>1M+</span></label>
+        </div>
+      </fieldset>
+
+      <fieldset class="xl-wl__sec">
+        <legend>Do you have a company?</legend>
+        <div class="xl-wl__chips">
+          <label class="xl-wl__chip"><input type="radio" name="has_company" value="yes" /><span>Yes</span></label>
+          <label class="xl-wl__chip"><input type="radio" name="has_company" value="no" /><span>No</span></label>
+        </div>
+      </fieldset>
+      <label class="xl-wl__field" id="xl-wl-company" hidden><span class="xl-wl__label">Company name</span>
+        <input type="text" name="company_name" maxlength="120" autocomplete="organization"
+          placeholder="Your company" /></label>
+
+      <label class="xl-wl__field"><span class="xl-wl__label">Who is your target audience?</span>
+        <textarea name="target_audience" maxlength="1000"
+          placeholder="e.g. Gen Z gamers in Brazil, crypto-curious beginners, small business owners…"></textarea></label>
+
+      <div class="xl-wl__grid" style="margin-bottom:18px;">
+        <label class="xl-wl__field"><span class="xl-wl__label">Country</span>
+          <select name="country">
+            <option value="">Select…</option>
+            <option>Brazil</option>
+            <option>Portugal</option>
+            <option>United States</option>
+            <option>Mexico</option>
+            <option>Argentina</option>
+            <option>Colombia</option>
+            <option>Chile</option>
+            <option>Spain</option>
+            <option>United Kingdom</option>
+            <option>Canada</option>
+            <option>Other</option>
+          </select></label>
+        <label class="xl-wl__field"><span class="xl-wl__label">How did you hear about us?</span>
+          <select name="referral_source">
+            <option value="">Select…</option>
+            <option>X (Twitter)</option>
+            <option>Instagram</option>
+            <option>TikTok</option>
+            <option>Telegram</option>
+            <option>Friend / referral</option>
+            <option>Event / hackathon</option>
+            <option>Other</option>
+          </select></label>
+      </div>
+
+      <div class="xl-wl__nudge" id="xl-wl-nudge" role="alert" hidden>
+        <strong>Add at least one social profile?</strong>
+        It's how we find your content and match you with the right brands.
+        <div class="xl-wl__nudge-actions">
+          <button type="button" class="xl-wl__nudge-add" data-nudge="add">Add a profile</button>
+          <button type="button" class="xl-wl__nudge-skip" data-nudge="skip">Save without it</button>
+        </div>
+      </div>
+
+      <p class="xl-wl__err" role="alert" hidden></p>
+      <button type="submit" class="xl-btn xl-wl__submit">Save my profile <span class="xl-btn__arr"
+          aria-hidden="true">→</span></button>
+      <button type="button" class="xl-wl__skip" id="xl-wl-skip">Skip for now</button>
+    </div>
+
+    <div class="xl-wl__hp" aria-hidden="true"><label>Website <input type="text" name="website" tabindex="-1"
+          autocomplete="off" /></label></div>
+  </form>
+
+  <div class="xl-wl__done" id="xl-wl-done" hidden>
+    <img src="assets/xiaolee-icon-512.png" alt="" />
+    <h3 id="xl-wl-done-title">You're on the list!</h3>
+    <p id="xl-wl-done-text">Thanks for joining. We'll reach out by email as soon as your spot opens up.</p>
+    <button type="button" class="xl-btn xl-wl__submit" data-waitlist-close style="width:auto;">Done</button>
+  </div>
+</dialog>
+
+<script>
+  (function () {
+    // URL do web app do Google Apps Script que grava na planilha (landing/apps-script/waitlist.gs).
+    // Trocar pela URL gerada em "Implantar" — passo a passo em docs/workflows/WAITLIST_SHEETS.md.
+    var WAITLIST_URL = 'https://script.google.com/macros/s/AKfycbzcA4YF2AJRy82PbvPmkrknLT8T2mkTh9vD9JSbY2RU6tITXmMikTlve_sfqP_hsmmg/exec';
+    var MESSAGES = {
+      rate_limited: 'Lots of sign-ups right now — please try again in a minute.',
+      busy: 'Lots of sign-ups right now — please try again in a minute.',
+      closed: 'The waitlist is closed for now. Please check back soon.',
+      invalid: 'Please check your info and try again.'
+    };
+
+    var dlg = document.getElementById('xl-waitlist');
+    var form = document.getElementById('xl-wl-form');
+    var done = document.getElementById('xl-wl-done');
+    var company = document.getElementById('xl-wl-company');
+    var sub = document.getElementById('xl-wl-sub');
+    var nudge = document.getElementById('xl-wl-nudge');
+    var meter = document.getElementById('xl-wl-meter');
+    var meterText = document.getElementById('xl-wl-meter-text');
+    var steps = form.querySelectorAll('[data-step]');
+    var f = form.elements;
+    var val = function (n) { return (f[n].value || '').trim(); };
+    var HANDLES = ['x', 'instagram', 'tiktok', 'telegram', 'youtube'];
+    var SUBTITLES = {
+      1: 'Be the first to turn your socials into revenue.',
+      2: 'Almost done — this part is optional.'
+    };
+
+    var step = 1;
+    var nudged = false; // o lembrete de rede social aparece só uma vez
+    var openedAt = 0; // tempo de preenchimento vai junto: bot que envia em milissegundos é descartado
+
+    var setStep = function (n) {
+      step = n;
+      steps.forEach(function (el) { el.hidden = el.getAttribute('data-step') !== String(n); });
+      sub.textContent = SUBTITLES[n];
+      form.scrollTop = 0;
+      updateMeter();
+    };
+
+    var open = function () {
+      if (!openedAt) openedAt = Date.now();
+      form.hidden = false; done.hidden = true; clearError();
+      dlg.showModal();
+      document.body.style.overflow = 'hidden';
+    };
+    var close = function () { dlg.close(); };
+    dlg.addEventListener('close', function () { document.body.style.overflow = ''; });
+    // clique no backdrop fecha (o alvo é o próprio <dialog>, fora do conteúdo). Exige que o
+    // toque também tenha COMEÇADO no backdrop: arrastar uma seleção de texto de um campo até
+    // fora do modal dispara click no <dialog> e fecharia o formulário preenchido.
+    var downOnBackdrop = false;
+    dlg.addEventListener('pointerdown', function (e) { downOnBackdrop = e.target === dlg; });
+    dlg.addEventListener('click', function (e) { if (e.target === dlg && downOnBackdrop) close(); downOnBackdrop = false; });
+    document.querySelectorAll('[data-waitlist-open]').forEach(function (b) { b.addEventListener('click', open); });
+    dlg.querySelectorAll('[data-waitlist-close]').forEach(function (b) { b.addEventListener('click', close); });
+
+    // ── Etapa 2: progresso, rede principal em destaque, lembrete de rede social
+    var hasHandle = function () { return HANDLES.some(function (h) { return val('h_' + h); }); };
+    var extrasFilled = function () {
+      return [
+        val('main_platform'), hasHandle(), val('audience_size'), val('has_company'),
+        val('target_audience'), val('country'), val('referral_source')
+      ].filter(Boolean).length;
+    };
+    function updateMeter() {
+      var pct = Math.round(((3 + extrasFilled()) / 10) * 100); // nome, e-mail e perfil já contam
+      meter.style.width = pct + '%';
+      meterText.textContent = pct + '%';
+    }
+    var highlightMain = function () {
+      var main = val('main_platform');
+      form.querySelectorAll('.xl-wl__handle').forEach(function (el) {
+        el.classList.toggle('xl-wl__handle--main', el.getAttribute('data-platform') === main);
+      });
+    };
+    var focusHandle = function () {
+      var main = val('main_platform');
+      var input = f['h_' + (HANDLES.indexOf(main) >= 0 ? main : 'x')];
+      input.focus();
+      input.scrollIntoView({ block: 'center' });
+    };
+
+    form.addEventListener('change', function (e) {
+      if (e.target.name === 'has_company') company.hidden = e.target.value !== 'yes';
+      if (e.target.name === 'main_platform') highlightMain();
+      updateMeter();
+    });
+    form.addEventListener('input', function (e) {
+      updateMeter();
+      if (/^h_/.test(e.target.name) && hasHandle()) nudge.hidden = true;
+    });
+    nudge.addEventListener('click', function (e) {
+      var action = e.target.getAttribute('data-nudge');
+      if (!action) return;
+      nudge.hidden = true;
+      if (action === 'add') focusHandle();
+      else form.requestSubmit();
+    });
+
+    // ── Erros (cada etapa tem o seu)
+    var visibleError = function () { return form.querySelector('[data-step]:not([hidden]) .xl-wl__err'); };
+    function clearError() { form.querySelectorAll('.xl-wl__err').forEach(function (el) { el.hidden = true; }); }
+    var showError = function (msg) {
+      var el = visibleError();
+      el.textContent = msg; el.hidden = false; el.scrollIntoView({ block: 'nearest' });
+    };
+
+    var showDone = function (complete) {
+      document.getElementById('xl-wl-done-title').textContent = complete ? "You're all set!" : "You're on the list!";
+      document.getElementById('xl-wl-done-text').textContent = complete
+        ? "Thanks — your profile is saved. We'll reach out by email as soon as your spot opens up."
+        : "We'll reach out by email as soon as your spot opens up. Want to add your socials later? Just fill in the form again with the same email.";
+      form.reset(); company.hidden = true; nudge.hidden = true;
+      openedAt = 0; nudged = false;
+      highlightMain(); setStep(1);
+      form.hidden = true; done.hidden = false;
+    };
+
+    var payload = function () {
+      var company_ = val('has_company');
+      return {
+        name: val('name'),
+        email: val('email'),
+        role: val('role'),
+        main_platform: val('main_platform') || null,
+        handles: { x: val('h_x'), instagram: val('h_instagram'), tiktok: val('h_tiktok'), telegram: val('h_telegram'), youtube: val('h_youtube') },
+        audience_size: val('audience_size') || null,
+        // sem resposta = campo omitido (JSON.stringify descarta undefined): qualquer versão do
+        // Apps Script aceita; null era recusado pelo script anterior.
+        has_company: company_ ? company_ === 'yes' : undefined,
+        company_name: company_ === 'yes' ? val('company_name') || null : null,
+        target_audience: val('target_audience') || null,
+        country: val('country') || null,
+        referral_source: val('referral_source') || null,
+        website: val('website') || null,
+        t: Date.now() - openedAt
+      };
+    };
+
+    var busy = false;
+    var send = function (onOk) {
+      if (!/^https:\/\/script\.google\.com\/macros\/s\//.test(WAITLIST_URL)) return showError('The waitlist is not available yet. Please try again later.');
+      busy = true;
+      form.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
+      // Sem header Content-Type (vai como text/plain): requisição "simples", sem preflight CORS —
+      // o Apps Script não responde OPTIONS.
+      fetch(WAITLIST_URL, { method: 'POST', body: JSON.stringify(payload()) })
+        .then(function (r) {
+          if (!r.ok) throw {};
+          return r.json();
+        }).then(function (res) {
+          if (!res || res.status !== 'ok') throw { ui: MESSAGES[res && res.status] || 'Something went wrong. Please try again.' };
+          onOk();
+        }).catch(function (ex) {
+          showError((ex && ex.ui) || 'Could not reach our server. Please try again.');
+        }).then(function () {
+          busy = false;
+          form.querySelectorAll('button').forEach(function (b) { b.disabled = false; });
+        });
+    };
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      if (busy) return;
+      clearError();
+
+      if (step === 1) {
+        if (!val('name')) return showError('Please tell us your name.');
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(val('email'))) return showError('Please enter a valid email.');
+        if (!val('role')) return showError('Please tell us who you are.');
+        return send(function () { setStep(2); });
+      }
+
+      if (!hasHandle() && !nudged) {
+        nudged = true;
+        nudge.hidden = false;
+        nudge.scrollIntoView({ block: 'nearest' });
+        return;
+      }
+      send(function () { showDone(true); });
+    });
+
+    // "Skip for now": a pessoa já está na lista. Se preencheu algo na etapa 2, salva antes.
+    document.getElementById('xl-wl-skip').addEventListener('click', function () {
+      if (busy) return;
+      clearError();
+      if (extrasFilled() > 0) send(function () { showDone(false); });
+      else showDone(false);
+    });
+  })();
+</script>
 
 <script>
 (function () {
