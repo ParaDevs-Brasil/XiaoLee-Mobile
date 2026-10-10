@@ -4,6 +4,16 @@ media_storage.py — Cloudflare R2 (API S3) para a mídia bruta do Clipper.
 O upload NÃO passa pelo backend: o app recebe uma URL pré-assinada e envia o
 arquivo direto ao bucket (um vídeo de 1h tem GBs; o Railway não deve fazer proxy).
 boto3 é síncrono, então as chamadas de rede vão por `asyncio.to_thread`.
+
+Papel: armazenamento de TRABALHO, não destino final. O vídeo longo fica aqui
+enquanto é transcrito, e os cortes enquanto o app os toca/baixa. Para onde o
+creator guarda ou posta o corte (aparelho, TikTok, Drive…) é decidido em
+`mobile/src/lib/clip-share.ts`.
+
+Trocar de provedor: é API S3, então qualquer S3-compatível (AWS S3, MinIO local
+para testes, Backblaze…) funciona só com `R2_ENDPOINT_URL` + chaves + bucket,
+sem mudar código. Pendência: regra de expiração no bucket (ex.: apagar `media/`
+depois de N dias) — hoje nada é apagado, exceto cortes substituídos.
 """
 
 from __future__ import annotations

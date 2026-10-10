@@ -23,7 +23,7 @@ from types import SimpleNamespace
 import pytest
 import pytest_asyncio
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 os.environ.setdefault("JWT_SECRET", "route-test-jwt-secret-32-chars-ok")
 os.environ.setdefault("ENCRYPTION_KEY", "route-test-encryption-key-xxxxxx")
@@ -158,7 +158,11 @@ async def test_full_flow_transcribes(db, monkeypatch):
     assert d["transcript"]["segments"][0]["text"] == "ola mundo"
     assert d["transcript"]["text"] == "ola mundo" and d["transcript"]["language"] == "portuguese"
     assert d["transcript"]["model"] == media_routes.settings.transcription_model
+    assert datetime.fromisoformat(d["updated_at"]).tzinfo is not None  # com fuso: o app compara com o relógio dele
     assert [m["id"] for m in client.get("/v1/media", headers=h).json()] == [aid]
+    # o app consulta só o status enquanto transcreve
+    light = client.get(f"/v1/media/{aid}?include_transcript=false", headers=h).json()
+    assert light["status"] == "transcribed" and light["transcript"] is None and light["updated_at"]
 
 
 @pytest.mark.asyncio
@@ -339,7 +343,9 @@ async def test_clips_end_to_end_renders_three_real_vertical_clips(clips_env):
     assert [c["status"] for c in clips] == ["ready"] * 3, clips
     assert all(c["download_url"].startswith("https://r2.test/get/clips/") and c["size_bytes"] > 10_000 for c in clips)
     uid = (await e.db.get(MediaAsset, e.aid)).user_id
-    assert len(e.uploaded) == 3 and all(k.startswith(f"clips/{uid}/{e.aid}/") for k in e.uploaded)
+    assert all(k.startswith(f"clips/{uid}/{e.aid}/") for k in e.uploaded)
+    assert sorted(k.rsplit(".", 1)[1] for k in e.uploaded) == ["jpg"] * 3 + ["mp4"] * 3  # cada corte sobe com a miniatura
+    assert all(c["thumbnail_url"].startswith("https://r2.test/get/clips/") for c in clips)
 
 
 @pytest.mark.asyncio
@@ -416,6 +422,36 @@ async def test_regenerate_guard_replaces_and_cleans_old_objects(clips_env, monke
 
 
 @pytest.mark.asyncio
+async def test_media_counts_clips_so_rendering_is_not_shown_as_ready(clips_env, monkeypatch):
+    """`transcribed` só diz que a transcrição acabou: a lista precisa das contagens de cortes."""
+    e = clips_env
+
+    async def _render(source, ass, start, end, dest, layout="crop"):
+        open(dest, "wb").write(b"mp4")
+
+    monkeypatch.setattr(clipper, "render_clip", _render)
+
+    def listed():
+        return next(m for m in client.get("/v1/media", headers=e.h).json() if m["id"] == e.aid)
+
+    before = listed()
+    assert before["status"] == "transcribed"
+    assert (before["clips_total"], before["clips_ready"], before["clips_in_progress"]) == (0, 0, 0)
+
+    client.post(f"/v1/media/{e.aid}/clips", headers=e.h)  # background renderiza os 3 ao fim da request
+    done = listed()
+    assert (done["clips_total"], done["clips_ready"], done["clips_in_progress"]) == (3, 3, 0)
+
+    clip = (await e.db.execute(select(MediaClip))).scalars().first()
+    clip.status = "rendering"
+    await e.db.commit()
+    busy = listed()
+    assert (busy["clips_total"], busy["clips_ready"], busy["clips_in_progress"]) == (3, 2, 1)
+    detail = client.get(f"/v1/media/{e.aid}?include_transcript=false", headers=e.h).json()
+    assert (detail["clips_total"], detail["clips_ready"], detail["clips_in_progress"]) == (3, 2, 1)
+
+
+@pytest.mark.asyncio
 async def test_inflight_render_blocks_but_stale_one_does_not(clips_env, monkeypatch):
     e = clips_env
 
@@ -430,6 +466,11 @@ async def test_inflight_render_blocks_but_stale_one_does_not(clips_env, monkeypa
     assert client.post(f"/v1/media/{e.aid}/clips?regenerate=true", headers=e.h).status_code == 409
     clip.updated_at = datetime.utcnow() - timedelta(hours=1)  # processo morreu no meio
     await e.db.commit()
+    # o app vê a idade do corte preso e oferece "gerar de novo"
+    listed = {c["id"]: c for c in client.get(f"/v1/media/{e.aid}/clips", headers=e.h).json()}
+    assert listed[clip.id]["status"] == "rendering"
+    age = datetime.utcnow() - datetime.fromisoformat(listed[clip.id]["updated_at"]).replace(tzinfo=None)
+    assert age > media_routes.STALE_TRANSCRIBING
     assert client.post(f"/v1/media/{e.aid}/clips?regenerate=true", headers=e.h).status_code == 200
 
 
@@ -622,3 +663,167 @@ async def test_owner_glossary_reaches_the_transcription(db, monkeypatch):
     monkeypatch.setattr(media_routes, "_transcribe", _tr)
     client.post(f"/v1/media/{aid}/complete", headers=h)
     assert got == [["Vetto", "Arc"]]
+
+
+# ── Título editável e miniaturas ─────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_rename_clip_changes_only_the_title_and_is_owner_only(clips_env, db):
+    e = clips_env
+    client.post(f"/v1/media/{e.aid}/clips", headers=e.h)
+    clip = client.get(f"/v1/media/{e.aid}/clips", headers=e.h).json()[0]
+
+    r = client.patch(f"/v1/media/{e.aid}/clips/{clip['id']}", json={"title": "  Meu   novo\ttítulo "}, headers=e.h)
+    assert r.status_code == 200, r.text
+    assert r.json()["title"] == "Meu novo título"  # espaço normalizado
+    assert r.json()["status"] == "ready" and r.json()["download_url"] == clip["download_url"]  # nada re-renderizado
+    assert client.get(f"/v1/media/{e.aid}/clips", headers=e.h).json()[0]["title"] == "Meu novo título"
+
+    for bad in ("", "   ", "x" * 121):
+        assert client.patch(f"/v1/media/{e.aid}/clips/{clip['id']}", json={"title": bad}, headers=e.h).status_code == 422
+    assert client.patch(f"/v1/media/{e.aid}/clips/999999", json={"title": "x"}, headers=e.h).status_code == 404
+
+    other = await _login(db, "intruso")
+    assert client.patch(f"/v1/media/{e.aid}/clips/{clip['id']}", json={"title": "roubado"}, headers=other).status_code == 404
+    assert client.get(f"/v1/media/{e.aid}/clips", headers=e.h).json()[0]["title"] == "Meu novo título"
+
+
+@pytest.mark.asyncio
+async def test_rename_media_keeps_filename_and_empty_falls_back(db):
+    h = await _login(db, "dono")
+    asset = client.post("/v1/media", json=BODY, headers=h).json()["asset"]
+    assert asset["title"] == asset["filename"] == "podcast_ep1.mp4"  # sem nome escolhido, vale o do arquivo
+
+    r = client.patch(f"/v1/media/{asset['id']}", json={"title": "Episódio 1 — Wesley"}, headers=h)
+    assert r.status_code == 200 and r.json()["title"] == "Episódio 1 — Wesley" and r.json()["filename"] == "podcast_ep1.mp4"
+    assert client.get("/v1/media", headers=h).json()[0]["title"] == "Episódio 1 — Wesley"
+    assert client.patch(f"/v1/media/{asset['id']}", json={"title": " "}, headers=h).status_code == 422
+
+    other = await _login(db, "intruso2")
+    assert client.patch(f"/v1/media/{asset['id']}", json={"title": "x"}, headers=other).status_code == 404
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg ausente")
+@pytest.mark.asyncio
+async def test_backfill_makes_real_thumbnails_for_old_media_and_clips(clips_env):
+    e = clips_env
+    client.post(f"/v1/media/{e.aid}/clips", headers=e.h)  # renderiza 3 cortes já com miniatura
+    assert client.get("/v1/media", headers=e.h).json()[0]["thumbnail_url"] is None  # o vídeo é "antigo": sem miniatura
+
+    media_routes._THUMB_TRIED.clear()
+    await media_routes.backfill_thumbnails(media_ids=[e.aid])
+    await e.db.refresh(await e.db.get(MediaAsset, e.aid))
+    listed = client.get("/v1/media", headers=e.h).json()[0]
+    uid = (await e.db.get(MediaAsset, e.aid)).user_id
+    assert listed["thumbnail_url"].startswith(f"https://r2.test/get/thumbs/{uid}/{e.aid}/")
+    jpgs = [k for k in e.uploaded if k.startswith("thumbs/")]
+    assert len(jpgs) == 1 and 2_000 < e.uploaded[jpgs[0]] < 200_000  # um JPEG de verdade, não um arquivo vazio
+
+    # uma segunda chamada no mesmo processo não refaz (vídeo que falha não reprocessa a cada abertura da lista)
+    await media_routes.backfill_thumbnails(media_ids=[e.aid])
+    assert len([k for k in e.uploaded if k.startswith("thumbs/")]) == 1
+
+
+@pytest.mark.asyncio
+async def test_thumbnail_failure_never_blocks_the_clip(clips_env, monkeypatch):
+    e = clips_env
+
+    async def boom(*a, **k):
+        raise RuntimeError("ffmpeg exploded")
+
+    monkeypatch.setattr(clipper, "extract_thumbnail", boom)
+    client.post(f"/v1/media/{e.aid}/clips", headers=e.h)
+    clips = client.get(f"/v1/media/{e.aid}/clips", headers=e.h).json()
+    assert [c["status"] for c in clips] == ["ready"] * 3 and all(c["thumbnail_url"] is None for c in clips)
+
+
+@pytest.mark.asyncio
+async def test_regenerate_also_deletes_the_old_thumbnails(clips_env):
+    e = clips_env
+    client.post(f"/v1/media/{e.aid}/clips", headers=e.h)
+    first_keys = set(e.uploaded)
+    r = client.post(f"/v1/media/{e.aid}/clips?regenerate=true", headers=e.h)
+    assert r.status_code == 200, r.text
+    assert set(e.deleted) == first_keys  # os 3 mp4 e os 3 jpg antigos
+
+
+# ── Apagar ───────────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_delete_media_removes_rows_and_every_bucket_object(clips_env):
+    e = clips_env
+    client.post(f"/v1/media/{e.aid}/clips", headers=e.h)  # 3 cortes renderizados (mp4 + jpg cada)
+    source_key = (await e.db.get(MediaAsset, e.aid)).r2_key
+    uploaded = set(e.uploaded)
+    assert len(uploaded) == 6
+
+    r = client.delete(f"/v1/media/{e.aid}", headers=e.h)
+    assert r.status_code == 204 and r.content == b""
+    assert client.get(f"/v1/media/{e.aid}", headers=e.h).status_code == 404
+    assert client.get(f"/v1/media/{e.aid}/clips", headers=e.h).status_code == 404
+    assert client.get("/v1/media", headers=e.h).json() == []
+    assert (await e.db.execute(select(MediaClip))).scalars().all() == []
+    assert (await e.db.execute(select(MediaTranscript))).scalars().all() == []
+    assert set(e.deleted) == uploaded | {source_key}  # arquivo original, 3 mp4 e 3 miniaturas
+
+
+@pytest.mark.asyncio
+async def test_delete_is_owner_only_and_unknown_is_404(clips_env, db):
+    e = clips_env
+    other = await _login(db, "intruso-apagar")
+    assert client.delete(f"/v1/media/{e.aid}", headers=other).status_code == 404
+    assert client.delete("/v1/media/999999", headers=e.h).status_code == 404
+    assert client.get(f"/v1/media/{e.aid}", headers=e.h).status_code == 200  # segue lá
+    assert e.deleted == []
+    assert client.delete(f"/v1/media/{e.aid}").status_code in (401, 403)
+
+
+@pytest.mark.asyncio
+async def test_delete_clip_renumbers_the_rest_and_removes_its_objects(clips_env):
+    e = clips_env
+    client.post(f"/v1/media/{e.aid}/clips", headers=e.h)
+    clips = client.get(f"/v1/media/{e.aid}/clips", headers=e.h).json()
+    first = (await e.db.get(MediaClip, clips[0]["id"]))
+    gone = {first.r2_key, first.thumb_key}
+
+    r = client.delete(f"/v1/media/{e.aid}/clips/{clips[0]['id']}", headers=e.h)
+    assert r.status_code == 200, r.text
+    left = r.json()
+    assert [c["id"] for c in left] == [clips[1]["id"], clips[2]["id"]]
+    assert [c["rank"] for c in left] == [1, 2]  # sem "#1 e #3"
+    assert set(e.deleted) == gone and None not in gone
+    assert [c["rank"] for c in client.get(f"/v1/media/{e.aid}/clips", headers=e.h).json()] == [1, 2]
+
+    for c in left:  # apagar os que sobraram deixa a lista vazia (o app volta à escolha de layout)
+        r = client.delete(f"/v1/media/{e.aid}/clips/{c['id']}", headers=e.h)
+    assert r.status_code == 200 and r.json() == []
+    assert client.delete(f"/v1/media/{e.aid}/clips/{clips[0]['id']}", headers=e.h).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_clip_is_owner_only(clips_env, db):
+    e = clips_env
+    client.post(f"/v1/media/{e.aid}/clips", headers=e.h)
+    cid = client.get(f"/v1/media/{e.aid}/clips", headers=e.h).json()[0]["id"]
+    other = await _login(db, "intruso-corte")
+    assert client.delete(f"/v1/media/{e.aid}/clips/{cid}", headers=other).status_code == 404
+    assert len(client.get(f"/v1/media/{e.aid}/clips", headers=e.h).json()) == 3
+
+
+@pytest.mark.asyncio
+async def test_clip_deleted_while_rendering_does_not_crash_or_leak_objects(clips_env, monkeypatch):
+    """O creator apaga o corte no meio do render: a tarefa de fundo não pode estourar, e o mp4 que ela já
+    subiu ao bucket tem que ser apagado (senão fica lixo sem dono)."""
+    e = clips_env
+
+    async def render_then_vanish(source, ass_path, start, end, dest, layout="crop"):
+        with open(dest, "wb") as f:
+            f.write(b"\x00" * 4096)
+        await e.db.execute(delete(MediaClip).where(MediaClip.media_id == e.aid))  # apagado por outro pedido
+
+    monkeypatch.setattr(clipper, "render_clip", render_then_vanish)
+    r = client.post(f"/v1/media/{e.aid}/clips", headers=e.h)
+    assert r.status_code == 200
+    assert client.get(f"/v1/media/{e.aid}/clips", headers=e.h).json() == []
+    mp4s = [k for k in e.uploaded if k.endswith(".mp4")]
+    assert mp4s and set(mp4s) <= set(e.deleted)  # o que subiu foi limpo

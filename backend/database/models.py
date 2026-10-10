@@ -312,6 +312,10 @@ class MediaAsset(Base):
     status: Mapped[str] = mapped_column(String(20), default='pending', index=True)
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     duration_s: Mapped[Optional[float]] = mapped_column(nullable=True)
+    # Nome que o creator dá ao vídeo; `None` = vale o `filename`.
+    title: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    # JPEG de um quadro do vídeo (R2), para a lista. `None` = ainda não gerado (ou áudio).
+    thumb_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 class MediaTranscript(Base):
@@ -343,3 +347,5 @@ class MediaClip(Base):
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     r2_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     size_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    # JPEG de um quadro do corte já renderizado (com a legenda queimada).
+    thumb_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
