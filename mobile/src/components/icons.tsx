@@ -178,6 +178,23 @@ export const IconUpload = (p: IconProps) => (
   </Svg>
 );
 
+export const IconPlay = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Polygon points="6 4 20 12 6 20 6 4" />
+  </Svg>
+);
+
+/** Corte — a entrada do Clipper. */
+export const IconScissors = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Circle cx="6" cy="6" r="3" />
+    <Circle cx="6" cy="18" r="3" />
+    <Line x1="20" y1="4" x2="8.12" y2="15.88" />
+    <Line x1="14.47" y1="14.48" x2="20" y2="20" />
+    <Line x1="8.12" y1="8.12" x2="12" y2="12" />
+  </Svg>
+);
+
 /** Duas silhuetas — `IconUser` é a de uma pessoa só. */
 export const IconUsers = (p: IconProps) => (
   <Svg {...base(p)}>
@@ -279,3 +296,21 @@ export const IconLogOut = (p: IconProps) => (
   </Svg>
 );
 
+
+/** Três pontos na horizontal — o "mais opções" de um item. Preenchido: é traço de ponto, não de linha. */
+export const IconMore = ({ size = 24, color = 'currentColor' }: IconProps) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+    <Circle cx="5" cy="12" r="1.9" />
+    <Circle cx="12" cy="12" r="1.9" />
+    <Circle cx="19" cy="12" r="1.9" />
+  </Svg>
+);
+
+export const IconTrash = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Polyline points="3 6 5 6 21 6" />
+    <Path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+    <Path d="M10 11v6M14 11v6" />
+    <Path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+  </Svg>
+);

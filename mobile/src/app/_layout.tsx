@@ -54,7 +54,7 @@ SplashScreen.preventAutoHideAsync();
  * - Enquanto carrega o SecureStore (`authState === 'loading'`), devolve `null`
  *   para evitar flash da tela de login para quem já possui sessão.
  *
- * Cuidado crítico: todas as 11 rotas do `src/app` precisam estar mapeadas
+ * Cuidado crítico: todas as 13 rotas do `src/app` precisam estar mapeadas
  * dentro de um dos blocos protegidos. No Expo Router, rotas não declaradas
  * são injetadas sem guarda e ficariam abertas.
  */
@@ -90,6 +90,8 @@ function RootNavigator() {
         <Stack.Screen name="wallet" options={{ headerShown: false }} />
         <Stack.Screen name="transactions" options={{ headerShown: false }} />
         <Stack.Screen name="history" options={{ headerShown: false }} />
+        <Stack.Screen name="clips/index" options={{ headerShown: false }} />
+        <Stack.Screen name="clips/[id]" options={{ headerShown: false }} />
         {/* O formulário é a exceção: entra como modal e mantém a barra
             nativa. Num formulário longo o usuário precisa de uma saída
             sempre visível, e o wordmark do ScreenShell não é uma. */}
