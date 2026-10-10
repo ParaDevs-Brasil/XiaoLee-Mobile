@@ -693,8 +693,18 @@ class OrchestrationService:
             if tool_name in ("search_marketplace", "buy_marketplace_service"):
                 if user_id == "web_anonymous":  # gasto exige usuário logado
                     return json.dumps({"error": "no_session", "message": "Peça para o usuário entrar antes de comprar serviços."})
+                # identidade do gasto = a mesma que a rota de confirmação resolve (sessão -> twitter_user_id);
+                # sem sessão válida (telegram/x, ou /chat que já resolveu) o próprio user_id vale.
+                mp_user = user_id
                 try:
-                    out = await marketplace_client.call(tool_name, tool_input)
+                    from database.database import SessionLocal as _SL
+                    from server.campaigns_routes import resolve_twitter_identity
+                    async with _SL() as _db:
+                        mp_user = (await resolve_twitter_identity(_db, f"Bearer {user_id}", strict=True))[0]
+                except Exception:
+                    pass
+                try:
+                    out = await marketplace_client.call(tool_name, tool_input, mp_user)
                 except Exception as exc:
                     logger.warning("[chat-tool] %s failed", tool_name, exc_info=True)
                     return json.dumps({"error": "marketplace_failed", "message": str(exc)[:200]})

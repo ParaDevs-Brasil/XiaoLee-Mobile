@@ -37,7 +37,7 @@ from server.schemas import InboundMessage, OrchestrationResponse, SwapPrepareReq
 from server.settings import settings
 from server.rate_limiter import get_rate_limiter, reset_rate_limiter
 from server.webhooks.helius_routes import router as helius_router
-from server.campaigns_routes import resolve_optional_identity, router as campaigns_router
+from server.campaigns_routes import resolve_optional_identity, resolve_twitter_identity, router as campaigns_router
 from server.notifications_routes import router as notifications_router
 from server.routes.stellar_auth_routes import router as stellar_auth_router
 from server.routes.stellar_routes import router as stellar_router
@@ -454,6 +454,31 @@ async def inbound_message(payload: InboundMessage, db: AsyncSession = Depends(ge
         db=db,
         metadata=payload.metadata,
     )
+
+@app.post("/marketplace/confirm")
+async def marketplace_confirm(
+    payload: dict,
+    authorization: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """O usuário aprova o gasto de uma cotação (`confirmation_required`).
+
+    Fica FORA do loop do modelo de propósito: a aprovação exige a sessão da pessoa (strict:
+    só token emitido pelo backend), então prompt injection vinda do marketplace não consegue
+    aprovar o próprio gasto.
+    """
+    from server.integrations import marketplace_client
+
+    if not marketplace_client.enabled():
+        raise HTTPException(status_code=503, detail="marketplace disabled")
+    confirm_id = str(payload.get("confirm_id", "")).strip()
+    if not confirm_id:
+        raise HTTPException(status_code=400, detail="confirm_id is required")
+    twitter_user_id, _ = await resolve_twitter_identity(db, authorization, strict=True)
+    out = await marketplace_client.confirm(confirm_id, twitter_user_id)
+    if out.get("status") != 200:
+        raise HTTPException(status_code=404, detail="confirmation not found or expired")
+    return {"confirmed": True, "price_usdc": out.get("price_usdc"), "pay_to": out.get("pay_to")}
 
 
 @app.post("/chat")
