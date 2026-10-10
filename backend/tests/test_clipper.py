@@ -74,7 +74,7 @@ def test_pick_highlights_uses_forced_tool_and_validates(monkeypatch):
             block = SimpleNamespace(type="tool_use", input={"highlights": [_h(0, 30, "Gancho"), _h(500, 900)]})
             return SimpleNamespace(content=[SimpleNamespace(type="text", text="oi"), block])
 
-    monkeypatch.setattr(clipper, "settings", replace(clipper.settings, anthropic_api_key="k"))
+    monkeypatch.setattr(clipper, "settings", replace(clipper.settings, highlights_provider="anthropic", anthropic_api_key="k"))
     import anthropic
 
     monkeypatch.setattr(anthropic, "AsyncAnthropic", lambda **kw: SimpleNamespace(messages=_Msgs()))
@@ -84,8 +84,49 @@ def test_pick_highlights_uses_forced_tool_and_validates(monkeypatch):
     assert "<transcript>" in seen["messages"][0]["content"]
 
 
+def test_groq_provider_forces_the_same_tool_and_validates(monkeypatch):
+    seen = {}
+
+    class _Completions:
+        async def create(self, **kw):
+            seen.update(kw)
+            args = json.dumps({"highlights": [_h(0, 30, "Gancho"), _h(500, 900)]})
+            call = SimpleNamespace(function=SimpleNamespace(name="report_highlights", arguments=args))
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(tool_calls=[call]))])
+
+    monkeypatch.setattr(clipper, "settings", replace(
+        clipper.settings, highlights_provider="groq", groq_api_key="g", anthropic_api_key=""))
+    import openai
+
+    monkeypatch.setattr(openai, "AsyncOpenAI", lambda **kw: SimpleNamespace(chat=SimpleNamespace(completions=_Completions())))
+    out = asyncio.run(clipper.pick_highlights(SEGS))
+    assert [(h.title, h.start, h.end) for h in out] == [("Gancho", 0.0, 30.0)]  # mesma validação do Claude
+    assert seen["tool_choice"] == {"type": "function", "function": {"name": "report_highlights"}}
+    assert seen["tools"][0]["function"]["parameters"] == clipper._HIGHLIGHT_TOOL["input_schema"]
+    assert "<transcript>" in seen["messages"][1]["content"]
+
+
+def test_groq_provider_malformed_arguments_yield_no_picks(monkeypatch):
+    class _Completions:
+        async def create(self, **kw):
+            call = SimpleNamespace(function=SimpleNamespace(name="report_highlights", arguments="{not json"))
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(tool_calls=[call]))])
+
+    monkeypatch.setattr(clipper, "settings", replace(clipper.settings, highlights_provider="groq", groq_api_key="g"))
+    import openai
+
+    monkeypatch.setattr(openai, "AsyncOpenAI", lambda **kw: SimpleNamespace(chat=SimpleNamespace(completions=_Completions())))
+    assert asyncio.run(clipper.pick_highlights(SEGS)) == []
+
+
+def test_groq_provider_without_key_fails_clearly(monkeypatch):
+    monkeypatch.setattr(clipper, "settings", replace(clipper.settings, highlights_provider="groq", groq_api_key=""))
+    with pytest.raises(RuntimeError, match="GROQ_API_KEY"):
+        asyncio.run(clipper.pick_highlights(SEGS))
+
+
 def test_pick_highlights_without_key_fails_clearly(monkeypatch):
-    monkeypatch.setattr(clipper, "settings", replace(clipper.settings, anthropic_api_key=""))
+    monkeypatch.setattr(clipper, "settings", replace(clipper.settings, highlights_provider="anthropic", anthropic_api_key=""))
     with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
         asyncio.run(clipper.pick_highlights(SEGS))
 

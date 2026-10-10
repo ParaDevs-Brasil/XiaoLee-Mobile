@@ -12,12 +12,13 @@ Nada aqui toca banco ou rota — media_routes orquestra.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
 import subprocess
 from dataclasses import dataclass
 
-from server.settings import settings
+from server.settings import GROQ_BASE_URL, settings
 
 log = logging.getLogger(__name__)
 
@@ -127,6 +128,11 @@ def validate_highlights(raw: list[dict], segments: list[dict], rejected: list | 
     return out
 
 
+def _user_prompt(segments: list[dict]) -> str:
+    return (f"Video length: {_fmt(segments[-1]['end'])}. Transcript, one line per segment "
+            f"as [start seconds] text:\n\n<transcript>\n{transcript_for_prompt(segments)}\n</transcript>")
+
+
 async def ask_claude(segments: list[dict]) -> list[dict]:
     """Propostas CRUAS do modelo (ainda não validadas)."""
     if not settings.anthropic_api_key:
@@ -140,20 +146,50 @@ async def ask_claude(segments: list[dict]) -> list[dict]:
         system=_SYSTEM,
         tools=[_HIGHLIGHT_TOOL],
         tool_choice={"type": "tool", "name": "report_highlights"},
-        messages=[{
-            "role": "user",
-            "content": f"Video length: {_fmt(segments[-1]['end'])}. Transcript, one line per segment "
-                       f"as [start seconds] text:\n\n<transcript>\n{transcript_for_prompt(segments)}\n</transcript>",
-        }],
+        messages=[{"role": "user", "content": _user_prompt(segments)}],
     )
     block = next((b for b in msg.content if b.type == "tool_use"), None)
     return (block.input.get("highlights") if block else None) or []
 
 
+async def ask_groq(segments: list[dict]) -> list[dict]:
+    """Mesmo contrato de `ask_claude` pela API OpenAI-compatível da Groq — só para testes locais
+    (`HIGHLIGHTS_PROVIDER=groq`, ver `settings.highlights_provider`). Mesmo prompt e mesma ferramenta
+    forçada; as propostas passam pela mesma `validate_highlights`."""
+    if not settings.groq_api_key:
+        raise RuntimeError("GROQ_API_KEY não configurada")
+    from openai import AsyncOpenAI
+
+    client = AsyncOpenAI(api_key=settings.groq_api_key, base_url=GROQ_BASE_URL, timeout=60, max_retries=1)
+    tool = {"type": "function", "function": {
+        "name": _HIGHLIGHT_TOOL["name"],
+        "description": _HIGHLIGHT_TOOL["description"],
+        "parameters": _HIGHLIGHT_TOOL["input_schema"],
+    }}
+    resp = await client.chat.completions.create(
+        model=settings.groq_highlights_model,
+        # folga para o raciocínio dos modelos gpt-oss, que conta como saída
+        max_tokens=4000,
+        tools=[tool],
+        tool_choice={"type": "function", "function": {"name": _HIGHLIGHT_TOOL["name"]}},
+        messages=[{"role": "system", "content": _SYSTEM}, {"role": "user", "content": _user_prompt(segments)}],
+    )
+    calls = resp.choices[0].message.tool_calls or []
+    try:
+        args = json.loads(calls[0].function.arguments) if calls else {}
+    except json.JSONDecodeError:
+        return []  # argumento malformado = nenhuma proposta; a rota responde "no usable highlights"
+    return args.get("highlights") or []
+
+
+async def ask_model(segments: list[dict]) -> list[dict]:
+    return await (ask_groq if settings.highlights_provider == "groq" else ask_claude)(segments)
+
+
 async def pick_highlights(segments: list[dict]) -> list[Highlight]:
-    raw, rejected = await ask_claude(segments), []
+    raw, rejected = await ask_model(segments), []
     picks = validate_highlights(raw, segments, rejected)
-    log.info("clipper: Claude propôs %d, %d válidos", len(raw), len(picks))
+    log.info("clipper: %s propôs %d, %d válidos", settings.highlights_provider, len(raw), len(picks))
     for h, why in rejected:
         log.info("clipper: proposta recusada (%s): %s", why, h)
     return picks
@@ -298,4 +334,17 @@ async def render_clip(source: str, ass_path: str, start: float, end: float, dest
          "-threads", str(FFMPEG_THREADS), "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
          "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", "-y", dest],
         source, FFMPEG_TIMEOUT_S,
+    )
+
+
+THUMB_QUALITY = "4"  # -q:v do mjpeg (2 = melhor, 31 = pior): ~20 KB a 270 px, o bastante para uma miniatura
+
+
+async def extract_thumbnail(source: str, dest: str, at_s: float, width: int) -> None:
+    """Um quadro de `source` (caminho local ou URL) em `at_s`, como JPEG de `width` px de largura.
+    -ss antes do -i: com URL pré-assinada o ffmpeg só baixa o trecho perto do ponto, não o vídeo inteiro."""
+    await run_ffmpeg(
+        ["-ss", f"{max(at_s, 0.0):.3f}", "-i", source, "-frames:v", "1", "-vf", f"scale={width}:-2",
+         "-q:v", THUMB_QUALITY, "-y", dest],
+        source, 120,
     )
