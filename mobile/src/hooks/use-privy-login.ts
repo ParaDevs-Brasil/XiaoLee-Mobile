@@ -1,5 +1,5 @@
 import { useLoginWithEmail, useLoginWithOAuth } from '@privy-io/expo';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Keyboard } from 'react-native';
 
 import { isValidCode, isValidEmail } from '@/lib/auth-state';
@@ -29,6 +29,14 @@ export function usePrivyLogin() {
   // Garante que o app permaneça na etapa de código mesmo quando o Privy
   // reporta status 'error' após um código incorreto.
   const [codeSent, setCodeSent] = useState(false);
+  // Qual chamada ao Privy falhou por último — a mensagem de erro depende disso:
+  // "o código não funcionou" só faz sentido se a falha foi ao VERIFICAR; um
+  // reenvio que falha com o campo de código na tela não é código errado.
+  const [lastEmailAction, setLastEmailAction] = useState<'send' | 'verify'>('send');
+  // O auto-envio ao digitar o 6º dígito e o toque em "Verify" podem chegar no
+  // mesmo instante, antes de `busy` (que vem do estado do Privy) refletir o
+  // primeiro. O ref fecha essa janela.
+  const verifying = useRef(false);
 
   const { state: emailState, sendCode, loginWithCode } = useLoginWithEmail();
   const { login: loginWithGoogle, state: oauthState } = useLoginWithOAuth();
@@ -51,9 +59,10 @@ export function usePrivyLogin() {
 
   let emailError = fieldError;
   if (!emailError && emailState.status === 'error') {
-    emailError = showCodeStep
-      ? "That code didn't work. Check it and try again."
-      : "We couldn't send the code. Check the email and try again.";
+    emailError =
+      showCodeStep && lastEmailAction === 'verify'
+        ? "That code didn't work. Check it and try again."
+        : "We couldn't send the code. Check the email and try again.";
   }
 
   const oauthError =
@@ -81,6 +90,7 @@ export function usePrivyLogin() {
   async function sendEmailCode(emailOverride?: string): Promise<boolean> {
     const targetEmail = (typeof emailOverride === 'string' ? emailOverride : email).trim();
     let success = false;
+    setLastEmailAction('send');
     await sendCode({ email: targetEmail })
       .then(() => {
         setCodeSent(true);
@@ -105,16 +115,22 @@ export function usePrivyLogin() {
   }
 
   async function submitCode(codeOverride?: unknown): Promise<void> {
-    if (busy) return;
+    if (busy || verifying.current) return;
     const targetCode = (typeof codeOverride === 'string' ? codeOverride : code).trim();
     if (!isValidCode(targetCode)) {
       setFieldError('Enter the 6-digit code we sent you.');
       return;
     }
     setFieldError(null);
-    await loginWithCode({ code: targetCode, email: email.trim() }).catch((err) => {
+    setLastEmailAction('verify');
+    verifying.current = true;
+    try {
+      await loginWithCode({ code: targetCode, email: email.trim() });
+    } catch (err) {
       console.warn('[Privy Email] Falha ao verificar código:', err);
-    });
+    } finally {
+      verifying.current = false;
+    }
   }
 
   /** Reenvia o código para o mesmo e-mail. */
