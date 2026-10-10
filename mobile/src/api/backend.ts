@@ -172,6 +172,67 @@ export function getChatSessionMessages(id: number): Promise<ChatSessionMessage[]
   return apiFetch<ChatSessionMessage[]>(`/v1/chat/sessions/${id}/messages`);
 }
 
+/** Mídia bruta do Clipper — `backend/server/media_routes.py`. */
+export type MediaStatus = 'pending' | 'uploaded' | 'transcribing' | 'transcribed' | 'failed';
+
+export interface MediaAsset {
+  id: number;
+  kind: 'video' | 'audio';
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  sha256: string | null;
+  status: MediaStatus;
+  error: string | null;
+  duration_s: number | null;
+  created_at: string;
+}
+
+export interface MediaTranscriptSegment {
+  start: number;
+  end: number;
+  text: string;
+}
+
+export interface MediaDetail extends MediaAsset {
+  transcript: {
+    text: string;
+    language: string | null;
+    model: string;
+    segments: MediaTranscriptSegment[];
+  } | null;
+}
+
+export interface MediaUploadTicket {
+  asset: MediaAsset;
+  /** PUT direto no storage: o arquivo NÃO passa pelo backend. */
+  upload_url: string;
+  /** Headers assinados que o PUT tem que mandar exatamente assim. */
+  upload_headers: Record<string, string>;
+}
+
+export function createMedia(request: {
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  sha256?: string;
+}): Promise<MediaUploadTicket> {
+  return apiFetch<MediaUploadTicket>('/v1/media', { method: 'POST', json: request });
+}
+
+/** Confere o objeto no storage e dispara a transcrição. */
+export function completeMedia(id: number): Promise<MediaAsset> {
+  return apiFetch<MediaAsset>(`/v1/media/${id}/complete`, { method: 'POST' });
+}
+
+export function getMedia(id: number): Promise<MediaDetail> {
+  return apiFetch<MediaDetail>(`/v1/media/${id}`);
+}
+
+export function listMedia(): Promise<MediaAsset[]> {
+  return apiFetch<MediaAsset[]>('/v1/media');
+}
+
 /** `POST /auth/wallet` — `backend/server/campaigns_routes.py::link_wallet` */
 export interface WalletLinkResponse {
   address: string;

@@ -8,7 +8,7 @@ All models inherit from Base which provides id, created_at, updated_at automatic
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import String, ForeignKey, Numeric, Text, Boolean, DateTime, UniqueConstraint, func
+from sqlalchemy import BigInteger, String, ForeignKey, Numeric, Text, Boolean, DateTime, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.orm import DeclarativeBase
 
@@ -291,3 +291,63 @@ class NotificationEvent(Base):
     metadata_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     delivered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+class MediaAsset(Base):
+    """Vídeo/áudio bruto do criador (bucket R2) — insumo do Clipper.
+
+    status: pending (URL de upload emitida) → uploaded → transcribing → transcribed | failed;
+    expired = original e cortes apagados do bucket (retenção, ver server/media_maintenance.py).
+    `r2_key` é o URI no storage; `sha256` é declarado pelo cliente (não verificado no servidor).
+    """
+    __tablename__ = 'media_assets'
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(10))  # video | audio
+    filename: Mapped[str] = mapped_column(String(255))
+    content_type: Mapped[str] = mapped_column(String(100))
+    size_bytes: Mapped[int] = mapped_column(BigInteger)
+    sha256: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    r2_key: Mapped[str] = mapped_column(Text, unique=True)
+    status: Mapped[str] = mapped_column(String(20), default='pending', index=True)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    duration_s: Mapped[Optional[float]] = mapped_column(nullable=True)
+
+
+class MediaTranscript(Base):
+    """Transcrição de um MediaAsset (uma por mídia; refazer substitui). `segments_json`: [{start,end,text}]."""
+    __tablename__ = 'media_transcripts'
+
+    media_id: Mapped[int] = mapped_column(ForeignKey("media_assets.id"), unique=True)
+    segments_json: Mapped[str] = mapped_column(Text)
+    language: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    model: Mapped[str] = mapped_column(String(100))
+
+
+class MediaGlossary(Base):
+    """Termos do creator que a transcrição deve acertar (marcas, projetos, jargão). Uma linha por usuário;
+    `terms` é JSON (lista de strings). Fica fora de `users` para não se misturar ao perfil do onboarding."""
+    __tablename__ = 'media_glossaries'
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True)
+    terms: Mapped[str] = mapped_column(Text)
+
+
+class MediaClip(Base):
+    """Corte vertical (9:16, legendado) de um MediaAsset — saída do Clipper (#29).
+
+    status: pending → rendering → ready | failed | expired. `start_s`/`end_s` são na mídia original;
+    `r2_key` é o mp4 renderizado (só existe quando `ready`).
+    """
+    __tablename__ = 'media_clips'
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    media_id: Mapped[int] = mapped_column(ForeignKey("media_assets.id"), index=True)
+    rank: Mapped[int] = mapped_column()  # 1 = melhor
+    start_s: Mapped[float] = mapped_column()
+    end_s: Mapped[float] = mapped_column()
+    title: Mapped[str] = mapped_column(String(120))
+    reason: Mapped[str] = mapped_column(String(300))
+    status: Mapped[str] = mapped_column(String(20), default='pending', index=True)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    r2_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    size_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
