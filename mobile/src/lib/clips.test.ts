@@ -23,6 +23,7 @@ import {
   mediaFilterCounts,
   mediaFilterOf,
   mediaListStatus,
+  pendingSuggestions,
   mediaPollMs,
   STALE_MS,
   uploadEtaSeconds,
@@ -242,5 +243,22 @@ test('vídeo expirado (retenção do backend) não oferece gerar nem tocar', () 
 test('transcrição longa legítima (2 h) ainda não é "travada"', () => {
   const twoHoursAgo = new Date(NOW - 2 * 60 * 60_000).toISOString();
   assert.deepEqual(clipFlow(video('transcribing', null, twoHoursAgo), [], NOW), { step: 'transcribing' });
+});
+
+test('pendingSuggestions esconde o que já está na lista, repetidas e respeita limite e glossário cheio', () => {
+  const sug = [
+    { term: 'XiaoLee', count: 9 },
+    { term: 'Arc', count: 5 },
+    { term: 'arc', count: 4 },
+    { term: 'Wesley', count: 3 },
+    { term: '  ', count: 2 },
+  ];
+  assert.deepEqual(
+    pendingSuggestions(sug, ['xiaolee']).map((s) => s.term),
+    ['Arc', 'Wesley'],
+  );
+  assert.deepEqual(pendingSuggestions(sug, [], 1).map((s) => s.term), ['XiaoLee']);
+  const full = Array.from({ length: GLOSSARY_MAX_TERMS }, (_, i) => `t${i}`);
+  assert.deepEqual(pendingSuggestions(sug, full), []);
 });
 

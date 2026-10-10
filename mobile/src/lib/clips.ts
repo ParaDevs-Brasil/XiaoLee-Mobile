@@ -6,7 +6,7 @@
  * Transcrever 1 h e renderizar 3 cortes leva minutos — o usuário fecha o app
  * no meio, e ao voltar a tela tem que continuar de onde parou.
  */
-import type { ClipStatus, MediaAsset, MediaTranscriptSegment } from '@/api/backend';
+import type { ClipStatus, GlossarySuggestion, MediaAsset, MediaTranscriptSegment } from '@/api/backend';
 
 export type ClipFlow =
   /** O PUT no storage não chegou a ser confirmado (`/complete`). */
@@ -217,6 +217,29 @@ export const GLOSSARY_MAX_TERM_LEN = 40;
  * maiúscula. Termo longo demais volta em `rejected` para a tela avisar — o
  * backend o descartaria em silêncio.
  */
+/**
+ * Sugestões que ainda valem mostrar: sem as que o creator já tem (o backend
+ * filtra no momento da busca, mas a lista local muda a cada toque), sem
+ * repetidas, nenhuma se o glossário já está cheio, e no máximo `limit`.
+ */
+export function pendingSuggestions(
+  suggestions: readonly GlossarySuggestion[],
+  terms: readonly string[],
+  limit = 8,
+): GlossarySuggestion[] {
+  if (terms.length >= GLOSSARY_MAX_TERMS) return [];
+  const known = new Set(terms.map((t) => t.toLowerCase()));
+  const out: GlossarySuggestion[] = [];
+  for (const s of suggestions) {
+    const key = s.term.trim().toLowerCase();
+    if (!key || known.has(key)) continue;
+    known.add(key);
+    out.push(s);
+    if (out.length === limit) break;
+  }
+  return out;
+}
+
 export function addGlossaryTerms(
   current: readonly string[],
   input: string,

@@ -1,19 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { getGlossary, updateGlossary } from '@/api/backend';
+import { getGlossary, getGlossarySuggestions, updateGlossary } from '@/api/backend';
 import { ApiError } from '@/api/client';
-import { IconCheck, IconChevronDown, IconClose, IconSpark } from '@/components/icons';
+import { IconCheck, IconChevronDown, IconClose, IconPlus, IconSpark } from '@/components/icons';
 import { CardShadow, Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { useBackendData } from '@/hooks/use-backend-data';
-import { addGlossaryTerms, GLOSSARY_MAX_TERM_LEN, GLOSSARY_MAX_TERMS } from '@/lib/clips';
+import { addGlossaryTerms, GLOSSARY_MAX_TERM_LEN, GLOSSARY_MAX_TERMS, pendingSuggestions } from '@/lib/clips';
 
 /**
  * Glossário do creator: nomes, marcas e gírias que a transcrição precisa
  * escrever certo — vai como dica para o Whisper e, por consequência, para a
  * legenda dos cortes. Vale para os próximos uploads, não refaz os antigos.
  *
- * Mora no perfil do backend, mas é editado aqui: só faz sentido para quem
+ * Mora em `/v1/media/glossary` e é editado aqui: só faz sentido para quem
  * está mandando vídeo, e é na hora do upload que o creator lembra dele.
  *
  * Como é pensado para ser óbvio:
@@ -24,6 +24,9 @@ import { addGlossaryTerms, GLOSSARY_MAX_TERM_LEN, GLOSSARY_MAX_TERMS } from '@/l
  *   o que fazer sem precisar descobrir um chevron.
  * - **Fechado, mostra as palavras** em vez de só a contagem.
  * - **Vírgula ou Enter adiciona** — e dá para colar uma lista inteira.
+ * - **Sugere** nomes que o creator repete nas próprias transcrições
+ *   (`/v1/media/glossary/suggestions`): um toque adiciona, pelo mesmo caminho
+ *   do campo de texto (salva sozinho, sai da lista de sugestões).
  */
 
 /** Espera o usuário parar de mexer antes de gravar: vários toques seguidos viram uma gravação só. */
@@ -38,6 +41,8 @@ type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 export function GlossaryCard() {
   const glossary = useBackendData(getGlossary);
+  // Sugestões são um extra: se a busca falhar, a seção só não aparece.
+  const suggestions = useBackendData(getGlossarySuggestions);
   /** `null` = automático: aberto enquanto a lista está vazia, fechado depois. */
   const [open, setOpen] = useState<boolean | null>(null);
   /** Lista local enquanto uma gravação está pendente; `null` = vale a do backend. */
@@ -140,6 +145,7 @@ export function GlossaryCard() {
     setUndo(null);
   };
 
+  const suggested = loaded ? pendingSuggestions(suggestions.data ?? [], terms) : [];
   const preview = terms.slice(0, PREVIEW_COUNT);
   const hidden = terms.length - preview.length;
 
@@ -248,6 +254,27 @@ export function GlossaryCard() {
                       </Pressable>
                     </View>
                   ))}
+                </View>
+              ) : null}
+
+              {suggested.length ? (
+                <View style={styles.suggestions}>
+                  <Text style={styles.suggestionsTitle}>Suggested from your videos</Text>
+                  <View style={styles.chips}>
+                    {suggested.map(({ term, count }) => (
+                      <Pressable
+                        key={term}
+                        onPress={() => add(term)}
+                        style={({ pressed }) => [styles.chip, styles.suggestion, pressed && styles.pressed]}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Add ${term}`}
+                        accessibilityHint={`You said it ${count} times in your videos`}
+                      >
+                        <IconPlus size={12} sw={2.6} color={Colors.light.ink2} />
+                        <Text style={[styles.chipText, styles.suggestionText]}>{term}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
                 </View>
               ) : null}
 
@@ -388,6 +415,12 @@ const styles = StyleSheet.create({
   },
   chipText: { fontFamily: Fonts.semibold, fontSize: 13, color: Colors.light.ink },
   chipRemove: { width: 18, height: 18, alignItems: 'center', justifyContent: 'center' },
+  suggestions: { gap: Spacing.two },
+  suggestionsTitle: { fontFamily: Fonts.semibold, fontSize: 12, color: Colors.light.ink2 },
+  // Neutro como os chips da lista (rosa só nos botões principais); o tracejado e o "+" dizem
+  // "ainda não está na lista, toque para pôr".
+  suggestion: { borderStyle: 'dashed', borderWidth: 1, borderColor: Colors.light.ink3, backgroundColor: Colors.light.card },
+  suggestionText: { color: Colors.light.ink2 },
   more: { minHeight: 32, justifyContent: 'center', paddingHorizontal: Spacing.two },
   moreText: { fontFamily: Fonts.semibold, fontSize: 13, color: Colors.light.ink2 },
   error: { fontFamily: Fonts.semibold, fontSize: 12, lineHeight: 17, color: Colors.light.danger },
