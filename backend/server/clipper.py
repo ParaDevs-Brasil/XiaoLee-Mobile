@@ -93,8 +93,27 @@ def _system(language: str | None, n: int = N_CLIPS) -> str:
     )
 
 
-class ProviderNotConfigured(RuntimeError):
-    """Falta a chave do provedor de IA. A rota responde 503 genérico; o nome da variável fica só no log."""
+class ProviderUnavailable(RuntimeError):
+    """O provedor de IA não atende por um motivo do NOSSO lado ou dele — conta sem crédito, chave inválida ou sem
+    permissão, limite de uso, provedor fora do ar —, nada a ver com o vídeo do creator. A rota responde 503
+    genérico ("temporarily unavailable") e o motivo real fica só no log: um 502 "try again" fazia o creator
+    insistir num erro que só a equipe resolve."""
+
+
+class ProviderNotConfigured(ProviderUnavailable):
+    """Falta a chave do provedor de IA."""
+
+
+def _is_provider_side(exc: Exception) -> bool:
+    """Erro de conta/infra do provedor, pelo status HTTP — vale para o SDK da Anthropic e para o da OpenAI (Groq),
+    que expõem `status_code` do mesmo jeito. 400 só conta quando é falta de crédito (os outros 400 são do pedido)."""
+    status = getattr(exc, "status_code", None)
+    if isinstance(status, int):
+        if status in (401, 402, 403, 429) or status >= 500:
+            return True
+        return status == 400 and "credit balance" in str(exc).lower()
+    # sem resposta HTTP: conexão recusada / timeout
+    return type(exc).__name__ in ("APIConnectionError", "APITimeoutError")
 
 
 @dataclass
@@ -175,14 +194,19 @@ async def _call_tool(system: str, tool: dict, content: str, max_tokens: int) -> 
     import anthropic
 
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=60, max_retries=1)
-    msg = await client.messages.create(
-        model=settings.anthropic_model,
-        max_tokens=max_tokens,
-        system=system,
-        tools=[tool],
-        tool_choice={"type": "tool", "name": tool["name"]},
-        messages=[{"role": "user", "content": content}],
-    )
+    try:
+        msg = await client.messages.create(
+            model=settings.anthropic_model,
+            max_tokens=max_tokens,
+            system=system,
+            tools=[tool],
+            tool_choice={"type": "tool", "name": tool["name"]},
+            messages=[{"role": "user", "content": content}],
+        )
+    except Exception as exc:
+        if _is_provider_side(exc):
+            raise ProviderUnavailable(f"anthropic: {type(exc).__name__}: {exc}") from exc
+        raise
     block = next((b for b in msg.content if b.type == "tool_use"), None)
     return dict(block.input) if block else {}
 
@@ -194,16 +218,21 @@ async def _call_tool_groq(system: str, tool: dict, content: str, max_tokens: int
     from openai import AsyncOpenAI
 
     client = AsyncOpenAI(api_key=settings.groq_api_key, base_url=GROQ_BASE_URL, timeout=60, max_retries=1)
-    resp = await client.chat.completions.create(
-        model=settings.groq_highlights_model,
-        # folga para o raciocínio dos modelos gpt-oss, que conta como saída
-        max_tokens=max(max_tokens, 4000),
-        tools=[{"type": "function", "function": {
-            "name": tool["name"], "description": tool["description"], "parameters": tool["input_schema"],
-        }}],
-        tool_choice={"type": "function", "function": {"name": tool["name"]}},
-        messages=[{"role": "system", "content": system}, {"role": "user", "content": content}],
-    )
+    try:
+        resp = await client.chat.completions.create(
+            model=settings.groq_highlights_model,
+            # folga para o raciocínio dos modelos gpt-oss, que conta como saída
+            max_tokens=max(max_tokens, 4000),
+            tools=[{"type": "function", "function": {
+                "name": tool["name"], "description": tool["description"], "parameters": tool["input_schema"],
+            }}],
+            tool_choice={"type": "function", "function": {"name": tool["name"]}},
+            messages=[{"role": "system", "content": system}, {"role": "user", "content": content}],
+        )
+    except Exception as exc:
+        if _is_provider_side(exc):
+            raise ProviderUnavailable(f"groq: {type(exc).__name__}: {exc}") from exc
+        raise
     calls = resp.choices[0].message.tool_calls or []
     try:
         return json.loads(calls[0].function.arguments) if calls else {}

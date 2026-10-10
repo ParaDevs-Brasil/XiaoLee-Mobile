@@ -862,7 +862,7 @@ async def create_clips(
             # ponytail: seleção síncrona (~5-20 s) para a resposta já trazer os títulos; se o app
             # passar a estourar timeout, mover para background com um status em MediaAsset.
             picks = await clipper.pick_highlights(segments, row.language)
-        except clipper.ProviderNotConfigured as exc:
+        except clipper.ProviderUnavailable as exc:  # sem chave/crédito, limite, provedor fora: não é culpa do vídeo
             raise _unavailable(exc)
         except Exception:
             logger.exception("highlight selection failed for media %s", asset_id)

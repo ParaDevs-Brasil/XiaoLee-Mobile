@@ -1102,3 +1102,17 @@ async def test_rename_does_not_reset_the_stalled_clock(db, monkeypatch):
     await db.refresh(asset)
     assert asset.title == "Novo nome" and abs((asset.updated_at - old).total_seconds()) < 1
 
+
+@pytest.mark.asyncio
+async def test_provider_without_credit_is_503_generic_and_stores_nothing(clips_env, monkeypatch):
+    e = clips_env
+
+    async def _no_credit(segments, language=None):
+        raise clipper.ProviderUnavailable("anthropic: BadRequestError: Your credit balance is too low")
+
+    monkeypatch.setattr(clipper, "pick_highlights", _no_credit)
+    r = client.post(f"/v1/media/{e.aid}/clips", headers=e.h)
+    assert r.status_code == 503 and "temporarily unavailable" in r.text
+    assert "credit" not in r.text and "anthropic" not in r.text.lower()
+    assert (await e.db.execute(select(MediaClip))).scalars().all() == []
+

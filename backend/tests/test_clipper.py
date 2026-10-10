@@ -376,3 +376,64 @@ def test_ffmpeg_errors_never_carry_presigned_url_secrets():
 def test_ass_text_drops_carriage_returns():
     assert clipper._ass_text("linha\r\nnova {\\b1}x") == "linha  nova b1x"
 
+
+def _anthropic_error(cls_name: str, status: int, message: str):
+    import anthropic
+    import httpx2
+
+    req = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
+    return getattr(anthropic, cls_name)(message, response=httpx2.Response(status, request=req), body={"error": {"message": message}})
+
+
+def _anthropic_raising(monkeypatch, exc):
+    import anthropic
+
+    class _Msgs:
+        async def create(self, **kw):
+            raise exc
+
+    monkeypatch.setattr(clipper, "settings", replace(clipper.settings, highlights_provider="anthropic", anthropic_api_key="k"))
+    monkeypatch.setattr(anthropic, "AsyncAnthropic", lambda **kw: SimpleNamespace(messages=_Msgs()))
+
+
+def test_no_credit_on_the_provider_is_provider_unavailable_not_a_video_error(monkeypatch):
+    """Conta da Anthropic sem crédito (400 "credit balance is too low", visto em teste real): é problema da equipe,
+    não do vídeo — vira ProviderUnavailable (503 genérico na rota), não 502 "try again"."""
+    _anthropic_raising(monkeypatch, _anthropic_error(
+        "BadRequestError", 400, "Your credit balance is too low to access the Anthropic API."))
+    with pytest.raises(clipper.ProviderUnavailable, match="credit balance"):
+        asyncio.run(clipper.pick_highlights(SEGS))
+
+
+@pytest.mark.parametrize("cls_name,status", [("AuthenticationError", 401), ("PermissionDeniedError", 403),
+                                             ("RateLimitError", 429), ("InternalServerError", 500)])
+def test_account_and_outage_errors_are_provider_unavailable(monkeypatch, cls_name, status):
+    _anthropic_raising(monkeypatch, _anthropic_error(cls_name, status, "nope"))
+    with pytest.raises(clipper.ProviderUnavailable):
+        asyncio.run(clipper.pick_highlights(SEGS))
+
+
+def test_a_plain_bad_request_is_not_hidden_as_unavailable(monkeypatch):
+    """Um 400 que não é crédito é erro do pedido (bug nosso): segue como erro comum (502 na rota), para aparecer."""
+    import anthropic
+
+    _anthropic_raising(monkeypatch, _anthropic_error("BadRequestError", 400, "messages: field required"))
+    with pytest.raises(anthropic.BadRequestError):
+        asyncio.run(clipper.pick_highlights(SEGS))
+
+
+def test_groq_rate_limit_is_provider_unavailable(monkeypatch):
+    import httpx
+    import openai
+
+    exc = openai.RateLimitError("slow down", response=httpx.Response(429, request=httpx.Request("POST", "https://api.groq.com")), body=None)
+
+    class _Completions:
+        async def create(self, **kw):
+            raise exc
+
+    monkeypatch.setattr(clipper, "settings", replace(clipper.settings, highlights_provider="groq", groq_api_key="g"))
+    monkeypatch.setattr(openai, "AsyncOpenAI", lambda **kw: SimpleNamespace(chat=SimpleNamespace(completions=_Completions())))
+    with pytest.raises(clipper.ProviderUnavailable):
+        asyncio.run(clipper.pick_highlights(SEGS))
+
