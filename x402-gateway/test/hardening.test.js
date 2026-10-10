@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createApp } from "../src/app.js";
 import { createBuyer } from "../src/buyer.js";
-import { deliver, failures } from "../src/delivery.js";
+import { deliver } from "../src/delivery.js";
+import { memoryLedger } from "../src/ledger.js";
 import { openapi } from "../src/openapi.js";
 
 const cfg = { sellerAddress: "0x08cdF8De63700A66467EaBFfc603B6A14BA89125", facilitatorUrl: "https://gateway-api-testnet.circle.com",
@@ -53,14 +54,15 @@ test("teto diário: pagamento liquidado seguido de erro do vendedor CONTA no tet
 });
 
 test("deliver: 4xx do upstream depois de liquidar vai para a reconciliação", async () => {
-  failures.length = 0;
+  const ledger = memoryLedger();
   const p = { payer: "0xabc", network: "eip155:5042002", amount: "50000", transaction: "tx-403" };
   const svc = { id: "profile-analysis", upstream: "profile-analysis" };
-  const r = await deliver(cfg, svc, p, {}, { fetchFn: async () => ({ status: 403, json: async () => ({ detail: "forbidden" }) }) });
+  const r = await deliver(cfg, svc, p, {}, { ledger, fetchFn: async () => ({ status: 403, json: async () => ({ detail: "forbidden" }) }) });
   assert.equal(r.status, 403);
-  assert.equal(failures.length, 1);
-  assert.equal(failures[0].reason, "upstream_403");
-  assert.equal(failures[0].payment_tx, "tx-403");
+  const open = await ledger.open();
+  assert.equal(open.length, 1);
+  assert.equal(open[0].reason, "upstream_403");
+  assert.equal(open[0].payment_tx, "tx-403");
 });
 
 test("openapi 3.1 (exclusiveMinimum numérico é válido)", () => {

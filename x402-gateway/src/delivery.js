@@ -1,5 +1,7 @@
+import { memoryLedger } from "./ledger.js";
+
 // Entrega após o pagamento: valida ANTES de cobrar, repete em falha transitória e registra o que
-// foi liquidado mas não entregue (para reembolso/reconciliação manual).
+// foi liquidado mas não entregue (ledger persistente; reembolso manual a partir dele).
 
 // Validação mínima do schema do catálogo (required/type/limites). Sem dependência extra.
 export function validate(schema, body) {
@@ -24,12 +26,19 @@ export function validate(schema, body) {
   return null;
 }
 
-// ponytail: registro em memória + log JSON (Railway retém os logs); zera ao reiniciar.
-// Persistir no Postgres se o volume de falhas justificar.
-export const failures = [];
-const record = (f) => { failures.push(f); if (failures.length > 200) failures.shift(); console.log(JSON.stringify({ event: "delivery_failed", ...f })); };
+// Ledger padrão em memória (testes/dev); o servidor injeta o Postgres. Erro de ledger nunca
+// derruba a entrega: o pagamento já foi liquidado, então só registramos no log.
+export const defaultLedger = memoryLedger();
+const safe = async (what, fn) => { try { return await fn(); } catch (e) { console.log(JSON.stringify({ event: "ledger_error", what, error: String(e?.message ?? e).slice(0, 200) })); } };
+const logFail = (f) => console.log(JSON.stringify({ event: "delivery_failed", ...f }));
 
-export async function deliver(cfg, svc, p, body, { fetchFn = fetch, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), attempts = 3 } = {}) {
+export async function deliver(cfg, svc, p, body, { fetchFn = fetch, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), attempts = 3, ledger = defaultLedger } = {}) {
+  const key = await safe("begin", () => ledger.begin(svc, p));
+  const fail = async (reason) => {
+    logFail({ at: new Date().toISOString(), service: svc.id, payment_tx: p.transaction ?? null, payer: p.payer ?? null,
+      network: p.network ?? null, amount: p.amount ?? null, reason });
+    if (key) await safe("finish", () => ledger.finish(key, "failed", reason));
+  };
   let last = "unknown";
   for (let i = 1; i <= attempts; i++) {
     try {
@@ -44,19 +53,18 @@ export async function deliver(cfg, svc, p, body, { fetchFn = fetch, sleep = (ms)
         signal: AbortSignal.timeout(cfg.upstreamTimeoutMs),
       });
       if (up.status < 500) {
-        const body = await up.json().catch(() => null);
-        if (body !== null) {
+        const out = await up.json().catch(() => null);
+        if (out !== null) {
           // já liquidado: 4xx (segredo errado, 422...) também precisa de rastro para reembolso
-          if (up.status >= 400) record({ at: new Date().toISOString(), service: svc.id, payment_tx: p.transaction ?? null,
-            payer: p.payer ?? null, network: p.network ?? null, amount: p.amount ?? null, reason: `upstream_${up.status}` });
-          return { status: up.status, body };
+          if (up.status >= 400) await fail(`upstream_${up.status}`);
+          else if (key) await safe("finish", () => ledger.finish(key, "delivered"));
+          return { status: up.status, body: out };
         }
         last = "upstream_bad_json";
       } else last = `upstream_${up.status}`;
     } catch (e) { last = String(e?.name ?? e).slice(0, 80); }
     if (i < attempts) await sleep(300 * i);
   }
-  record({ at: new Date().toISOString(), service: svc.id, payment_tx: p.transaction ?? null, payer: p.payer ?? null,
-    network: p.network ?? null, amount: p.amount ?? null, reason: last });
+  await fail(last);
   return { status: 502, body: { error: "upstream_failed", service: svc.id, payment_tx: p.transaction ?? null } };
 }

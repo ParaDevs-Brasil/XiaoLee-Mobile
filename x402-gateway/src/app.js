@@ -3,12 +3,12 @@ import { createGatewayMiddleware } from "@circle-fin/x402-batching/server";
 import { openapi } from "./openapi.js";
 import { catalog } from "./catalog.js";
 import { timingSafeEqual } from "node:crypto";
-import { deliver, validate, failures } from "./delivery.js";
+import { deliver, validate, defaultLedger } from "./delivery.js";
 import { createLimiter, guardMiddleware, payerKey } from "./guard.js";
 
 // Gateway x402 (Circle) na frente do FastAPI. O pagamento é liquidado ANTES do handler;
 // o upstream só é chamado com o segredo interno + dados do pagador (anti-bypass no FastAPI).
-export function createApp(cfg, buyer = null) {
+export function createApp(cfg, buyer = null, ledger = defaultLedger) {
   const app = express();
   app.set("trust proxy", 1); // Railway: IP real do cliente
   const state = { paused: Boolean(cfg.paused) };
@@ -37,7 +37,11 @@ export function createApp(cfg, buyer = null) {
   // botão de desligar em runtime (rotas pagas devolvem 503 sem cobrar)
   app.post("/internal/pause", auth, (req, res) => { state.paused = req.body?.paused !== false; res.json({ paused: state.paused }); });
   // pagamentos liquidados sem entrega (reconciliação/reembolso manual)
-  app.get("/internal/reconcile", auth, (_req, res) => res.json({ failures }));
+  // `failures` = linhas abertas (failed ou settled sem conclusão: pedido pago que travou).
+  app.get("/internal/reconcile", auth, async (_req, res) => {
+    try { res.json({ durable: ledger.durable, failures: await ledger.open() }); }
+    catch (e) { res.status(503).json({ error: "ledger_unavailable" }); }
+  });
   app.get("/internal/market/search", internal, async (req, res) => {
     try { res.json({ items: await buyer.search({ q: req.query.q, limit: req.query.limit }) }); }
     catch (e) { res.status(502).json({ error: "discovery_failed" }); }
@@ -53,7 +57,7 @@ export function createApp(cfg, buyer = null) {
       return err ? res.status(400).json({ error: "invalid_request", detail: err }) : next();
     };
     app.post(`/v1/x402/${svc.id}`, guard, check, gateway.require(svc.price), async (req, res) => {
-      const r = await deliver(cfg, svc, req.payment ?? {}, req.body);
+      const r = await deliver(cfg, svc, req.payment ?? {}, req.body, { ledger });
       res.status(r.status).json(r.body);
     });
   }

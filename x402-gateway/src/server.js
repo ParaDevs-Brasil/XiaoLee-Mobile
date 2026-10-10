@@ -1,5 +1,6 @@
 import { createApp } from "./app.js";
 import { createBuyer } from "./buyer.js";
+import { createLedger } from "./ledger.js";
 import { GatewayClient } from "@circle-fin/x402-batching/client";
 
 const env = process.env;
@@ -25,10 +26,17 @@ const buyer = env.BUYER_PRIVATE_KEY ? createBuyer(
   { makeClient: () => new GatewayClient({ chain: env.X402_CHAIN ?? "arcTestnet", privateKey: env.BUYER_PRIVATE_KEY, rpcUrl: env.ARC_RPC }) },
 ) : null;
 
+// Mainnet (facilitador sem "testnet") exige ledger durável: dinheiro real não pode depender de memória.
+const mainnet = !/testnet/i.test(cfg.facilitatorUrl);
+if (mainnet && !env.DATABASE_URL && env.X402_ALLOW_MEMORY_LEDGER !== "true") {
+  throw new Error("mainnet requires DATABASE_URL for the settlement ledger (or X402_ALLOW_MEMORY_LEDGER=true to override)");
+}
+const ledger = await createLedger(env.DATABASE_URL);
+
 buyer?.warm();
-const srv = createApp(cfg, buyer).listen(Number(env.PORT ?? 3100), () => console.log("x402-gateway up"));
+const srv = createApp(cfg, buyer, ledger).listen(Number(env.PORT ?? 3100), () => console.log("x402-gateway up"));
 // Deploy envia SIGTERM: termina os pedidos em andamento (já pagos) antes de sair.
 process.on("SIGTERM", () => {
-  srv.close(() => process.exit(0));
+  srv.close(() => ledger.close().finally(() => process.exit(0)));
   setTimeout(() => process.exit(0), Number(env.SHUTDOWN_GRACE_MS ?? 25000)).unref();
 });
