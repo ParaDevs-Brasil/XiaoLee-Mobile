@@ -78,7 +78,8 @@ def _fake_extract(monkeypatch, audio_bytes=b"x" * 10):
     monkeypatch.setattr(media_routes, "_extract_audio", _extract)
 
 
-def test_requires_backend_issued_bearer():
+@pytest.mark.asyncio
+async def test_requires_backend_issued_bearer(db):
     assert client.post("/v1/media", json=BODY).status_code in (401, 403)
     assert client.get("/v1/media").status_code in (401, 403)
     assert client.get("/v1/media", headers={"Authorization": "Bearer raw_twitter_id"}).status_code in (401, 403)
@@ -283,7 +284,7 @@ LONG_SEGS = [{"start": i * 10.0, "end": i * 10.0 + 10.0, "text": f"frase numero 
 
 
 def _pick(*windows):
-    async def _p(segments):
+    async def _p(segments, language=None):
         return [clipper.Highlight(a, b, f"Clip {i}", "porque sim") for i, (a, b) in enumerate(windows, 1)]
 
     return _p
@@ -358,7 +359,7 @@ async def test_clips_preconditions(clips_env, db):
 async def test_clips_selection_failures_store_nothing(clips_env, monkeypatch):
     e = clips_env
     for exc, status in ((RuntimeError("ANTHROPIC_API_KEY não configurada"), 503), (ValueError("boom"), 502)):
-        async def _bad(segments, exc=exc):
+        async def _bad(segments, language=None, exc=exc):
             raise exc
 
         monkeypatch.setattr(clipper, "pick_highlights", _bad)
