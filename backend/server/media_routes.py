@@ -502,7 +502,7 @@ async def create_clips(
     try:
         # ponytail: seleção síncrona (~5-20 s) para a resposta já trazer os títulos; se o app
         # passar a estourar timeout, mover para background com um status em MediaAsset.
-        picks = await clipper.pick_highlights(segments)
+        picks = await clipper.pick_highlights(segments, row.language)
     except RuntimeError as exc:
         raise HTTPException(503, str(exc))
     except Exception:

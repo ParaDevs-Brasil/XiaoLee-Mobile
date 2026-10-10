@@ -39,7 +39,7 @@ def test_validate_snaps_to_segment_edges():
 
 def test_validate_drops_bad_windows_and_overlaps_keeps_order():
     raw = [
-        _h(0, 10),            # curta demais (<15 s)
+        _h(0, 10),            # curta demais (<20 s)
         _h(10, 200),          # termina depois da mídia
         _h(30, 20),           # invertida
         _h(0, 30, "A"),       # ok
@@ -67,8 +67,8 @@ def test_validate_long_segment_keeps_model_window_instead_of_snapping_past_the_c
 
 def test_validate_trims_over_cap_window_at_last_fitting_segment():
     segs = [{"start": i * 10.0, "end": i * 10.0 + 10.0, "text": "x"} for i in range(12)]  # 0-120 s
-    out = clipper.validate_highlights([_h(0, 95)], segs)  # snap -> 0-100 s (> 90)
-    assert [(h.start, h.end) for h in out] == [(0.0, 90.0)]
+    out = clipper.validate_highlights([_h(0, 95)], segs)  # snap -> 0-100 s (> 75)
+    assert [(h.start, h.end) for h in out] == [(0.0, 70.0)]
 
 
 def test_pick_highlights_uses_forced_tool_and_validates(monkeypatch):
@@ -84,7 +84,8 @@ def test_pick_highlights_uses_forced_tool_and_validates(monkeypatch):
     import anthropic
 
     monkeypatch.setattr(anthropic, "AsyncAnthropic", lambda **kw: SimpleNamespace(messages=_Msgs()))
-    out = asyncio.run(clipper.pick_highlights(SEGS))
+    out = asyncio.run(clipper.pick_highlights(SEGS, "Portuguese"))
+    assert "Portuguese" in seen["system"] and "30-60" in seen["system"]
     assert [(h.title, h.start, h.end) for h in out] == [("Gancho", 0.0, 30.0)]  # a janela fora da mídia caiu
     assert seen["tool_choice"] == {"type": "tool", "name": "report_highlights"}
     assert "<transcript>" in seen["messages"][0]["content"]
