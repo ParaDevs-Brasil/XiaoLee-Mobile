@@ -99,6 +99,46 @@ export function loginWithPrivy(accessToken: string): Promise<SessionResponse> {
   });
 }
 
+/**
+ * `GET/PATCH /user/me/profile` — `backend/server/campaigns_routes.py`.
+ *
+ * `interest_profile` só aceita os valores de `INTERESTS` no backend
+ * (`defi`, `games`, `cards`, `trader`, `memecoins`) — mandar qualquer outro
+ * valor devolve 422. `onboarded` é calculado pelo backend (nome + ao menos
+ * um interesse); o app usa esse campo, nunca um cálculo próprio, para
+ * decidir se mostra o questionário.
+ */
+export interface MyProfile {
+  full_name: string | null;
+  state: string | null;
+  city: string | null;
+  bio: string | null;
+  social_links: Record<string, string>;
+  interest_profile: string[];
+  onboarded: boolean;
+}
+
+export interface ProfileUpdateRequest {
+  full_name?: string;
+  state?: string;
+  city?: string;
+  bio?: string;
+  social_links?: Record<string, string>;
+  interest_profile?: string[];
+}
+
+/** Exige sessão: o backend resolve o dono pelo `Bearer`, nunca por parâmetro. */
+export function getMyProfile(): Promise<MyProfile> {
+  return apiFetch<MyProfile>('/user/me/profile');
+}
+
+export function updateMyProfile(payload: ProfileUpdateRequest): Promise<MyProfile> {
+  return apiFetch<MyProfile>('/user/me/profile', {
+    method: 'PATCH',
+    json: payload,
+  });
+}
+
 /** `POST /chat` — `backend/server/app.py::chat_compat` */
 export interface ChatResponse {
   /** O backend devolve uma lista de blocos; hoje só `type: "text"` é usado. */

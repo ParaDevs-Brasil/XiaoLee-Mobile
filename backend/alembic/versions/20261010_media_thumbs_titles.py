@@ -1,7 +1,7 @@
 """Clipper: miniatura (`thumb_key`) de mídia e de corte, e título editável da mídia.
 
 Revision ID: 20261010_media_thumbs
-Revises: 20261009_user_glossary
+Revises: 20261010_media_glossary
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "20261010_media_thumbs"
-down_revision = "20261009_user_glossary"
+down_revision = "20261010_media_glossary"
 branch_labels = None
 depends_on = None
 

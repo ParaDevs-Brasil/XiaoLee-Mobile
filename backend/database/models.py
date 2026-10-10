@@ -29,8 +29,6 @@ class User(Base):
     bio: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     social_links: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     interest_profile: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    # Glossário do creator (JSON: lista de termos): nomes de projetos/marcas/jargão que o Whisper erra.
-    glossary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 class Wallet(Base):
@@ -297,7 +295,8 @@ class NotificationEvent(Base):
 class MediaAsset(Base):
     """Vídeo/áudio bruto do criador (bucket R2) — insumo do Clipper.
 
-    status: pending (URL de upload emitida) → uploaded → transcribing → transcribed | failed.
+    status: pending (URL de upload emitida) → uploaded → transcribing → transcribed | failed;
+    expired = original e cortes apagados do bucket (retenção, ver server/media_maintenance.py).
     `r2_key` é o URI no storage; `sha256` é declarado pelo cliente (não verificado no servidor).
     """
     __tablename__ = 'media_assets'
@@ -328,10 +327,19 @@ class MediaTranscript(Base):
     model: Mapped[str] = mapped_column(String(100))
 
 
+class MediaGlossary(Base):
+    """Termos do creator que a transcrição deve acertar (marcas, projetos, jargão). Uma linha por usuário;
+    `terms` é JSON (lista de strings). Fica fora de `users` para não se misturar ao perfil do onboarding."""
+    __tablename__ = 'media_glossaries'
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True)
+    terms: Mapped[str] = mapped_column(Text)
+
+
 class MediaClip(Base):
     """Corte vertical (9:16, legendado) de um MediaAsset — saída do Clipper (#29).
 
-    status: pending → rendering → ready | failed. `start_s`/`end_s` são na mídia original;
+    status: pending → rendering → ready | failed | expired. `start_s`/`end_s` são na mídia original;
     `r2_key` é o mp4 renderizado (só existe quando `ready`).
     """
     __tablename__ = 'media_clips'

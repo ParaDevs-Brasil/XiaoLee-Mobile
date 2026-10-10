@@ -39,7 +39,7 @@ from sqlalchemy.orm.exc import StaleDataError
 
 from database import database as _dbmod
 from database.database import get_db_session
-from database.models import MediaAsset, MediaClip, MediaTranscript, User
+from database.models import MediaAsset, MediaClip, MediaGlossary, MediaTranscript, User
 from database.repository import to_utc_iso
 from server import clipper, media_storage
 from server.campaigns_routes import _resolve_user
@@ -63,6 +63,11 @@ FFMPEG_TIMEOUT_S = 1800
 TITLE_MAX = 120
 THUMB_MEDIA_W, THUMB_CLIP_W = 480, 270  # largura em px: 2x o que a lista/poster mostram na tela
 STALE_TRANSCRIBING = timedelta(minutes=30)  # transcrição "presa" por restart do processo pode ser refeita
+# Um job pesado de cada tipo por vez, para o processo todo: o Groq (plano grátis) limita 20 req/min e uma hora de
+# vídeo já são ~60 janelas; renders simultâneos estouram a RAM. O resto espera na fila (status segue "transcribing").
+# ponytail: fila em processo; Redis/worker dedicado quando houver >1 réplica.
+_TRANSCRIBE_SEM = asyncio.Semaphore(1)
+_RENDER_SEM = asyncio.Semaphore(1)
 
 
 class MediaCreate(BaseModel):
@@ -212,7 +217,7 @@ async def create_media(
     if not body.content_type.startswith(("video/", "audio/")):
         raise HTTPException(422, "content_type must be video/* or audio/*")
     if body.size_bytes > settings.media_max_bytes:
-        raise HTTPException(413, f"file too large (max {settings.media_max_bytes} bytes)")
+        raise HTTPException(413, f"file too large (max {settings.media_max_bytes // 1024**2} MB)")
 
     user = await _resolve_user(db, authorization, strict=True)
     safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", os.path.basename(body.filename))[:120] or "media"
@@ -259,6 +264,99 @@ async def complete_upload(
     # o cliente reenvia /complete (ver STALE_TRANSCRIBING). Fila Redis quando houver >1 worker.
     background.add_task(transcribe_asset, asset.id)
     return _out(asset)
+
+
+GLOSSARY_MAX_TERMS = 60
+GLOSSARY_MAX_TERM_LEN = 40
+GLOSSARY_SUGGESTIONS = 20
+GLOSSARY_MIN_COUNT = 2
+GLOSSARY_SCAN_ASSETS = 20
+
+
+def suggest_glossary(segments_per_media: list[list[dict]], known: list[str] | None = None) -> list[dict]:
+    """Termos que o creator diz repetidamente e que parecem nome próprio/marca: palavras com inicial maiúscula
+    no MEIO da frase (a 1.ª palavra do segmento ou a seguinte a um ponto não conta), ou em CAIXA ALTA.
+    O Whisper às vezes grafa o mesmo nome de formas diferentes ("Vetto/Veto"), então a lista é só sugestão
+    para o creator escolher. ponytail: heurística de maiúsculas; NER/LLM se a precisão incomodar."""
+    skip = {k.lower() for k in known or []}
+    counts: dict[str, int] = {}
+    for segments in segments_per_media:
+        for seg in segments:
+            prev_end = True  # início do segmento = início de frase
+            for tok in seg["text"].split():
+                word = tok.strip(".,;:!?…\"'()[]¿¡")
+                if len(word) >= 3 and word[0].isupper() and not prev_end and word.lower() not in skip:
+                    counts[word] = counts.get(word, 0) + 1
+                elif len(word) >= 2 and word.isupper() and word.isalpha() and word.lower() not in skip:
+                    counts[word] = counts.get(word, 0) + 1
+                prev_end = tok[-1] in ".?!…"
+    ranked = sorted(((w, n) for w, n in counts.items() if n >= GLOSSARY_MIN_COUNT), key=lambda x: (-x[1], x[0]))
+    return [{"term": w, "count": n} for w, n in ranked[:GLOSSARY_SUGGESTIONS]]
+
+
+class GlossaryIn(BaseModel):
+    terms: list[str] = Field(max_length=GLOSSARY_MAX_TERMS)
+
+
+def clean_glossary(terms: list[str]) -> list[str]:
+    """Tira espaço/quebra de linha, descarta vazio, repetido (sem diferenciar maiúscula) e o que passa de
+    GLOSSARY_MAX_TERM_LEN. Ordem preservada: o que vem primeiro tem prioridade quando o prompt é cortado."""
+    seen, out = set(), []
+    for t in terms:
+        t = " ".join(str(t).split())
+        if t and len(t) <= GLOSSARY_MAX_TERM_LEN and t.lower() not in seen:
+            seen.add(t.lower())
+            out.append(t)
+    return out
+
+
+async def _glossary_terms(db, user_id: int) -> list[str]:
+    row = (await db.execute(select(MediaGlossary).where(MediaGlossary.user_id == user_id))).scalar_one_or_none()
+    return json.loads(row.terms) if row else []
+
+
+@router.get("/glossary")
+async def get_glossary(
+    authorization: Optional[str] = Header(default=None),
+    db: AsyncSession = Depends(get_db_session),
+):
+    user = await _resolve_user(db, authorization, strict=True)
+    return {"terms": await _glossary_terms(db, user.id)}
+
+
+@router.put("/glossary")
+async def put_glossary(
+    payload: GlossaryIn,
+    authorization: Optional[str] = Header(default=None),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Substitui a lista inteira (lista vazia limpa). Vale para as próximas transcrições."""
+    user = await _resolve_user(db, authorization, strict=True)
+    terms = json.dumps(clean_glossary(payload.terms), ensure_ascii=False)
+    row = (await db.execute(select(MediaGlossary).where(MediaGlossary.user_id == user.id))).scalar_one_or_none()
+    if row:
+        row.terms = terms
+    else:
+        db.add(MediaGlossary(user_id=user.id, terms=terms))
+    await db.commit()
+    return {"terms": json.loads(terms)}
+
+
+@router.get("/glossary/suggestions")
+async def glossary_suggestions(
+    authorization: Optional[str] = Header(default=None),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Sugestões para o glossário (PUT /v1/media/glossary) a partir das últimas transcrições do próprio creator."""
+    user = await _resolve_user(db, authorization, strict=True)
+    rows = (await db.execute(
+        select(MediaTranscript.segments_json)
+        .join(MediaAsset, MediaAsset.id == MediaTranscript.media_id)
+        .where(MediaAsset.user_id == user.id)
+        .order_by(MediaAsset.id.desc()).limit(GLOSSARY_SCAN_ASSETS)
+    )).scalars().all()
+    known = await _glossary_terms(db, user.id)
+    return {"suggestions": suggest_glossary([json.loads(r) for r in rows], known)}
 
 
 @router.get("", response_model=list[MediaOut])
@@ -488,11 +586,13 @@ def _public_error(exc: Exception) -> str:
 
     if isinstance(exc, openai.RateLimitError):
         return "transcription provider is busy (rate limit), try again in a few minutes"
+    if str(exc).startswith("ffmpeg failed"):  # o detalhe técnico fica no log; o app recebe algo acionável
+        return "could not read this file as video or audio (corrupt or unsupported format)"
     return re.sub(r"org_[A-Za-z0-9]+", "<org>", str(exc))[:500]
 
 
 async def transcribe_asset(asset_id: int) -> None:
-    async with _session() as db:
+    async with _TRANSCRIBE_SEM, _session() as db:
         asset = await db.get(MediaAsset, asset_id)
         if not asset:
             return
@@ -500,8 +600,7 @@ async def transcribe_asset(asset_id: int) -> None:
             with tempfile.TemporaryDirectory() as tmp:
                 audio = os.path.join(tmp, "audio.mp3")
                 await _extract_audio(media_storage.presign_get(asset.r2_key), audio)
-                owner = await db.get(User, asset.user_id)
-                result = await _transcribe(audio, json.loads(owner.glossary) if owner and owner.glossary else None)
+                result = await _transcribe(audio, await _glossary_terms(db, asset.user_id) or None)
             if not await _exists(db, MediaAsset, asset_id):
                 return  # o creator apagou o vídeo enquanto ele transcrevia: nada a gravar
             await db.execute(delete(MediaTranscript).where(MediaTranscript.media_id == asset.id))  # refazer substitui
@@ -676,15 +775,16 @@ async def create_clips(
     asset_id: int,
     background: BackgroundTasks,
     regenerate: bool = False,
-    layout: str = "crop",
+    layout: str = "auto",
     authorization: Optional[str] = Header(default=None),
     db: AsyncSession = Depends(get_db_session),
 ):
     """Escolhe os highlights na hora (a lista volta já com títulos) e renderiza em background.
     Cada chamada custa uma ida ao Claude: se já há cortes, exige `regenerate=true`.
-    `layout=crop` (padrão, quem fala para a câmera) | `fit` (gravação de tela/gráficos: vídeo inteiro sobre fundo desfocado)."""
-    if layout not in clipper.LAYOUTS:
-        raise HTTPException(422, f"layout must be one of {', '.join(clipper.LAYOUTS)}")
+    `layout=auto` (padrão: o Claude olha 3 quadros e escolhe) | `crop` (quem fala para a câmera) |
+    `fit` (gravação de tela/gráficos: vídeo inteiro sobre fundo desfocado)."""
+    if layout not in clipper.LAYOUT_CHOICES:
+        raise HTTPException(422, f"layout must be one of {', '.join(clipper.LAYOUT_CHOICES)}")
     asset = await _owned(db, authorization, asset_id)
     if asset.kind != "video":
         raise HTTPException(422, "clips need a video, not audio")
@@ -706,7 +806,7 @@ async def create_clips(
     try:
         # ponytail: seleção síncrona (~5-20 s) para a resposta já trazer os títulos; se o app
         # passar a estourar timeout, mover para background com um status em MediaAsset.
-        picks = await clipper.pick_highlights(segments)
+        picks = await clipper.pick_highlights(segments, row.language)
     except RuntimeError as exc:
         raise HTTPException(503, str(exc))
     except Exception:
@@ -731,8 +831,14 @@ async def create_clips(
         raise HTTPException(503, str(exc))
 
 
-async def render_clips(asset_id: int, old_keys: list[str] | None = None, layout: str = "crop") -> None:
-    """Um corte por vez (ffmpeg 1080x1920 é pesado); cada corte tem o próprio status."""
+async def render_clips(asset_id: int, old_keys: list[str] | None = None, layout: str = "auto") -> None:
+    """Um corte por vez (ffmpeg 1080x1920 é pesado, e a RAM do servidor é pouca): o semáforo vale para
+    todas as mídias, não só esta. Cada corte tem o próprio status."""
+    async with _RENDER_SEM:
+        await _render_clips(asset_id, old_keys, layout)
+
+
+async def _render_clips(asset_id: int, old_keys: list[str] | None, layout: str) -> None:
     for key in old_keys or []:
         try:
             await media_storage.delete_object(key)
@@ -745,7 +851,10 @@ async def render_clips(asset_id: int, old_keys: list[str] | None = None, layout:
         segments = json.loads(
             (await db.execute(select(MediaTranscript).where(MediaTranscript.media_id == asset_id))).scalars().one().segments_json
         )
-        for clip in await _clips_of(db, asset_id):
+        clips = await _clips_of(db, asset_id)
+        if layout == "auto" and clips:
+            layout = await clipper.detect_layout(media_storage.presign_get(asset.r2_key), clips[0].start_s, clips[0].end_s)
+        for clip in clips:
             if not await _exists(db, MediaClip, clip.id):
                 continue  # corte (ou o vídeo todo) apagado enquanto os outros renderizavam
             clip.status = "rendering"

@@ -656,8 +656,6 @@ async def save_user_wallet(user_id: str, payload: dict, db: AsyncSession = Depen
 # ---------------------------------------------------------------------------
 
 INTERESTS = {"defi", "games", "cards", "trader", "memecoins"}
-GLOSSARY_MAX_TERMS = 60
-GLOSSARY_MAX_TERM_LEN = 40
 
 
 class ProfileUpdate(BaseModel):
@@ -669,20 +667,6 @@ class ProfileUpdate(BaseModel):
     bio: Optional[str] = Field(default=None, max_length=1000)
     social_links: Optional[dict[str, str]] = None
     interest_profile: Optional[list[str]] = None
-    # Termos que a transcrição deve acertar (marcas, projetos, jargão). Limpeza em `clean_glossary`.
-    glossary: Optional[list[str]] = Field(default=None, max_length=GLOSSARY_MAX_TERMS)
-
-
-def clean_glossary(terms: list[str]) -> list[str]:
-    """Tira espaço/quebra de linha, descarta vazio, repetido (sem diferenciar maiúscula) e o que passa de
-    GLOSSARY_MAX_TERM_LEN. Ordem preservada: o que vem primeiro tem prioridade quando o prompt é cortado."""
-    seen, out = set(), []
-    for t in terms:
-        t = " ".join(str(t).split())
-        if t and len(t) <= GLOSSARY_MAX_TERM_LEN and t.lower() not in seen:
-            seen.add(t.lower())
-            out.append(t)
-    return out
 
 
 def _profile_dict(user: User) -> dict:
@@ -694,7 +678,6 @@ def _profile_dict(user: User) -> dict:
         "bio": user.bio,
         "social_links": json.loads(user.social_links) if user.social_links else {},
         "interest_profile": interests,
-        "glossary": json.loads(user.glossary) if user.glossary else [],
         # Onboarding completo = nome e ao menos um interesse; o app usa para decidir se mostra o questionário.
         "onboarded": bool(user.full_name and interests),
     }
@@ -729,8 +712,6 @@ async def update_my_profile(
         if invalid:
             raise HTTPException(status_code=422, detail=f"interesses inválidos: {invalid}; use {sorted(INTERESTS)}")
         user.interest_profile = json.dumps(list(dict.fromkeys(interests)))
-    if data.get("glossary") is not None:
-        user.glossary = json.dumps(clean_glossary(data["glossary"]), ensure_ascii=False)
     await db.commit()
     return _profile_dict(user)
 

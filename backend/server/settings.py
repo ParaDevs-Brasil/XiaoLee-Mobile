@@ -92,6 +92,8 @@ class Settings:
     r2_endpoint_url:      str = os.getenv("R2_ENDPOINT_URL",      "")
     r2_region:            str = os.getenv("R2_REGION",            "auto")
     media_max_bytes:      int = int(os.getenv("MEDIA_MAX_BYTES", str(2 * 1024**3)))
+    # Dias até apagar o vídeo original e os cortes do bucket (0 = nunca). Uploads que nunca foram concluídos: 2 dias.
+    media_retention_days: int = int(os.getenv("MEDIA_RETENTION_DAYS", "30"))
     # Transcrição: endpoint OpenAI-compatível. GROQ_API_KEY sozinha já configura o Groq (ver _transcription_config).
     transcription_api_key:  str = _transcription_config(os.environ)[0]
     transcription_base_url: str = _transcription_config(os.environ)[1]

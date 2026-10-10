@@ -69,7 +69,7 @@ async def main(out_dir: Path) -> int:
         print("  FAIL ANTHROPIC_API_KEY ausente")
         return 2
 
-    picks = await clipper.pick_highlights(segs)
+    picks = await clipper.pick_highlights(segs, "Portuguese")
     print(f"highlights validados: {len(picks)}")
     failures = []
     for i, h in enumerate(picks, 1):
@@ -77,7 +77,7 @@ async def main(out_dir: Path) -> int:
     if not picks:
         failures.append("nenhum highlight")
     if any(h.end - h.start < clipper.MIN_LEN_S or h.end - h.start > clipper.MAX_LEN_S for h in picks):
-        failures.append("duração fora de 15-90 s")
+        failures.append(f"duração fora de {clipper.MIN_LEN_S:.0f}-{clipper.MAX_LEN_S:.0f} s")
     if any(a.start < b.end and b.start < a.end for k, a in enumerate(picks) for b in picks[k + 1:]):
         failures.append("sobreposição")
     if any(h.end - h.start <= 6 for h in picks):
