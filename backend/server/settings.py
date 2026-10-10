@@ -120,6 +120,14 @@ class Settings:
     onoff_forward_fee_tier: str = os.getenv("ONOFF_FORWARD_FEE_TIER", "med")  # low | med | high
     onoff_sandbox_secret: str = os.getenv("ONOFF_SANDBOX_SECRET", "")
     campaign_require_funds: bool = os.getenv("CAMPAIGN_REQUIRE_FUNDS", "true").lower() == "true"
+
+    # Cota diária de mensagens que chegam na LLM (UTC). 0 = sem limite.
+    free_daily_messages: int = int(os.getenv("FREE_DAILY_MESSAGES", "25"))   # logado / usuário de bot
+    anon_daily_messages: int = int(os.getenv("ANON_DAILY_MESSAGES", "5"))    # sem login, por IP
+    llm_global_daily_messages: int = int(os.getenv("LLM_GLOBAL_DAILY_MESSAGES", "0"))  # disjuntor global
+    # Quantos proxies confiáveis ficam na frente (Railway = 1): o IP do cliente é o N-ésimo de trás
+    # para frente em X-Forwarded-For (o início da lista é forjável). 0 = usa o IP da conexão.
+    trusted_proxy_hops: int = int(os.getenv("TRUSTED_PROXY_HOPS", "1"))
     cors_allowed_origins: list[str] = None
     cors_allowed_origin_regex: str = ""
     

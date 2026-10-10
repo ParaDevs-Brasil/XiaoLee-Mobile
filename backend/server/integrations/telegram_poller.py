@@ -89,14 +89,17 @@ class TelegramPoller:
             # ("database is locked", SQLite só aceita um escritor por vez).
             await session.commit()
 
-            result = await self._orchestrator.execute(
-                text, user_id, history=history, platform="telegram",
-            )
+            from server import usage_quota
+            decision = await usage_quota.consume(session, usage_quota.subject_for_user("telegram", user_id))
+            if decision.allowed:
+                reply = (await self._orchestrator.execute(
+                    text, user_id, history=history, platform="telegram",
+                ))["reply_text"]
+            else:
+                reply = usage_quota.exceeded_message(decision)
 
-            await repo.log_dm(
-                user.id, "telegram", result["reply_text"], message_type="bot"
-            )
+            await repo.log_dm(user.id, "telegram", reply, message_type="bot")
             await session.commit()
 
-        await self._client.send_message(chat_id, result["reply_text"])
+        await self._client.send_message(chat_id, reply)
         logger.info("Replied to Telegram user %s in chat %s", user_id, chat_id)
