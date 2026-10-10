@@ -301,7 +301,16 @@ export default function ClipsDetailScreen() {
         ))}
       </ScrollView>
 
-      <ClipPlayer mediaId={mediaId} clip={playing} onClose={() => setPlaying(null)} />
+      <ClipPlayer
+        mediaId={mediaId}
+        clip={playing}
+        onClose={() => setPlaying(null)}
+        onSave={playing && canSaveClips ? () => runClipAction(playing, 'save') : undefined}
+        onShare={playing && canShareClips ? () => runClipAction(playing, 'share') : undefined}
+        busy={playing && clipAction?.id === playing.id ? clipAction.kind : null}
+        saved={playing ? savedIds.has(playing.id) : false}
+        actionsDisabled={clipAction !== null}
+      />
 
       {menu && media.data ? (
         <ItemMenu

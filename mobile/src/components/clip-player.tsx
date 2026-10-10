@@ -17,7 +17,8 @@ import { Polygon, Rect, Svg } from 'react-native-svg';
 
 import type { MediaClip } from '@/api/backend';
 import { ApiError } from '@/api/client';
-import { IconClose } from '@/components/icons';
+import type { ClipBusy } from '@/components/clip-card';
+import { IconCheck, IconClose, IconDownload, IconSend } from '@/components/icons';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { freshClipUrl } from '@/lib/clip-share';
 import { formatClock } from '@/lib/clips';
@@ -32,11 +33,24 @@ export function ClipPlayer({
   mediaId,
   clip,
   onClose,
+  onSave,
+  onShare,
+  busy = null,
+  saved = false,
+  actionsDisabled = false,
 }: {
   mediaId: number;
   /** `null` = fechado. */
   clip: MediaClip | null;
   onClose: () => void;
+  /** Ausente = este build não tem o módulo nativo (ver `canSaveClips`); o botão some. */
+  onSave?: () => void;
+  /** Idem, `canShareClips`. */
+  onShare?: () => void;
+  busy?: ClipBusy;
+  saved?: boolean;
+  /** Outro corte está sendo baixado: um download por vez. */
+  actionsDisabled?: boolean;
 }) {
   return (
     <Modal
@@ -46,14 +60,41 @@ export function ClipPlayer({
       onRequestClose={onClose}
     >
       {/* `key`: trocar de corte remonta o corpo, e com ele a URL e o player. */}
-      {clip ? <PlayerBody key={clip.id} mediaId={mediaId} clip={clip} onClose={onClose} /> : null}
+      {clip ? (
+        <PlayerBody
+          key={clip.id}
+          mediaId={mediaId}
+          clip={clip}
+          onClose={onClose}
+          actions={{ onSave, onShare, busy, saved, disabled: actionsDisabled }}
+        />
+      ) : null}
     </Modal>
   );
 }
 
 type Source = { url: string } | { error: string } | null;
 
-function PlayerBody({ mediaId, clip, onClose }: { mediaId: number; clip: MediaClip; onClose: () => void }) {
+/** Salvar e compartilhar de dentro do player — quem está vendo decide ali, sem fechar para achar o botão. */
+interface PlayerActions {
+  onSave?: () => void;
+  onShare?: () => void;
+  busy: ClipBusy;
+  saved: boolean;
+  disabled: boolean;
+}
+
+function PlayerBody({
+  mediaId,
+  clip,
+  onClose,
+  actions,
+}: {
+  mediaId: number;
+  clip: MediaClip;
+  onClose: () => void;
+  actions: PlayerActions;
+}) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const [source, setSource] = useState<Source>(null);
@@ -101,14 +142,32 @@ function PlayerBody({ mediaId, clip, onClose }: { mediaId: number; clip: MediaCl
         {source === null ? <ActivityIndicator color={WHITE} /> : null}
         {source && 'error' in source ? <Text style={styles.error}>{source.error}</Text> : null}
         {source && 'url' in source ? (
-          <Video url={source.url} width={videoWidth} fallbackDuration={clip.end_s - clip.start_s} />
+          <Video
+            url={source.url}
+            width={videoWidth}
+            fallbackDuration={clip.end_s - clip.start_s}
+            clip={clip}
+            actions={actions}
+          />
         ) : null}
       </View>
     </View>
   );
 }
 
-function Video({ url, width, fallbackDuration }: { url: string; width: number; fallbackDuration: number }) {
+function Video({
+  url,
+  width,
+  fallbackDuration,
+  clip,
+  actions,
+}: {
+  url: string;
+  width: number;
+  fallbackDuration: number;
+  clip: MediaClip;
+  actions: PlayerActions;
+}) {
   const player = useVideoPlayer(url, (p) => {
     p.loop = true;
     p.timeUpdateEventInterval = 0.1;
@@ -184,6 +243,48 @@ function Video({ url, width, fallbackDuration }: { url: string; width: number; f
             {formatClock(shown)}
             <Text style={styles.timeTotal}> / {formatClock(duration)}</Text>
           </Text>
+
+          {actions.onShare ? (
+            <Pressable
+              onPress={actions.onShare}
+              disabled={actions.disabled}
+              style={({ pressed }) => [styles.shareButton, actions.disabled && actions.busy !== 'share' && styles.dimmed, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={`Share clip ${clip.rank}: ${clip.title}`}
+              accessibilityState={{ busy: actions.busy === 'share', disabled: actions.disabled }}
+            >
+              {actions.busy === 'share' ? <ActivityIndicator size="small" color={WHITE} /> : <IconSend size={20} sw={2} color={WHITE} />}
+            </Pressable>
+          ) : null}
+
+          {actions.onSave ? (
+            <Pressable
+              onPress={actions.onSave}
+              disabled={actions.disabled || actions.saved}
+              style={({ pressed }) => [
+                styles.saveButton,
+                actions.saved && styles.saveButtonDone,
+                actions.disabled && actions.busy !== 'save' && !actions.saved && styles.dimmed,
+                pressed && styles.pressed,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={
+                actions.saved
+                  ? `Clip ${clip.rank} saved to your gallery`
+                  : `Save clip ${clip.rank} to your gallery: ${clip.title}`
+              }
+              accessibilityState={{ busy: actions.busy === 'save', disabled: actions.disabled || actions.saved }}
+            >
+              {actions.busy === 'save' ? (
+                <ActivityIndicator size="small" color={WHITE} />
+              ) : actions.saved ? (
+                <IconCheck size={18} sw={2.6} color={WHITE} />
+              ) : (
+                <IconDownload size={18} sw={2.2} color={WHITE} />
+              )}
+              <Text style={styles.saveText}>{actions.busy === 'save' ? 'Saving…' : actions.saved ? 'Saved' : 'Save'}</Text>
+            </Pressable>
+          ) : null}
         </View>
       </View>
     </View>
@@ -316,15 +417,38 @@ const styles = StyleSheet.create({
   },
   thumbActive: { width: THUMB_ACTIVE, height: THUMB_ACTIVE },
   timeRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three - 4, minHeight: 48 },
+  // Neutro de propósito: o rosa fica com o Salvar, que é o que o creator veio fazer aqui.
   playButton: {
     width: 48,
     height: 48,
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.16)',
+  },
+  time: { flex: 1, fontFamily: Fonts.bold, fontSize: 15, color: WHITE },
+  shareButton: {
+    width: 48,
+    height: 48,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.32)',
+  },
+  saveButton: {
+    height: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.three + 4,
+    borderRadius: Radius.pill,
     backgroundColor: Colors.light.accent,
   },
-  time: { fontFamily: Fonts.bold, fontSize: 15, color: WHITE },
+  saveButtonDone: { backgroundColor: 'rgba(255,255,255,0.16)' },
+  saveText: { fontFamily: Fonts.bold, fontSize: 15, color: WHITE },
+  dimmed: { opacity: 0.45 },
   timeTotal: { fontFamily: Fonts.medium, color: 'rgba(255,255,255,0.6)' },
   stage: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: Spacing.three },
   error: {
