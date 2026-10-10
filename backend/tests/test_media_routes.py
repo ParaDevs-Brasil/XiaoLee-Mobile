@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import contextlib
 import importlib
+import asyncio
 import json
 import os
 import shutil
@@ -364,13 +365,14 @@ async def test_clips_preconditions(clips_env, db):
 @pytest.mark.asyncio
 async def test_clips_selection_failures_store_nothing(clips_env, monkeypatch):
     e = clips_env
-    for exc, status in ((RuntimeError("ANTHROPIC_API_KEY não configurada"), 503), (ValueError("boom"), 502)):
+    for exc, status in ((clipper.ProviderNotConfigured("ANTHROPIC_API_KEY não configurada"), 503), (ValueError("boom"), 502)):
         async def _bad(segments, language=None, exc=exc):
             raise exc
 
         monkeypatch.setattr(clipper, "pick_highlights", _bad)
         r = client.post(f"/v1/media/{e.aid}/clips", headers=e.h)
-        assert r.status_code == status and "boom" not in r.text
+        # nem o motivo técnico nem o nome da variável de configuração chegam ao app
+        assert r.status_code == status and "boom" not in r.text and "ANTHROPIC" not in r.text
     monkeypatch.setattr(clipper, "pick_highlights", _pick())
     assert client.post(f"/v1/media/{e.aid}/clips", headers=e.h).status_code == 422
     assert (await e.db.execute(select(MediaClip))).scalars().all() == []
@@ -400,7 +402,8 @@ async def test_one_failed_render_does_not_sink_the_others(clips_env, monkeypatch
     client.post(f"/v1/media/{e.aid}/clips", headers=e.h)
     got = {c["rank"]: c for c in client.get(f"/v1/media/{e.aid}/clips", headers=e.h).json()}
     assert [got[i]["status"] for i in (1, 2, 3)] == ["ready", "failed", "ready"] and calls == [0.0, 40.0, 80.0]
-    assert "broke" in got[2]["error"] and got[2]["download_url"] is None
+    # o stderr do ffmpeg fica no log; o app recebe uma mensagem acionável
+    assert "broke" not in got[2]["error"] and "render failed" in got[2]["error"] and got[2]["download_url"] is None
 
 
 @pytest.mark.asyncio
@@ -465,7 +468,7 @@ async def test_inflight_render_blocks_but_stale_one_does_not(clips_env, monkeypa
     clip.status = "rendering"
     await e.db.commit()
     assert client.post(f"/v1/media/{e.aid}/clips?regenerate=true", headers=e.h).status_code == 409
-    clip.updated_at = datetime.utcnow() - timedelta(hours=1)  # processo morreu no meio
+    clip.updated_at = datetime.utcnow() - media_routes.STALE_TRANSCRIBING - timedelta(minutes=1)  # job pendurado
     await e.db.commit()
     # o app vê a idade do corte preso e oferece "gerar de novo"
     listed = {c["id"]: c for c in client.get(f"/v1/media/{e.aid}/clips", headers=e.h).json()}
@@ -1027,3 +1030,75 @@ async def test_glossary_limits_and_auth(db):
     assert client.get("/v1/media/glossary", headers=h).json() == {"terms": ["keep"]}
     assert client.get("/v1/media/glossary").status_code in (401, 403)
     assert client.put("/v1/media/glossary", json={"terms": []}, headers={"Authorization": "Bearer raw_id"}).status_code in (401, 403)
+
+
+# ── Revisão pré-PR: concorrência, mensagens, nomes, relógio de "travado" ─────
+
+@pytest.mark.asyncio
+async def test_complete_twice_starts_one_job_and_only_a_stale_one_can_be_redone(db, monkeypatch):
+    h = await _login(db, "a")
+    aid = client.post("/v1/media", json=BODY, headers=h).json()["asset"]["id"]
+    _object_exists(monkeypatch, 1000)
+    started = []
+
+    async def _job(asset_id):
+        started.append(asset_id)  # não termina: a mídia fica "transcribing", como um job em andamento
+
+    monkeypatch.setattr(media_routes, "transcribe_asset", _job)
+    assert client.post(f"/v1/media/{aid}/complete", headers=h).status_code == 200
+    assert client.post(f"/v1/media/{aid}/complete", headers=h).status_code == 409  # o segundo toque não dispara outro
+    assert started == [aid]
+
+    asset = await db.get(MediaAsset, aid)
+    await db.refresh(asset)
+    asset.updated_at = datetime.utcnow() - media_routes.STALE_TRANSCRIBING - timedelta(minutes=1)
+    await db.commit()
+    assert client.post(f"/v1/media/{aid}/complete", headers=h).status_code == 200  # job pendurado: pode refazer
+    assert started == [aid, aid]
+
+
+@pytest.mark.asyncio
+async def test_generate_while_another_generate_runs_is_409(clips_env):
+    e = clips_env
+    lock = media_routes._CLIP_LOCKS.setdefault(e.aid, asyncio.Lock())
+    await lock.acquire()
+    try:
+        r = client.post(f"/v1/media/{e.aid}/clips", headers=e.h)
+        assert r.status_code == 409 and "already being generated" in r.text
+    finally:
+        lock.release()
+
+
+@pytest.mark.asyncio
+async def test_storage_503_does_not_expose_configuration(db, monkeypatch):
+    h = await _login(db, "a")
+
+    def _boom(*a, **k):
+        raise media_routes.media_storage.StorageNotConfigured("R2_ACCOUNT_ID/R2_BUCKET não configurados")
+
+    monkeypatch.setattr(media_routes.media_storage, "presign_put", _boom)
+    r = client.post("/v1/media", json=BODY, headers=h)
+    assert r.status_code == 503 and "R2_" not in r.text and "temporarily unavailable" in r.text
+
+
+@pytest.mark.asyncio
+async def test_dot_only_filenames_get_a_safe_key(db):
+    h = await _login(db, "a")
+    for name in (".", "..", "..."):
+        key = client.post("/v1/media", json={**BODY, "filename": name}, headers=h).json()["asset"]
+        asset = await db.get(MediaAsset, key["id"])
+        assert asset.r2_key.endswith("/media") and "/../" not in asset.r2_key + "/"
+
+
+@pytest.mark.asyncio
+async def test_rename_does_not_reset_the_stalled_clock(db, monkeypatch):
+    h = await _login(db, "a")
+    aid = client.post("/v1/media", json=BODY, headers=h).json()["asset"]["id"]
+    asset = await db.get(MediaAsset, aid)
+    old = datetime.utcnow() - timedelta(hours=7)
+    asset.status, asset.updated_at = "transcribing", old
+    await db.commit()
+    assert client.patch(f"/v1/media/{aid}", json={"title": "Novo nome"}, headers=h).status_code == 200
+    await db.refresh(asset)
+    assert asset.title == "Novo nome" and abs((asset.updated_at - old).total_seconds()) < 1
+

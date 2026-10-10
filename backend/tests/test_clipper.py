@@ -357,3 +357,22 @@ def test_rank_candidates_drops_invalid_and_repeated_ids(monkeypatch):
     monkeypatch.setattr(clipper, "_call_tool", fake_call)
     c = [clipper.Highlight(0, 30, "a", "r"), clipper.Highlight(30, 60, "b", "r")]
     assert asyncio.run(clipper.rank_candidates(c, SEGS, "Portuguese")) == [1, 0]
+
+
+def test_ffmpeg_errors_never_carry_presigned_url_secrets():
+    """Uma URL pré-assinada real passa de 300 caracteres: cortar antes de esconder vazava a credencial."""
+    url = ("https://acct.r2.cloudflarestorage.com/bucket/media/1/" + "a" * 120 + "/video.mp4"
+           "?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=FAKEACCESSKEYID%2F20261010%2Fauto%2Fs3%2Faws4_request"
+           "&X-Amz-Date=20261010T000000Z&X-Amz-Expires=3600&X-Amz-SignedHeaders=host&X-Amz-Signature=" + "f" * 64)
+    assert len(url) > 340
+    stderr = f"[tcp @ 0x1] Connection refused\n[in#0] Error opening input {url}: Connection refused\n"
+    out = clipper.redact_media_urls(stderr, source=url)
+    assert "FAKEACCESSKEYID" not in out and "X-Amz-Signature" not in out and "cloudflarestorage" not in out
+    # mesmo sem saber qual era a URL de origem (ex.: uma URL derivada), nada de credencial sobra
+    out2 = clipper.redact_media_urls(stderr.replace(url, url + "&extra=1"))
+    assert "FAKEACCESSKEYID" not in out2 and "f" * 64 not in out2
+
+
+def test_ass_text_drops_carriage_returns():
+    assert clipper._ass_text("linha\r\nnova {\\b1}x") == "linha  nova b1x"
+

@@ -93,6 +93,10 @@ def _system(language: str | None, n: int = N_CLIPS) -> str:
     )
 
 
+class ProviderNotConfigured(RuntimeError):
+    """Falta a chave do provedor de IA. A rota responde 503 genérico; o nome da variável fica só no log."""
+
+
 @dataclass
 class Highlight:
     start: float
@@ -167,7 +171,7 @@ async def _call_tool(system: str, tool: dict, content: str, max_tokens: int) -> 
     if settings.highlights_provider == "groq":
         return await _call_tool_groq(system, tool, content, max_tokens)
     if not settings.anthropic_api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY não configurada")
+        raise ProviderNotConfigured("ANTHROPIC_API_KEY não configurada")
     import anthropic
 
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=60, max_retries=1)
@@ -186,7 +190,7 @@ async def _call_tool(system: str, tool: dict, content: str, max_tokens: int) -> 
 async def _call_tool_groq(system: str, tool: dict, content: str, max_tokens: int) -> dict:
     """Mesmo contrato de `_call_tool` pela API OpenAI-compatível da Groq."""
     if not settings.groq_api_key:
-        raise RuntimeError("GROQ_API_KEY não configurada")
+        raise ProviderNotConfigured("GROQ_API_KEY não configurada")
     from openai import AsyncOpenAI
 
     client = AsyncOpenAI(api_key=settings.groq_api_key, base_url=GROQ_BASE_URL, timeout=60, max_retries=1)
@@ -311,7 +315,7 @@ def _ass_time(t: float) -> str:
 
 def _ass_text(s: str) -> str:
     # chaves abrem override tags no ASS; barra invertida e quebras idem
-    return re.sub(r"[{}\\]", "", s).replace("\n", " ").strip()
+    return re.sub(r"[{}\\]", "", s).replace("\r", " ").replace("\n", " ").strip()
 
 
 def _words_of(seg: dict) -> list[tuple[str, float, float]]:
@@ -389,6 +393,18 @@ def _filter_path(p: str) -> str:
     return re.sub(r"([\\:'\[\],;])", r"\\\1", p)
 
 
+def redact_media_urls(text: str, source: str = "") -> str:
+    """Tira do stderr do ffmpeg a URL da mídia e qualquer credencial de URL pré-assinada.
+
+    Tem que rodar ANTES de cortar a mensagem: uma URL pré-assinada real passa de 300 caracteres, e cortar
+    primeiro deixava a cauda dela (X-Amz-Credential = Access Key ID do R2, assinatura) chegar ao log e ao app.
+    """
+    if source:
+        text = text.replace(source, "<media>")
+    text = re.sub(r"https?://\S+", "<media>", text)
+    return re.sub(r"X-Amz-[A-Za-z-]+=[^&\s]+", "<redacted>", text)
+
+
 async def run_ffmpeg(args: list[str], source: str, timeout: float) -> str:
     """ffmpeg numa thread (`subprocess.run`) em vez de `asyncio.create_subprocess_exec`: o child watcher
     do asyncio às vezes não percebe a saída do processo (zumbi, `communicate()` pendura para sempre — visto
@@ -405,7 +421,7 @@ async def run_ffmpeg(args: list[str], source: str, timeout: float) -> str:
         raise RuntimeError("ffmpeg timed out")
     if r.returncode != 0:
         # a URL pré-assinada vem na linha de erro do ffmpeg — não vazar para o banco/cliente
-        raise RuntimeError("ffmpeg failed: " + r.stderr.decode(errors="replace")[-300:].replace(source, "<media>"))
+        raise RuntimeError("ffmpeg failed: " + redact_media_urls(r.stderr.decode(errors="replace"), source)[-300:])
     return r.stderr.decode(errors="replace")
 
 

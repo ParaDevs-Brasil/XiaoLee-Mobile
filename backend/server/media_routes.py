@@ -32,9 +32,10 @@ from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import case, delete, func, inspect, select
+from sqlalchemy import and_, case, delete, func, inspect, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.orm.exc import StaleDataError
 
 from database import database as _dbmod
@@ -62,12 +63,20 @@ ISO_LANG = {"portuguese": "pt", "english": "en", "spanish": "es", "french": "fr"
 FFMPEG_TIMEOUT_S = 1800
 TITLE_MAX = 120
 THUMB_MEDIA_W, THUMB_CLIP_W = 480, 270  # largura em px: 2x o que a lista/poster mostram na tela
-STALE_TRANSCRIBING = timedelta(minutes=30)  # transcrição "presa" por restart do processo pode ser refeita
+# Prazo para considerar um job "travado" e aceitar refazê-lo. Restart do processo não precisa dele (o reaper de
+# `media_maintenance` marca como falha no boot); isto só destrava job pendurado. Tem que passar o pior caso
+# legítimo — fila (semáforo de 1) + transcrição de até MAX_AUDIO_S —, senão um segundo job roda junto com o
+# primeiro (custo dobrado, escritas concorrentes). O app usa o mesmo valor (`STALE_MS` em lib/clips.ts).
+STALE_TRANSCRIBING = timedelta(hours=6)
 # Um job pesado de cada tipo por vez, para o processo todo: o Groq (plano grátis) limita 20 req/min e uma hora de
 # vídeo já são ~60 janelas; renders simultâneos estouram a RAM. O resto espera na fila (status segue "transcribing").
 # ponytail: fila em processo; Redis/worker dedicado quando houver >1 réplica.
 _TRANSCRIBE_SEM = asyncio.Semaphore(1)
 _RENDER_SEM = asyncio.Semaphore(1)
+# Um POST /clips por vídeo de cada vez: dois toques seguidos em "Generate" passavam juntos pelas checagens e
+# chamavam o Claude duas vezes. ponytail: trava em processo (workers=1, como a fila acima); com mais workers,
+# trocar por um UPDATE condicional numa coluna de job da mídia.
+_CLIP_LOCKS: dict[int, asyncio.Lock] = {}
 
 
 class MediaCreate(BaseModel):
@@ -148,6 +157,19 @@ def _thumb_url(key: Optional[str]) -> Optional[str]:
         return None
 
 
+def _unavailable(exc: Exception) -> HTTPException:
+    """503 sem detalhe de configuração para o app (nomes de variáveis, provedor); o motivo vai só ao log."""
+    logger.warning("clipper unavailable: %s", exc)
+    return HTTPException(503, "Clip service is temporarily unavailable. Try again later.")
+
+
+def _keep_updated_at(obj) -> None:
+    """Escrita que não é mudança de status (renomear, miniatura) não pode adiar o prazo de "travado":
+    com a coluna no UPDATE, o `onupdate=func.now()` não dispara e o valor atual fica."""
+    if "updated_at" in inspect(obj).dict:
+        flag_modified(obj, "updated_at")
+
+
 def _out(a: MediaAsset, clip_counts: tuple[int, int, int] = (0, 0, 0)) -> MediaOut:
     total, ready, in_progress = clip_counts
     return MediaOut(
@@ -220,12 +242,14 @@ async def create_media(
         raise HTTPException(413, f"file too large (max {settings.media_max_bytes // 1024**2} MB)")
 
     user = await _resolve_user(db, authorization, strict=True)
-    safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", os.path.basename(body.filename))[:120] or "media"
+    safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", os.path.basename(body.filename))[:120]
+    if not safe_name.strip("."):  # "." / ".." viram dot-segments na URL e o PUT assinado nunca confere
+        safe_name = "media"
     key = f"media/{user.id}/{uuid.uuid4().hex}/{safe_name}"
     try:
         url = media_storage.presign_put(key, body.content_type, body.size_bytes)
     except media_storage.StorageNotConfigured as exc:
-        raise HTTPException(503, str(exc))
+        raise _unavailable(exc)
 
     asset = MediaAsset(
         user_id=user.id, kind=body.content_type.split("/")[0], filename=safe_name,
@@ -252,14 +276,28 @@ async def complete_upload(
     try:
         size = await media_storage.object_size(asset.r2_key)
     except media_storage.StorageNotConfigured as exc:
-        raise HTTPException(503, str(exc))
+        raise _unavailable(exc)
     if size is None:
         raise HTTPException(409, "upload not found in storage")
     if size != asset.size_bytes:
         raise HTTPException(409, "uploaded size does not match declared size")
 
-    asset.status, asset.error = "transcribing", None
+    # Troca de estado atômica: dois /complete simultâneos passavam ambos pela checagem acima e disparavam dois
+    # jobs. Só um UPDATE condicional "ganha"; o outro recebe 409.
+    claimed = await db.execute(
+        update(MediaAsset)
+        .where(MediaAsset.id == asset.id, or_(
+            MediaAsset.status.in_(("pending", "uploaded", "failed")),
+            and_(MediaAsset.status == "transcribing", MediaAsset.updated_at < datetime.utcnow() - STALE_TRANSCRIBING),
+        ))
+        .values(status="transcribing", error=None, updated_at=datetime.utcnow())
+        .execution_options(synchronize_session=False)
+    )
+    if not claimed.rowcount:
+        await db.rollback()
+        raise HTTPException(409, "media is already being transcribed")
     await db.commit()
+    await db.refresh(asset)
     # ponytail: tarefa em processo (workers=1 no Railway) + status no banco; se o processo reiniciar,
     # o cliente reenvia /complete (ver STALE_TRANSCRIBING). Fila Redis quando houver >1 worker.
     background.add_task(transcribe_asset, asset.id)
@@ -387,6 +425,7 @@ async def rename_media(
     """Só muda o nome exibido; o `filename` original (e a chave no bucket) ficam como estão."""
     asset = await _owned(db, authorization, asset_id)
     asset.title = _clean_title(body.title)
+    _keep_updated_at(asset)
     await db.commit()
     return _out(asset)
 
@@ -656,30 +695,41 @@ _THUMB_TRIED: set[tuple[str, int]] = set()
 
 
 async def backfill_thumbnails(media_ids: list[int] | None = None, clip_ids: list[int] | None = None) -> None:
-    """Gera miniatura do que foi criado antes de elas existirem."""
+    """Gera miniatura do que foi criado antes de elas existirem. Item a item: um vídeo apagado no meio, ou um
+    storage fora do ar, não derruba o resto do lote."""
     async with _session() as db:
         for mid in media_ids or []:
             if ("media", mid) in _THUMB_TRIED:
                 continue
             _THUMB_TRIED.add(("media", mid))
-            asset = await db.get(MediaAsset, mid)
-            if asset and asset.kind == "video" and not asset.thumb_key:
-                asset.thumb_key = await _store_thumbnail(
-                    media_storage.presign_get(asset.r2_key), _thumb_key_for(asset), _frame_at(asset.duration_s),
-                    THUMB_MEDIA_W,
-                )
-                await db.commit()
+            try:
+                asset = await db.get(MediaAsset, mid)
+                if asset and asset.kind == "video" and not asset.thumb_key:
+                    asset.thumb_key = await _store_thumbnail(
+                        media_storage.presign_get(asset.r2_key), _thumb_key_for(asset), _frame_at(asset.duration_s),
+                        THUMB_MEDIA_W,
+                    )
+                    _keep_updated_at(asset)
+                    await db.commit()
+            except Exception:
+                await db.rollback()
+                logger.warning("thumbnail backfill failed for media %s", mid, exc_info=True)
         for cid in clip_ids or []:
             if ("clip", cid) in _THUMB_TRIED:
                 continue
             _THUMB_TRIED.add(("clip", cid))
-            clip = await db.get(MediaClip, cid)
-            if clip and clip.r2_key and not clip.thumb_key:
-                clip.thumb_key = await _store_thumbnail(
-                    media_storage.presign_get(clip.r2_key), f"clips/{clip.user_id}/{clip.media_id}/{uuid.uuid4().hex}.jpg",
-                    min(1.0, (clip.end_s - clip.start_s) / 2), THUMB_CLIP_W,
-                )
-                await db.commit()
+            try:
+                clip = await db.get(MediaClip, cid)
+                if clip and clip.r2_key and not clip.thumb_key:
+                    clip.thumb_key = await _store_thumbnail(
+                        media_storage.presign_get(clip.r2_key), f"clips/{clip.user_id}/{clip.media_id}/{uuid.uuid4().hex}.jpg",
+                        min(1.0, (clip.end_s - clip.start_s) / 2), THUMB_CLIP_W,
+                    )
+                    _keep_updated_at(clip)
+                    await db.commit()
+            except Exception:
+                await db.rollback()
+                logger.warning("thumbnail backfill failed for clip %s", cid, exc_info=True)
 
 
 # ── Clipper: highlights + render (#29) ───────────────────────────────────────
@@ -714,7 +764,7 @@ async def list_clips(
     try:
         return [_clip_out(c) for c in clips]
     except media_storage.StorageNotConfigured as exc:
-        raise HTTPException(503, str(exc))
+        raise _unavailable(exc)
 
 
 @router.patch("/{asset_id}/clips/{clip_id}", response_model=ClipOut)
@@ -733,11 +783,12 @@ async def rename_clip(
     if not clip:
         raise HTTPException(404, "clip not found")
     clip.title = _clean_title(body.title)
+    _keep_updated_at(clip)
     await db.commit()
     try:
         return _clip_out(clip)
     except media_storage.StorageNotConfigured as exc:
-        raise HTTPException(503, str(exc))
+        raise _unavailable(exc)
 
 
 @router.delete("/{asset_id}/clips/{clip_id}", response_model=list[ClipOut])
@@ -767,7 +818,7 @@ async def delete_clip(
     try:
         return [_clip_out(c) for c in remaining]
     except media_storage.StorageNotConfigured as exc:
-        raise HTTPException(503, str(exc))
+        raise _unavailable(exc)
 
 
 @router.post("/{asset_id}/clips", response_model=list[ClipOut])
@@ -791,44 +842,48 @@ async def create_clips(
     if asset.status != "transcribed":
         raise HTTPException(409, f"media is {asset.status}; transcribe it first")
 
-    existing = await _clips_of(db, asset.id)
-    now = datetime.utcnow()
-    if any(c.status in ("pending", "rendering") and now - c.updated_at <= STALE_TRANSCRIBING for c in existing):
-        raise HTTPException(409, "clips are still rendering")
-    if existing and not regenerate:
-        raise HTTPException(409, "clips already exist; pass regenerate=true to redo them")
+    lock = _CLIP_LOCKS.setdefault(asset.id, asyncio.Lock())
+    if lock.locked():
+        raise HTTPException(409, "clips are already being generated")
+    async with lock:
+        existing = await _clips_of(db, asset.id)
+        now = datetime.utcnow()
+        if any(c.status in ("pending", "rendering") and now - c.updated_at <= STALE_TRANSCRIBING for c in existing):
+            raise HTTPException(409, "clips are still rendering")
+        if existing and not regenerate:
+            raise HTTPException(409, "clips already exist; pass regenerate=true to redo them")
 
-    row = (await db.execute(select(MediaTranscript).where(MediaTranscript.media_id == asset.id))).scalars().first()
-    segments = json.loads(row.segments_json) if row else []
-    if not segments:
-        raise HTTPException(422, "transcript is empty (no speech detected)")
+        row = (await db.execute(select(MediaTranscript).where(MediaTranscript.media_id == asset.id))).scalars().first()
+        segments = json.loads(row.segments_json) if row else []
+        if not segments:
+            raise HTTPException(422, "transcript is empty (no speech detected)")
 
-    try:
-        # ponytail: seleção síncrona (~5-20 s) para a resposta já trazer os títulos; se o app
-        # passar a estourar timeout, mover para background com um status em MediaAsset.
-        picks = await clipper.pick_highlights(segments, row.language)
-    except RuntimeError as exc:
-        raise HTTPException(503, str(exc))
-    except Exception:
-        logger.exception("highlight selection failed for media %s", asset_id)
-        raise HTTPException(502, "highlight detection failed, try again")
-    if not picks:
-        raise HTTPException(422, "no usable highlights found in this video")
+        try:
+            # ponytail: seleção síncrona (~5-20 s) para a resposta já trazer os títulos; se o app
+            # passar a estourar timeout, mover para background com um status em MediaAsset.
+            picks = await clipper.pick_highlights(segments, row.language)
+        except clipper.ProviderNotConfigured as exc:
+            raise _unavailable(exc)
+        except Exception:
+            logger.exception("highlight selection failed for media %s", asset_id)
+            raise HTTPException(502, "highlight detection failed, try again")
+        if not picks:
+            raise HTTPException(422, "no usable highlights found in this video")
 
-    old_keys = [k for c in existing for k in (c.r2_key, c.thumb_key) if k]
-    await db.execute(delete(MediaClip).where(MediaClip.media_id == asset.id))
-    clips = [
-        MediaClip(user_id=asset.user_id, media_id=asset.id, rank=i, start_s=h.start, end_s=h.end,
-                  title=h.title, reason=h.reason, status="pending")
-        for i, h in enumerate(picks, 1)
-    ]
-    db.add_all(clips)
-    await db.commit()
-    background.add_task(render_clips, asset.id, old_keys, layout)
+        old_keys = [k for c in existing for k in (c.r2_key, c.thumb_key) if k]
+        await db.execute(delete(MediaClip).where(MediaClip.media_id == asset.id))
+        clips = [
+            MediaClip(user_id=asset.user_id, media_id=asset.id, rank=i, start_s=h.start, end_s=h.end,
+                      title=h.title, reason=h.reason, status="pending")
+            for i, h in enumerate(picks, 1)
+        ]
+        db.add_all(clips)
+        await db.commit()
+        background.add_task(render_clips, asset.id, old_keys, layout)
     try:
         return [_clip_out(c) for c in clips]
     except media_storage.StorageNotConfigured as exc:
-        raise HTTPException(503, str(exc))
+        raise _unavailable(exc)
 
 
 async def render_clips(asset_id: int, old_keys: list[str] | None = None, layout: str = "auto") -> None:
@@ -883,7 +938,8 @@ async def _render_clips(asset_id: int, old_keys: list[str] | None, layout: str) 
                 clip.status, clip.error = "ready", None
             except Exception as exc:
                 logger.exception("clip render failed for clip %s", clip.id)
-                clip.status, clip.error = "failed", str(exc)[:500]
+                # o detalhe técnico (stderr do ffmpeg) fica no log acima; o app recebe algo acionável
+                clip.status, clip.error = "failed", "render failed, generate the clips again"
             if not await _exists(db, MediaClip, clip.id):
                 # apagado durante o render: o que ele subiu ao bucket não tem mais dono
                 await _delete_objects(uploaded)
