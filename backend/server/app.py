@@ -60,6 +60,9 @@ async def lifespan(app: FastAPI):
     if _missing:
         logger.warning("[startup] Missing env vars (service may reject auth/payment): %s", ", ".join(_missing))
 
+    from services.pqc_receipt import assert_ready as _pqc_assert_ready
+    _pqc_assert_ready()  # no-op sem PQC_REQUIRE_PERSISTENT_KEY; com ele, par ausente/inválido derruba o boot
+
     init_db()
     await create_tables()
     await get_rate_limiter(redis_url=settings.redis_url or None)
