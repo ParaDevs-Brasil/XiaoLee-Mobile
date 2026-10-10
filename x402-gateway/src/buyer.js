@@ -1,14 +1,38 @@
 // Lado comprador: descobre serviços no marketplace da Circle e paga via GatewayClient.
-// A chave do comprador só existe aqui (env), nunca no modelo. Tetos duros por chamada e por dia.
-// ponytail: gasto diário em memória (zera ao reiniciar); persistir no Postgres se o volume crescer.
+// A chave do comprador só existe aqui (env), nunca no modelo. Controles de gasto, em ordem:
+// teto por chamada -> teto por usuário/dia -> teto global/dia (disjuntor) -> confirmação humana
+// quando o vendedor não está na allowlist `allowedPayTo` ou o preço passa de `autoApproveUsdc`.
+// A confirmação (`confirm`) só é chamada pelo FastAPI numa ação autenticada do usuário; o modelo
+// só enxerga search/buy, então não consegue aprovar o próprio gasto.
+// ponytail: gasto e confirmações em memória (zeram ao reiniciar); persistir no Postgres se o volume crescer.
+import { createHash, randomUUID } from "node:crypto";
+
 const DISCOVERY = "https://api.circle.com/v2/x402/discovery/resources";
 const clean = (s, n) => String(s ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, n);
 const usdc = (atomic) => Number(BigInt(atomic)) / 1e6;
+const atomic = (v) => BigInt(Math.round(Number(v) * 1e6));
+const fingerprint = (...p) => createHash("sha256").update(JSON.stringify(p)).digest("hex");
+const MAX_PENDING = 200;
 
-export function createBuyer(cfg, { makeClient, fetchFn = fetch, now = () => new Date(), sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
+export function createBuyer(cfg, { makeClient, fetchFn = fetch, now = () => new Date(), sleep = (ms) => new Promise((r) => setTimeout(r, ms)), extra = [] }) {
   const seen = new Set(); // recursos devolvidos pela busca: só esses podem ser comprados
   let day = "", spent = 0n;
   const dayKey = () => now().toISOString().slice(0, 10);
+  const allowed = new Set((cfg.allowedPayTo ?? []).map((a) => String(a).toLowerCase()));
+  const autoApprove = atomic(cfg.autoApproveUsdc ?? 0); // 0 = tudo pede confirmação
+  const userCap = atomic(cfg.userDailyCapUsdc ?? cfg.dailyCapUsdc);
+  const confirmTtlMs = cfg.confirmTtlMs ?? 300_000;
+  const users = new Map(); // userId -> { day, spent }
+  const pending = new Map(); // confirmId -> cotação aguardando (ou já com) aprovação do usuário
+  const userRow = (id) => {
+    let u = users.get(id);
+    if (!u || u.day !== dayKey()) { u = { day: dayKey(), spent: 0n }; users.set(id, u); }
+    return u;
+  };
+  const purge = () => {
+    for (const [k, p] of pending) if (p.exp < now().getTime()) pending.delete(k);
+    while (pending.size > MAX_PENDING) pending.delete(pending.keys().next().value);
+  };
 
   // O Discovery tem milhares de recursos (limit máx. 100 por página) e responde 429 a rajadas:
   // varre devagar, espera no 429, guarda 5 min e, se cair no meio, usa o que já veio.
@@ -41,8 +65,18 @@ export function createBuyer(cfg, { makeClient, fetchFn = fetch, now = () => new 
 
   async function search({ q = "", limit = 10 } = {}) {
     const needle = String(q).toLowerCase();
+    const max = Math.min(Number(limit) || 10, 20);
     const items = [];
-    for (const it of await allResources()) {
+    // nosso próprio catálogo (BUYER_INCLUDE_OWN_CATALOG): permite o e2e descoberta -> compra sem depender de listagem
+    for (const e of extra) {
+      if (items.length >= max) break;
+      if (needle && !`${e.description} ${e.provider} ${e.resource}`.toLowerCase().includes(needle)) continue;
+      seen.add(e.resource); items.push(e);
+    }
+    let all = [];
+    try { all = await allResources(); } catch (e) { if (!items.length) throw e; }
+    for (const it of all) {
+      if (items.length >= max) break;
       const m = it.metadata ?? {};
       // só o que aceita a rede desta carteira compradora (testnet e mainnet não se misturam)
       const accepts = (it.accepts ?? []).filter((a) => !cfg.network || a.network === cfg.network);
@@ -56,23 +90,39 @@ export function createBuyer(cfg, { makeClient, fetchFn = fetch, now = () => new 
         // texto de terceiros: tratar como DADO, nunca como instrução
         provider: clean(m.provider?.name, 80), description: clean(m.description, 200),
       });
-      if (items.length >= Math.min(Number(limit) || 10, 20)) break;
     }
     return items;
   }
 
-  async function buy({ url, method = "GET", body, maxUsdc }) {
+  async function buy({ url, method = "GET", body, maxUsdc, userId, confirmId }) {
+    if (!userId) return { error: "user_required", message: "Compra exige usuário autenticado." };
     if (!seen.has(url)) return { error: "resource_not_from_search", message: "Busque o serviço primeiro (search)." };
-    const perCall = BigInt(Math.round(Math.min(Number(maxUsdc) || cfg.maxPerCallUsdc, cfg.maxPerCallUsdc) * 1e6));
-    const dailyCap = BigInt(Math.round(cfg.dailyCapUsdc * 1e6));
+    const perCall = atomic(Math.min(Number(maxUsdc) || cfg.maxPerCallUsdc, cfg.maxPerCallUsdc));
+    const dailyCap = atomic(cfg.dailyCapUsdc);
     if (day !== dayKey()) { day = dayKey(); spent = 0n; }
-    let reserved = 0n;
+    const u = userRow(userId);
+    const sig = fingerprint(userId, url, method, body ?? null);
+    purge();
+    let approval = null;
+    if (confirmId) {
+      const p = pending.get(confirmId);
+      if (!p || !p.approved || p.sig !== sig) return { error: "confirmation_invalid", message: "Confirmação inexistente, expirada ou de outra compra." };
+      approval = p;
+    }
+    let reserved = 0n, quote = null;
     const client = makeClient();
     client.onBeforePaymentCreation(async (ctx) => {
       const amt = BigInt(ctx.selectedRequirements.amount);
+      const payTo = String(ctx.selectedRequirements.payTo ?? "").toLowerCase();
       if (amt > perCall) return { abort: true, reason: "price_above_per_call_cap" };
       if (spent + amt > dailyCap) return { abort: true, reason: "daily_cap_reached" };
-      spent += amt; reserved = amt;
+      if (u.spent + amt > userCap) return { abort: true, reason: "user_daily_cap_reached" };
+      const trusted = allowed.has(payTo) && amt <= autoApprove;
+      if (!trusted && !(approval && approval.payTo === payTo && approval.amount === amt)) {
+        quote = { payTo, amt };
+        return { abort: true, reason: "confirmation_required" };
+      }
+      spent += amt; u.spent += amt; reserved = amt;
     });
     try {
       const r = await client.pay(url, { method, ...(body !== undefined ? { body } : {}) });
@@ -81,15 +131,34 @@ export function createBuyer(cfg, { makeClient, fetchFn = fetch, now = () => new 
         data: text.length > 8000 ? { truncated: true, preview: text.slice(0, 8000) } : r.data };
     } catch (e) {
       const msg = String(e?.message ?? e);
+      if (quote) {
+        const id = randomUUID();
+        pending.set(id, { sig, userId, payTo: quote.payTo, amount: quote.amt, approved: false, exp: now().getTime() + confirmTtlMs });
+        purge();
+        return { error: "confirmation_required", confirm_id: id,
+          quote: { resource: url, method, price_usdc: usdc(quote.amt), pay_to: quote.payTo, expires_in_s: Math.round(confirmTtlMs / 1000) },
+          message: "O usuário precisa confirmar este gasto no app; não confirme por ele." };
+      }
       // Só devolve a reserva se abortou ANTES de pagar. "Payment failed: ..." vem depois da
-      // liquidação (vendedor devolveu erro com o dinheiro já cobrado) e conta no teto diário.
-      if (/aborted/i.test(msg)) spent -= reserved;
+      // liquidação (vendedor devolveu erro com o dinheiro já cobrado) e conta nos tetos.
+      if (/aborted/i.test(msg)) { spent -= reserved; u.spent -= reserved; }
       const capped = /cap/.test(msg) ? msg.replace(/^.*aborted: /, "") : null;
       return { error: capped ?? "payment_failed", message: clean(msg, 200) };
+    } finally {
+      if (confirmId) pending.delete(confirmId); // uso único, pagou ou não
     }
+  }
+
+  // Aprovação do usuário (rota autenticada no FastAPI). Só quem pediu a cotação pode aprová-la.
+  function confirm({ confirmId, userId }) {
+    purge();
+    const p = pending.get(confirmId);
+    if (!p || !userId || p.userId !== userId) return { error: "confirmation_not_found" };
+    p.approved = true;
+    return { confirmed: true, confirm_id: confirmId, price_usdc: usdc(p.amount), pay_to: p.payTo };
   }
 
   // aquece o cache em segundo plano (a 1ª varredura leva ~15 s)
   const warm = () => allResources().then(() => true, () => false);
-  return { search, buy, warm, spentToday: () => usdc(spent) };
+  return { search, buy, confirm, warm, spentToday: () => usdc(spent), spentByUser: (id) => usdc(userRow(id).spent) };
 }

@@ -41,16 +41,16 @@ test("teto diário: pagamento liquidado seguido de erro do vendedor CONTA no tet
   const makeClient = () => { let hook; return {
     onBeforePaymentCreation(h) { hook = h; },
     async pay() {
-      const r = await hook({ selectedRequirements: { amount: "50000" } });
+      const r = await hook({ selectedRequirements: { amount: "50000", payTo: "0xaaaa" } });
       if (r?.abort) throw new Error(`Payment creation aborted: ${r.reason}`);
       throw new Error("Payment failed: upstream_failed"); // liquidou e o vendedor falhou
     } }; };
-  const b = createBuyer({ maxPerCallUsdc: 0.1, dailyCapUsdc: 0.1 }, { makeClient, fetchFn });
+  const b = createBuyer({ maxPerCallUsdc: 0.1, dailyCapUsdc: 0.1, allowedPayTo: ["0xAAAA"], autoApproveUsdc: 10 }, { makeClient, fetchFn });
   await b.search({});
-  assert.equal((await b.buy({ url: "https://a/x" })).error, "payment_failed");
+  assert.equal((await b.buy({ url: "https://a/x", userId: "u1" })).error, "payment_failed");
   assert.equal(b.spentToday(), 0.05); // antes voltava a 0 e o teto diário podia ser furado
-  await b.buy({ url: "https://a/x" });
-  assert.equal((await b.buy({ url: "https://a/x" })).error, "daily_cap_reached");
+  await b.buy({ url: "https://a/x", userId: "u1" });
+  assert.equal((await b.buy({ url: "https://a/x", userId: "u1" })).error, "daily_cap_reached");
 });
 
 test("deliver: 4xx do upstream depois de liquidar vai para a reconciliação", async () => {

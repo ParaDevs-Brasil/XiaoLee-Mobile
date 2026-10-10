@@ -57,6 +57,11 @@ export function createApp(cfg, buyer = null, ledger = defaultLedger) {
     catch (e) { res.status(502).json({ error: "discovery_failed" }); }
   });
   app.post("/internal/market/buy", internal, async (req, res) => res.json(await buyer.buy(req.body ?? {})));
+  // aprovação do usuário para uma cotação (confirmation_required); só o FastAPI chama, após autenticar o usuário
+  app.post("/internal/market/confirm", internal, (req, res) => {
+    const r = buyer.confirm({ confirmId: req.body?.confirmId, userId: req.body?.userId });
+    res.status(r.error ? 404 : 200).json(r);
+  });
 
   for (const svc of catalog) {
     // valida ANTES de cobrar: entrada inválida nunca gera pagamento. Só quando já há pagamento
