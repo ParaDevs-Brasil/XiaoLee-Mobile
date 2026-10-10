@@ -65,6 +65,12 @@ def test_validate_long_segment_keeps_model_window_instead_of_snapping_past_the_c
     assert [(h.start, h.end) for h in out] == [(10.0, 40.0)]
 
 
+def test_validate_trims_over_cap_window_at_last_fitting_segment():
+    segs = [{"start": i * 10.0, "end": i * 10.0 + 10.0, "text": "x"} for i in range(12)]  # 0-120 s
+    out = clipper.validate_highlights([_h(0, 95)], segs)  # snap -> 0-100 s (> 90)
+    assert [(h.start, h.end) for h in out] == [(0.0, 90.0)]
+
+
 def test_pick_highlights_uses_forced_tool_and_validates(monkeypatch):
     seen = {}
 

@@ -8,7 +8,7 @@ Banco: SQLite temporário (nada toca o banco de dev). Mede tempo por etapa e pic
 (processo + maior ffmpeg filho). No fim apaga do bucket tudo o que criou.
 
 Uso (variáveis R2_*, GROQ_API_KEY e ANTHROPIC_API_KEY no ambiente; NUNCA imprime segredos):
-    cd backend && ../.venv/bin/python scripts/clipper_e2e.py <video> [crop|fit]
+    cd backend && ../.venv/bin/python scripts/clipper_e2e.py <video> [auto|crop|fit]
 """
 
 from __future__ import annotations
@@ -171,6 +171,6 @@ async def _clip_key(Session, cid):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) not in (2, 3) or (len(sys.argv) == 3 and sys.argv[2] not in ("crop", "fit")):
+    if len(sys.argv) not in (2, 3) or (len(sys.argv) == 3 and sys.argv[2] not in ("crop", "fit", "auto")):
         sys.exit(__doc__)
     sys.exit(main(Path(sys.argv[1]), sys.argv[2] if len(sys.argv) == 3 else "crop"))

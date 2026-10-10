@@ -117,9 +117,14 @@ def validate_highlights(raw: list[dict], segments: list[dict], rejected: list | 
             reject(h, "fora da mídia")
             continue
         start, end = first["start"], min(last["end"], media_end)
-        # se o ajuste estourou o teto, volta a janela do modelo (segmentos longos de fala contínua)
+        # estourou o teto: apara no último segmento que cabe (frase inteira); se nenhum cabe
+        # (segmentos longos de fala contínua), volta a janela do modelo
         if end - start > MAX_LEN_S:
-            start, end = float(h["start"]), min(float(h["end"]), media_end)
+            fits = [s["end"] for s in segments if start <= s["start"] and s["end"] <= start + MAX_LEN_S]
+            if fits and max(fits) - start >= MIN_LEN_S:
+                end = max(fits)
+            else:
+                start, end = float(h["start"]), min(float(h["end"]), media_end)
         if not (MIN_LEN_S <= end - start <= MAX_LEN_S):
             reject(h, f"duração {end - start:.0f}s fora de {MIN_LEN_S:.0f}-{MAX_LEN_S:.0f}s")
             continue
