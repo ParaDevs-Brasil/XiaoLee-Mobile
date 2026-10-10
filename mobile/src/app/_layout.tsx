@@ -54,7 +54,7 @@ SplashScreen.preventAutoHideAsync();
  * - Enquanto carrega o SecureStore (`authState === 'loading'`), devolve `null`
  *   para evitar flash da tela de login para quem já possui sessão.
  *
- * Cuidado crítico: todas as 13 rotas do `src/app` precisam estar mapeadas
+ * Cuidado crítico: todas as 14 rotas do `src/app` precisam estar mapeadas
  * dentro de um dos blocos protegidos. No Expo Router, rotas não declaradas
  * são injetadas sem guarda e ficariam abertas.
  */

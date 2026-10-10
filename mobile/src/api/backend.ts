@@ -365,25 +365,35 @@ export function createClips(
 
 /**
  * Glossário do creator: termos que a transcrição precisa acertar (marcas,
- * projetos, jargão). Mora no perfil (`GET/PATCH /user/me/profile`); aqui só
- * o recorte que o Clipper usa. O backend limpa repetidos/vazios e corta em
- * 60 termos de até 40 caracteres.
- *
- * TODO: quando o PR #1 (onboarding) entrar, ele traz `getMyProfile`/
- * `updateMyProfile` para a mesma rota — trocar estas duas por elas
- * (com `glossary` no tipo `MyProfile`) em vez de manter dois clientes.
+ * projetos, jargão) — `GET/PUT /v1/media/glossary` (`media_routes.py`, tabela
+ * própria, fora do perfil). O backend limpa repetidos/vazios e corta em 60
+ * termos de até 40 caracteres; vale para as próximas transcrições.
  */
 export async function getGlossary(): Promise<string[]> {
-  const profile = await apiFetch<{ glossary?: string[] }>('/user/me/profile');
-  return profile.glossary ?? [];
+  const res = await apiFetch<{ terms?: string[] }>('/v1/media/glossary');
+  return res.terms ?? [];
 }
 
+/** Substitui a lista inteira e devolve a lista salva (já limpa pelo backend). */
 export async function updateGlossary(terms: string[]): Promise<string[]> {
-  const profile = await apiFetch<{ glossary?: string[] }>('/user/me/profile', {
-    method: 'PATCH',
-    json: { glossary: terms },
+  const res = await apiFetch<{ terms?: string[] }>('/v1/media/glossary', {
+    method: 'PUT',
+    json: { terms },
   });
-  return profile.glossary ?? [];
+  return res.terms ?? [];
+}
+
+/** Termo que o creator repete nas últimas transcrições e que parece nome próprio/marca. */
+export interface GlossarySuggestion {
+  term: string;
+  /** Quantas vezes apareceu. */
+  count: number;
+}
+
+/** Sugestões para o glossário (já sem os termos que ele tem) — `GET /v1/media/glossary/suggestions`. */
+export async function getGlossarySuggestions(): Promise<GlossarySuggestion[]> {
+  const res = await apiFetch<{ suggestions?: GlossarySuggestion[] }>('/v1/media/glossary/suggestions');
+  return res.suggestions ?? [];
 }
 
 /** `POST /auth/wallet` — `backend/server/campaigns_routes.py::link_wallet` */
