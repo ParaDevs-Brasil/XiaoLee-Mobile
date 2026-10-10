@@ -258,9 +258,19 @@ class _FakeR2(BaseHTTPRequestHandler):
         start, end = 0, size - 1
         ranged = self.headers.get("Range", "").startswith("bytes=")
         if ranged:
+            # um intervalo só, "a-b" | "a-" | "-n"; o resto (múltiplos, invertido, fora do arquivo) é 416
             first, _, last = self.headers["Range"][6:].partition("-")
-            start = int(first) if first else max(0, size - int(last))
-            end = min(int(last), size - 1) if first and last else end
+            try:
+                start = int(first) if first else max(0, size - int(last))
+                end = min(int(last), size - 1) if first and last else end
+            except ValueError:
+                start, end = size, -1
+            if start > end or start >= size:
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
         self.send_response(206 if ranged else 200)
         self.send_header("Content-Type", "video/mp4")
         self.send_header("Accept-Ranges", "bytes")
@@ -290,11 +300,17 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--user-id", type=int, help="dono dos vídeos (padrão: quem fez login por último)")
     parser.add_argument("--serve", action="store_true", help='sobe o "R2" de demo (porta 9000) em vez de semear')
+    parser.add_argument("--force", action="store_true", help="semeia mesmo num banco que não é SQLite local")
     args = parser.parse_args()
     if args.serve:
         serve(9000)
-    else:
-        asyncio.run(seed(args.user_id))
+        return
+    # O seed APAGA a mídia `demo-*` do usuário e grava linhas falsas: num DATABASE_URL de staging/produção
+    # esquecido no shell, isso estragaria dados reais.
+    url = db._build_database_url()
+    if not url.startswith("sqlite") and not args.force:
+        sys.exit(f"Recusado: o banco não é SQLite local ({url.split('://')[0]}://…). Use --force se for isso mesmo.")
+    asyncio.run(seed(args.user_id))
 
 
 if __name__ == "__main__":
