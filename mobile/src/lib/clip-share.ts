@@ -107,16 +107,21 @@ export async function shareClip(mediaId: number, clip: Pick<MediaClip, 'id' | 't
  * Baixa o corte (`downloadClip`) e grava na galeria do aparelho.
  *
  * Permissões, de propósito o mínimo:
- * - Android 10+: nenhuma. A biblioteca grava pelo MediaStore, que deixa o app
- *   adicionar os próprios arquivos sem pedir nada.
- * - Android 9 ou anterior: escrita no armazenamento (o manifesto da
- *   biblioteca já declara, limitado a essas versões).
+ * - Android 11+ (API 30+): nenhuma. A biblioteca grava pelo MediaStore, que
+ *   deixa o app adicionar os próprios arquivos sem pedir nada.
+ * - Android 10 ou anterior (API ≤ 29): escrita no armazenamento. A API nova do
+ *   `expo-media-library` usa o caminho legado abaixo do API 30 e exige a
+ *   permissão no `create` (o manifesto da biblioteca já declara, limitado a ≤ 32).
+ *   Antes o corte era `< 29`, e o Save sempre falhava no Android 10.
  * - iOS: só "adicionar à galeria" (`writeOnly`), nunca leitura das fotos — o
  *   texto do pedido está em `ios.infoPlist` no `app.json`.
  *
  * O config plugin do `expo-media-library` fica DE FORA do `app.json`: ele
  * adicionaria READ_MEDIA_IMAGES/VIDEO/AUDIO (leitura), que o app não usa e
- * que obrigam a declaração da política de fotos e vídeos do Google Play.
+ * que obrigam a declaração da política de fotos e vídeos do Google Play. O
+ * manifesto da própria biblioteca ainda traz READ_MEDIA_VISUAL_USER_SELECTED e
+ * READ_EXTERNAL_STORAGE — bloqueados em `android.blockedPermissions` no
+ * `app.json` (o app nunca lê a galeria; só WRITE_EXTERNAL_STORAGE ≤ 32 fica).
  */
 export async function saveClipToDevice(mediaId: number, clip: Pick<MediaClip, 'id' | 'title'>): Promise<void> {
   if (!canSaveClips) {
@@ -125,7 +130,7 @@ export async function saveClipToDevice(mediaId: number, clip: Pick<MediaClip, 'i
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- carregamento tardio, ver `canShareClips`
   const MediaLibrary = require('expo-media-library') as typeof import('expo-media-library');
 
-  if (Platform.OS === 'ios' || (Platform.OS === 'android' && Platform.Version < 29)) {
+  if (Platform.OS === 'ios' || (Platform.OS === 'android' && Platform.Version < 30)) {
     const { granted } = await MediaLibrary.requestPermissionsAsync(true, ['video']);
     if (!granted) {
       throw new ClipShareError('Allow XiaoLee to add videos to your gallery in Settings, then try again.');

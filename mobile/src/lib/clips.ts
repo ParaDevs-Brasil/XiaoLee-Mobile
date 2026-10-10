@@ -22,14 +22,18 @@ export type ClipFlow =
   | { step: 'rendering'; ready: number; total: number }
   /** Nenhum corte em andamento mudou há mais de `STALE_MS`: só gerar de novo destrava. */
   | { step: 'rendering-stalled'; ready: number; total: number }
-  | { step: 'done'; ready: number; failed: number };
+  | { step: 'done'; ready: number; failed: number }
+  /** A retenção do backend apagou os arquivos: não toca nem gera mais, só reenviando. */
+  | { step: 'expired' };
 
 /**
  * Mesmo prazo de `STALE_TRANSCRIBING` em `media_routes.py`: a partir dele o
  * backend aceita refazer (`/complete` de novo, `regenerate=true`). Antes disso
- * recusaria com 409, então o app não oferece o botão.
+ * recusaria com 409, então o app não oferece o botão. É longo de propósito:
+ * restart do servidor já vira falha sozinho (reaper do backend); isto só cobre
+ * job pendurado, e não pode disparar no meio de uma transcrição longa legítima.
  */
-export const STALE_MS = 30 * 60_000;
+export const STALE_MS = 6 * 60 * 60_000;
 
 /**
  * `updated_at` mais velho que `STALE_MS`. `null` (linha recém-escrita) nunca é
@@ -57,6 +61,8 @@ export function clipFlow(
       return isStale(media.updated_at, now) ? { step: 'transcription-stalled' } : { step: 'transcribing' };
     case 'failed':
       return { step: 'transcription-failed', error: media.error ?? 'The transcription failed.' };
+    case 'expired':
+      return { step: 'expired' };
   }
   if (media.kind !== 'video') return { step: 'audio-only' };
   if (clips.length === 0) return { step: 'choose-layout' };
@@ -148,6 +154,8 @@ export function mediaListStatus(m: MediaListItem): { label: string; group: Exclu
       return { label: 'Transcribing', group: 'processing', tone: 'progress' };
     case 'failed':
       return { label: 'Failed', group: 'attention', tone: 'danger' };
+    case 'expired':
+      return { label: 'Expired', group: 'attention', tone: 'muted' };
   }
   if (m.kind !== 'video') return { label: 'Audio only', group: 'attention', tone: 'muted' };
   if (m.clips_total === 0) return { label: 'Generate clips', group: 'attention', tone: 'action' };

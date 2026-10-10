@@ -213,7 +213,8 @@ export function getChatSessionMessages(id: number): Promise<ChatSessionMessage[]
 }
 
 /** Mídia bruta do Clipper — `backend/server/media_routes.py`. */
-export type MediaStatus = 'pending' | 'uploaded' | 'transcribing' | 'transcribed' | 'failed';
+/** `expired`: a retenção do backend (`media_maintenance.purge_expired`) apagou os arquivos; só dá para reenviar. */
+export type MediaStatus = 'pending' | 'uploaded' | 'transcribing' | 'transcribed' | 'failed' | 'expired';
 
 export interface MediaAsset {
   id: number;
@@ -297,7 +298,8 @@ export function listMedia(): Promise<MediaAsset[]> {
 export type ClipStatus = 'pending' | 'rendering' | 'ready' | 'failed';
 
 /** `crop` = quem fala para a câmera; `fit` = gravação de tela (vídeo inteiro sobre fundo desfocado). */
-export type ClipLayout = 'crop' | 'fit';
+/** `auto` (padrão do backend): o Claude olha quadros do vídeo e escolhe entre `crop` e `fit`. */
+export type ClipLayout = 'auto' | 'crop' | 'fit';
 
 export interface MediaClip {
   id: number;

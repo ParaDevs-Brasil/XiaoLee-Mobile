@@ -37,10 +37,10 @@ console.log('clips');
 
 const NOW = Date.parse('2026-10-09T18:00:00.000Z');
 const FRESH = '2026-10-09T17:55:00.123456+00:00';
-const OLD = '2026-10-09T17:00:00.123456+00:00'; // 1 h antes de NOW
+const OLD = '2026-10-09T11:00:00.123456+00:00'; // 7 h antes de NOW (o prazo de travado é 6 h)
 
 const video = (
-  status: 'pending' | 'uploaded' | 'transcribing' | 'transcribed' | 'failed',
+  status: 'pending' | 'uploaded' | 'transcribing' | 'transcribed' | 'failed' | 'expired',
   error: string | null = null,
   updated_at: string | null = FRESH,
 ) => ({ kind: 'video' as const, status, error, updated_at });
@@ -163,7 +163,7 @@ test('clipFileName: sem acento/símbolo, com o id do corte', () => {
 console.log('clips · lista');
 
 const item = (
-  status: 'pending' | 'uploaded' | 'transcribing' | 'transcribed' | 'failed',
+  status: 'pending' | 'uploaded' | 'transcribing' | 'transcribed' | 'failed' | 'expired',
   [clips_total, clips_ready, clips_in_progress] = [0, 0, 0],
   kind: 'video' | 'audio' = 'video',
 ) => ({ kind, status, clips_total, clips_ready, clips_in_progress });
@@ -233,3 +233,14 @@ test('formatEta fala em minutos e horas, sem falsa precisão', () => {
   assert.equal(formatEta(3600), 'about 1 h left');
   assert.equal(formatEta(4000), 'about 1 h 7 min left');
 });
+
+test('vídeo expirado (retenção do backend) não oferece gerar nem tocar', () => {
+  assert.deepEqual(clipFlow(video('expired'), [], NOW), { step: 'expired' });
+  assert.deepEqual(mediaListStatus(item('expired')), { label: 'Expired', group: 'attention', tone: 'muted' });
+});
+
+test('transcrição longa legítima (2 h) ainda não é "travada"', () => {
+  const twoHoursAgo = new Date(NOW - 2 * 60 * 60_000).toISOString();
+  assert.deepEqual(clipFlow(video('transcribing', null, twoHoursAgo), [], NOW), { step: 'transcribing' });
+});
+

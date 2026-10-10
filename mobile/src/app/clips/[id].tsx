@@ -94,7 +94,7 @@ export default function ClipsDetailScreen() {
     };
   }, [mediaId, transcribed]);
 
-  const [layout, setLayout] = useState<ClipLayout>('crop');
+  const [layout, setLayout] = useState<ClipLayout>('auto');
   const [generating, setGenerating] = useState(false);
   const [retrying, setRetrying] = useState(false);
   /** Falha da última ação do usuário (gerar, tentar de novo) — já exibível. */
@@ -402,6 +402,14 @@ function FlowBody({
           text="This file is audio only. Upload a video to get vertical clips."
         />
       );
+    case 'expired':
+      return (
+        <EmptyState
+          Icon={IconScissors}
+          title="This video expired"
+          text="Uploads are only kept for a limited time. Send the video again to make new clips."
+        />
+      );
     case 'choose-layout':
       return (
         <GeneratePanel
@@ -562,6 +570,11 @@ function ActionButton({
 }
 
 const LAYOUTS: { value: ClipLayout; title: string; text: string }[] = [
+  {
+    value: 'auto',
+    title: 'Automatic',
+    text: 'We look at the video and pick the framing for you. Recommended.',
+  },
   {
     value: 'crop',
     title: 'Face to camera',
