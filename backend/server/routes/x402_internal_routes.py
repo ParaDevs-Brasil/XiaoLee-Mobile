@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.database import get_db_session
 from database.models import UsedPayment
+from server import x402_llm
 from services.pqc_receipt import sign_receipt
 
 router = APIRouter(prefix="/internal/x402", tags=["x402-internal"])
@@ -205,16 +206,25 @@ async def _paid(request: Request, db: AsyncSession, result: dict) -> dict:
     }
 
 
+async def _enriched(service: str, payload: dict, result: dict) -> dict:
+    """Heurística é a base; o LLM só acrescenta `ai_insights` (flag + orçamento em x402_llm). task-verification
+    fica determinística de propósito: é decisão de pagamento, tem de ser reproduzível."""
+    insights = await x402_llm.enrich(service, payload, result)
+    if insights:
+        result["ai_insights"] = insights
+    return result
+
+
 @router.post("/profile-analysis")
 async def profile_analysis(body: ProfileAnalysisIn, request: Request, db: AsyncSession = Depends(get_db_session)):
     _require_internal(request.headers.get("x-internal-secret"))  # falha antes de qualquer trabalho
-    return await _paid(request, db, analyze(body))
+    return await _paid(request, db, await _enriched("profile-analysis", body.model_dump(), analyze(body)))
 
 
 @router.post("/campaign-plan")
 async def campaign_plan(body: CampaignPlanIn, request: Request, db: AsyncSession = Depends(get_db_session)):
     _require_internal(request.headers.get("x-internal-secret"))
-    return await _paid(request, db, plan_campaign(body))
+    return await _paid(request, db, await _enriched("campaign-plan", body.model_dump(), plan_campaign(body)))
 
 
 @router.post("/task-verification")

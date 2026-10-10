@@ -153,3 +153,71 @@ async def test_task_verification_requires_secret_and_valid_platform(db):
     assert client.post(TASK_URL, json=TASK).status_code == 403
     h = {**PAID, "x-internal-secret": "s3cret"}
     assert client.post(TASK_URL, json={**TASK, "platform": "myspace"}, headers=h).status_code == 422
+
+
+# ── LLM opcional (X402_LLM_*) ────────────────────────────────────────────────
+from server import x402_llm
+
+_OK = ('{"summary": "Post 3 clips a week and measure retention.", "actions": ["a", "b", "c"]}', 1000, 400)
+_H = {**PAID, "x-internal-secret": "s3cret"}
+
+
+@pytest.fixture
+def llm(monkeypatch):
+    monkeypatch.setenv("X402_LLM_ENABLED", "true")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.delenv("X402_LLM_DAILY_CAP_USD", raising=False)
+    x402_llm.budget.day, x402_llm.budget.spent = "", 0.0
+    calls = []
+
+    async def fake(service, payload, baseline):
+        calls.append(service)
+        return _OK
+
+    monkeypatch.setattr(x402_llm, "_call", fake)
+    return calls
+
+
+def test_llm_off_by_default_keeps_heuristic(db, monkeypatch):
+    monkeypatch.delenv("X402_LLM_ENABLED", raising=False)
+    r = client.post(URL, json=BODY, headers=_H).json()
+    assert "ai_insights" not in r["result"] and "growth_readiness_score" in r["result"]
+
+
+def test_llm_adds_insights_and_charges_real_cost(db, llm):
+    r = client.post(URL, json=BODY, headers=_H).json()
+    assert r["result"]["ai_insights"]["source"] == "llm" and len(r["result"]["ai_insights"]["actions"]) == 3
+    assert "growth_readiness_score" in r["result"]  # base heurística preservada
+    # 1000*0.10/1M + 400*0.50/1M = 0.0003, bem abaixo do teto por chamada
+    assert x402_llm.budget.spent == pytest.approx(0.0003)
+
+
+def test_llm_daily_cap_falls_back_without_calling(db, llm, monkeypatch):
+    monkeypatch.setenv("X402_LLM_DAILY_CAP_USD", "0.005")  # < teto por chamada (0.01): nunca reserva
+    r = client.post(URL, json=BODY, headers=_H)
+    assert r.status_code == 200 and "ai_insights" not in r.json()["result"] and llm == []
+
+
+def test_llm_failure_is_fail_open_and_refunds_reservation(db, llm, monkeypatch):
+    async def boom(*a):
+        raise RuntimeError("upstream down")
+
+    monkeypatch.setattr(x402_llm, "_call", boom)
+    r = client.post(URL, json=BODY, headers=_H)
+    assert r.status_code == 200 and "ai_insights" not in r.json()["result"]
+    assert x402_llm.budget.spent == 0.0
+
+
+def test_llm_invalid_json_falls_back(db, llm, monkeypatch):
+    async def bad(*a):
+        return ("not json", 100, 10)
+
+    monkeypatch.setattr(x402_llm, "_call", bad)
+    r = client.post("/internal/x402/campaign-plan", json={"goal": "launch", "budget_usdc": 100}, headers=_H)
+    assert r.status_code == 200 and "ai_insights" not in r.json()["result"]
+
+
+def test_task_verification_never_uses_llm(db, llm):
+    body = {"platform": "x", "post_url": "https://x.com/a/status/1", "post_text": "hi @a", "handle": "a"}
+    r = client.post("/internal/x402/task-verification", json=body, headers=_H)
+    assert r.status_code == 200 and "ai_insights" not in r.json()["result"] and llm == []
