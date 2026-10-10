@@ -9,6 +9,9 @@
     "userInterfaceStyle": "light",
     "ios": {
       "bundleIdentifier": "XiaoLee.mobile",
+      "infoPlist": {
+        "NSPhotoLibraryAddUsageDescription": "XiaoLee saves your clips to your photo library."
+      },
       "supportsTablet": true,
       "googleServicesFile": "./GoogleService-Info.plist"
     },

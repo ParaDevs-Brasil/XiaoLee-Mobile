@@ -179,6 +179,10 @@ export interface MediaAsset {
   id: number;
   kind: 'video' | 'audio';
   filename: string;
+  /** Nome exibido: o que o creator escolheu ou, sem isso, o `filename`. */
+  title: string;
+  /** Quadro do vídeo para a lista. URL temporária (1 h); `null` = ainda não gerado, ou áudio. */
+  thumbnail_url: string | null;
   content_type: string;
   size_bytes: number;
   sha256: string | null;
@@ -186,6 +190,17 @@ export interface MediaAsset {
   error: string | null;
   duration_s: number | null;
   created_at: string;
+  /** Última mudança de status (`null` logo depois de uma escrita). Ver `isStale` em `lib/clips.ts`. */
+  updated_at: string | null;
+  /**
+   * Cortes deste vídeo. `status: 'transcribed'` só diz que a TRANSCRIÇÃO
+   * acabou — sem isto a lista chamava de "Ready" um vídeo ainda renderizando.
+   * Falhos = total − prontos − em andamento. Ver `mediaListStatus`.
+   */
+  clips_total: number;
+  clips_ready: number;
+  /** `pending` + `rendering`. */
+  clips_in_progress: number;
 }
 
 export interface MediaTranscriptSegment {
@@ -229,8 +244,106 @@ export function getMedia(id: number): Promise<MediaDetail> {
   return apiFetch<MediaDetail>(`/v1/media/${id}`);
 }
 
+/** Só o status, sem a transcrição — o que se consulta em loop enquanto o backend trabalha. */
+export function getMediaStatus(id: number): Promise<MediaAsset> {
+  return apiFetch<MediaAsset>(`/v1/media/${id}?include_transcript=false`);
+}
+
 export function listMedia(): Promise<MediaAsset[]> {
   return apiFetch<MediaAsset[]>('/v1/media');
+}
+
+/** Cortes 9:16 de uma mídia — `media_routes.py::ClipOut`. */
+export type ClipStatus = 'pending' | 'rendering' | 'ready' | 'failed';
+
+/** `crop` = quem fala para a câmera; `fit` = gravação de tela (vídeo inteiro sobre fundo desfocado). */
+export type ClipLayout = 'crop' | 'fit';
+
+export interface MediaClip {
+  id: number;
+  /** 1 = o melhor momento, segundo o Claude. */
+  rank: number;
+  start_s: number;
+  end_s: number;
+  title: string;
+  /** Por que o trecho foi escolhido — texto do Claude. */
+  reason: string;
+  status: ClipStatus;
+  error: string | null;
+  size_bytes: number | null;
+  /** Só quando `ready`. URL temporária (1 h): buscar de novo antes de tocar, nunca guardar. */
+  download_url: string | null;
+  /** Quadro do corte renderizado (com a legenda). URL temporária (1 h); `null` até existir. */
+  thumbnail_url: string | null;
+  /** Última mudança de status (`null` logo depois de uma escrita). Ver `isStale` em `lib/clips.ts`. */
+  updated_at: string | null;
+}
+
+/** Máximo do backend (`TITLE_MAX` em `media_routes.py`). */
+export const TITLE_MAX_LENGTH = 120;
+
+/** Renomeia o vídeo — só o nome exibido, o arquivo e o `filename` ficam. */
+export function renameMedia(id: number, title: string): Promise<MediaAsset> {
+  return apiFetch<MediaAsset>(`/v1/media/${id}`, { method: 'PATCH', json: { title } });
+}
+
+/** Renomeia um corte. Não re-renderiza: o título não vai queimado no vídeo. */
+export function renameClip(mediaId: number, clipId: number, title: string): Promise<MediaClip> {
+  return apiFetch<MediaClip>(`/v1/media/${mediaId}/clips/${clipId}`, { method: 'PATCH', json: { title } });
+}
+
+/** Apaga o vídeo com os cortes, a transcrição e os arquivos. Vale em qualquer estado, inclusive transcrevendo. */
+export function deleteMedia(id: number): Promise<void> {
+  return apiFetch<void>(`/v1/media/${id}`, { method: 'DELETE' });
+}
+
+/** Apaga um corte e devolve os que sobraram, já renumerados. */
+export function deleteClip(mediaId: number, clipId: number): Promise<MediaClip[]> {
+  return apiFetch<MediaClip[]>(`/v1/media/${mediaId}/clips/${clipId}`, { method: 'DELETE' });
+}
+
+export function listClips(mediaId: number): Promise<MediaClip[]> {
+  return apiFetch<MediaClip[]>(`/v1/media/${mediaId}/clips`);
+}
+
+/**
+ * Escolhe os momentos e enfileira a renderização. A escolha acontece DENTRO
+ * da requisição (o Claude lê a transcrição inteira, ~5–20 s), daí o timeout
+ * maior que o padrão. Cada chamada custa uma ida ao Claude: com cortes já
+ * existentes o backend devolve 409, a não ser que venha `regenerate`.
+ */
+export function createClips(
+  mediaId: number,
+  { layout, regenerate = false }: { layout: ClipLayout; regenerate?: boolean },
+): Promise<MediaClip[]> {
+  const query = `layout=${layout}${regenerate ? '&regenerate=true' : ''}`;
+  return apiFetch<MediaClip[]>(`/v1/media/${mediaId}/clips?${query}`, {
+    method: 'POST',
+    timeoutMs: 90_000,
+  });
+}
+
+/**
+ * Glossário do creator: termos que a transcrição precisa acertar (marcas,
+ * projetos, jargão). Mora no perfil (`GET/PATCH /user/me/profile`); aqui só
+ * o recorte que o Clipper usa. O backend limpa repetidos/vazios e corta em
+ * 60 termos de até 40 caracteres.
+ *
+ * TODO: quando o PR #1 (onboarding) entrar, ele traz `getMyProfile`/
+ * `updateMyProfile` para a mesma rota — trocar estas duas por elas
+ * (com `glossary` no tipo `MyProfile`) em vez de manter dois clientes.
+ */
+export async function getGlossary(): Promise<string[]> {
+  const profile = await apiFetch<{ glossary?: string[] }>('/user/me/profile');
+  return profile.glossary ?? [];
+}
+
+export async function updateGlossary(terms: string[]): Promise<string[]> {
+  const profile = await apiFetch<{ glossary?: string[] }>('/user/me/profile', {
+    method: 'PATCH',
+    json: { glossary: terms },
+  });
+  return profile.glossary ?? [];
 }
 
 /** `POST /auth/wallet` — `backend/server/campaigns_routes.py::link_wallet` */

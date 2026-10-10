@@ -23,11 +23,24 @@ export interface BackendData<T> {
   /** Recarga com dado já na tela — é o que alimenta o `RefreshControl`. */
   refreshing: boolean;
   reload: () => void;
+  /**
+   * Põe na tela o dado que uma escrita já devolveu (ex.: o PATCH responde o
+   * recurso atualizado), sem a ida extra ao backend nem o instante em que o
+   * dado antigo reaparece até o `reload` voltar.
+   */
+  replace: (next: T) => void;
 }
 
 export function useBackendData<T>(
   fetcher: () => Promise<T>,
-  options?: { pollMs?: number },
+  options?: {
+    /**
+     * Consulta periódica enquanto a tela está em foco. Função = decide pelo
+     * último dado (ex.: só enquanto o backend ainda está processando);
+     * `undefined` desliga.
+     */
+    pollMs?: number | ((data: T | null) => number | undefined);
+  },
 ): BackendData<T> {
   // Quem busca é dono do dado de *uma* sessão. Entrar ou sair troca de quem é
   // esse dado, e sem refazer a busca a tela fica com o resultado do usuário
@@ -108,7 +121,7 @@ export function useBackendData<T>(
   // só enquanto a tela está em foco, silenciosa como o refetch por foco, e
   // para sozinha ao sair da tela — sem isso a Wallet continuaria batendo o
   // RPC em segundo plano com a tela invisível.
-  const pollMs = options?.pollMs;
+  const pollMs = typeof options?.pollMs === 'function' ? options.pollMs(data) : options?.pollMs;
   useFocusEffect(
     useCallback(() => {
       if (!pollMs) return;
@@ -127,5 +140,10 @@ export function useBackendData<T>(
     });
   }, [run]);
 
-  return { data, error, loading, refreshing, reload };
+  const replace = useCallback((next: T) => {
+    setData(next);
+    setError(null);
+  }, []);
+
+  return { data, error, loading, refreshing, reload, replace };
 }
