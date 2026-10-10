@@ -43,6 +43,12 @@ function short(address: string): string {
  * `withdraw` e `deposit` continuam inertes porque ainda não têm tela.
  */
 const ACTIONS: (PanelItem & { href?: '/wallet' | '/transactions' | '/history' })[] = [
+  {
+    key: 'edit-profile',
+    Icon: IconUser,
+    title: 'Edit profile',
+    subtitle: 'Name, interests, bio',
+  },
   { key: 'wallet', Icon: IconWallet, title: 'wallet', subtitle: 'View token balance', href: '/wallet' },
   {
     key: 'transaction',
@@ -111,7 +117,12 @@ export function ProfileMenu({ visible, onDismiss, walletAddress, onConnectWallet
                     onDismiss();
                     onConnectWallet();
                   }
-                : undefined,
+                : item.key === 'edit-profile'
+                  ? () => {
+                      onDismiss();
+                      router.push({ pathname: '/onboarding', params: { edit: '1' } });
+                    }
+                  : undefined,
           }}
         />
       ))}
