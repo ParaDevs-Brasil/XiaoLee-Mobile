@@ -127,3 +127,25 @@ def test_messages_404_for_other_users_session():
         headers={"Authorization": "Bearer someone-else"},
     )
     assert resp.status_code == 404
+
+
+@pytest.mark.parametrize("sent_action, expected", [
+    ("my_metrics", "my_metrics"),   # card do menu → chega ao orchestrator
+    (None, None),                   # cliente antigo, sem o campo
+    (["my_metrics"], None),         # tipo errado é ignorado, não 500
+])
+def test_chat_forwards_menu_action_to_the_orchestrator(monkeypatch, sent_action, expected):
+    execute = AsyncMock(return_value={
+        "intent": IntentResponse(action="my_metrics", confidence=1.0, entities={}),
+        "reply_text": "ok",
+        "execution": {"status": "info"},
+    })
+    monkeypatch.setattr(app_module.orchestrator, "execute", execute)
+
+    payload = {"message": "My metrics"}
+    if sent_action is not None:
+        payload["menu_action"] = sent_action
+    sent = client.post("/chat", json=payload, headers=AUTH)
+
+    assert sent.status_code == 200
+    assert execute.await_args.kwargs["menu_action"] == expected

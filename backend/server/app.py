@@ -402,6 +402,7 @@ async def _process_inbound(
     db: AsyncSession,
     metadata: dict | None = None,
     session_id: str | None = None,
+    menu_action: str | None = None,
 ) -> OrchestrationResponse:
     repo = DatabaseRepository(db)
     user = await repo.get_or_create_user(platform, user_id)
@@ -427,7 +428,7 @@ async def _process_inbound(
     # transação cortada em duas, a resposta do bot commita normalmente no fim.
     await db.commit()
 
-    result = await orchestrator.execute(text, user_id, history=history, platform=platform)
+    result = await orchestrator.execute(text, user_id, history=history, platform=platform, menu_action=menu_action)
 
     await repo.log_dm(user.id, platform, result["reply_text"], message_type="bot", session_id=session_id)
     if session_id:
@@ -504,8 +505,15 @@ async def chat_compat(
             await repo.rename_chat_session(int(chat_session_id), title)
             await db.commit()
 
+    # Card do menu do chat (XIAOLEEACE-20): ação fixa que o backend atende sem
+    # depender do modelo. Opcional — quem não manda segue o caminho de sempre.
+    menu_action = payload.get("menu_action")
+    if not isinstance(menu_action, str):
+        menu_action = None
+
     result = await _process_inbound(
-        platform=platform, user_id=user_id, text=text, db=db, session_id=str(chat_session_id)
+        platform=platform, user_id=user_id, text=text, db=db, session_id=str(chat_session_id),
+        menu_action=menu_action,
     )
 
     # Keep legacy response shape consumed by frontend ChatPanel.
