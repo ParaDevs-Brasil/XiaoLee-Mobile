@@ -379,10 +379,14 @@ def test_ass_text_drops_carriage_returns():
 
 def _anthropic_error(cls_name: str, status: int, message: str):
     import anthropic
-    import httpx2
 
-    req = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
-    return getattr(anthropic, cls_name)(message, response=httpx2.Response(status, request=req), body={"error": {"message": message}})
+    try:  # anthropic >= 1.0 usa httpx2; as 0.x usam httpx
+        import httpx2 as http
+    except ImportError:
+        import httpx as http
+
+    req = http.Request("POST", "https://api.anthropic.com/v1/messages")
+    return getattr(anthropic, cls_name)(message, response=http.Response(status, request=req), body={"error": {"message": message}})
 
 
 def _anthropic_raising(monkeypatch, exc):
