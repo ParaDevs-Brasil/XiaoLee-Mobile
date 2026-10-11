@@ -54,9 +54,10 @@ STELLAR_AGENT_TOOLS = [
         "name": "list_campaigns",
         "description": (
             "Lista as campanhas de creators ativas (nome, descrição, tipo, reward por participante, "
-            "token de recompensa, participantes já pagos). Use quando o usuário perguntar quais "
-            "campanhas existem, rewards disponíveis ou quiser saber o que pode participar — não peça "
-            "para ele ir no dashboard, responda direto com os dados desta tool."
+            "token de recompensa, participantes já pagos), já ordenadas da mais para a menos indicada "
+            "ao perfil de interesses do usuário (match_score, matched_interests, already_joined). Use "
+            "quando o usuário perguntar quais campanhas existem, rewards disponíveis ou quiser saber o "
+            "que pode participar — não peça para ele ir no dashboard, responda direto com os dados desta tool."
         ),
         "parameters": {"type": "object", "properties": {}},
     }},
@@ -625,7 +626,10 @@ class OrchestrationService:
             "- list_campaigns: chame quando o usuário perguntar quais campanhas existem, rewards "
             "disponíveis ou quiser saber o que pode participar. Responda direto com os dados reais "
             "desta tool (nome, tipo, reward, quantos já participaram) — NUNCA diga que não tem essa "
-            "informação ou que precisa olhar o dashboard, você TEM essa tool.\n"
+            "informação ou que precisa olhar o dashboard, você TEM essa tool. A lista já vem na ordem "
+            "do perfil do usuário: apresente primeiro as do topo e, quando matched_interests não for "
+            "vazio, diga em poucas palavras por que combina com ele; já inscritas (already_joined) "
+            "não são recomendação nova.\n"
             "- create_campaign: cria uma campanha nova com o usuário como criador. Colete campo por "
             "campo em turnos separados (título, descrição, tipo, token, valor por participante, máximo "
             "de participantes, e perfil/tweet se for social) e SÓ chame a tool depois de resumir tudo e "
@@ -705,14 +709,17 @@ class OrchestrationService:
                 return json.dumps({"wallet": evm_wallet, "chain": "arc", "usdc_balance": balance})
 
             if tool_name == "list_campaigns":
+                # Ranqueada pelo perfil do onboarding de quem pergunta (XIAOLEEACE-20).
+                # O perfil, como a wallet, nunca é parâmetro do modelo — sai da sessão.
+                authorization = None if user_id == "web_anonymous" else f"Bearer {user_id}"
                 try:
-                    from server.campaigns_routes import list_campaigns as _list_campaigns_route
+                    from server.campaigns_routes import list_recommended_campaigns
                     async with _campaigns_db() as db:
-                        resp = await _list_campaigns_route(db)
+                        campaigns = await list_recommended_campaigns(db, authorization)
                 except Exception as exc:
                     return json.dumps({"error": "campaigns_read_failed", "message": str(exc)})
                 captured["actions"].append("list_campaigns")
-                return json.dumps({"campaigns": [c.model_dump() for c in resp.campaigns]})
+                return json.dumps({"campaigns": campaigns})
 
             # As quatro tools abaixo escrevem no mesmo caminho que a UI usa
             # (POST /campaigns/*) — importam e chamam a função de rota direto,
