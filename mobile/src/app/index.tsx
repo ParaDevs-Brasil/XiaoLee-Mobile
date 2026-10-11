@@ -28,7 +28,7 @@ import {
   avatarAnimation,
   type AnimationKey,
 } from '@/lib/avatar-animation';
-import { appendChatMessage, loadChatHistory, type StoredMessage } from '@/lib/chat-history';
+import { appendChatMessage } from '@/lib/chat-history';
 import { refreshChatSessions, setActiveChatSessionId } from '@/lib/chat-session';
 import { isOnChainTx, txExplorerUrl } from '@/lib/explorer';
 import { shortHash } from '@/lib/format';
@@ -189,23 +189,6 @@ function now(): string {
 }
 
 /**
- * Uma mensagem gravada (`lib/chat-history.ts`) de volta para o formato da
- * tela. Sem `transfer`/`txHash`: um botão de assinar de uma sessão anterior
- * não deve reaparecer — se não foi assinado a tempo, o pedido já esfriou.
- *
- * `id` usa o índice porque o histórico local não tem um próprio — a mesma
- * folga que `history.tsx` já assume (posição estável, lista só cresce no fim).
- */
-function messageFromStored(stored: StoredMessage, index: number): Message {
-  return {
-    id: `h${index}`,
-    author: stored.role === 'user' ? 'user' : 'xiaolee',
-    text: stored.content,
-    time: new Date(stored.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-  };
-}
-
-/**
  * Uma mensagem de sessão (backend) para o formato da tela. Ao contrário do
  * web (`ChatPanel.tsx`, que agrupa um par user+bot numa única bolha), aqui
  * `Message` já é por bolha — então não há pareamento a fazer, só mapear.
@@ -287,37 +270,37 @@ export default function ChatScreen() {
   /**
    * Repõe a conversa: se há uma sessão de chat ativa (`lib/chat-session.ts`),
    * o histórico daquela thread vem do backend — trocar de sessão é trocar de
-   * conversa, então substitui em vez de mesclar. Sem sessão ativa, mantém o
-   * comportamento de sempre: repõe o log local (`lib/chat-history.ts`) sempre
-   * que a conta muda, inclusive na primeira montagem. Sem isto a tela sempre
-   * abre vazia: `appendChatMessage` grava, mas nada nunca lia de volta para
-   * `messages`, e era só isso que sobrava para reabrir o app e a Xiaolee
-   * "esquecer" tudo.
+   * conversa, então substitui em vez de mesclar. Sem sessão ativa (toda
+   * abertura do app, ou troca de conta), o chat começa limpo, no estado
+   * inicial: reabrir direto na última conversa confundia quem chegava para
+   * algo novo e escondia os atalhos e a boas-vindas do 1º clique. A conversa
+   * anterior não se perde — segue no painel de sessões e na tela de
+   * Histórico (`lib/chat-history.ts`, que `send()` continua alimentando).
+   *
+   * A limpeza é feita no render, e não no efeito, ao mudar de chave — o
+   * padrão do React para "resetar estado quando uma prop muda".
    */
-  useEffect(() => {
-    if (activeChatSessionId !== null) {
-      if (justPromotedSessionRef.current === activeChatSessionId) {
-        justPromotedSessionRef.current = null;
-        return;
-      }
-      let active = true;
-      getChatSessionMessages(activeChatSessionId).then((history) => {
-        if (active) setMessages(history.map(messageFromChatSession));
-      });
-      return () => {
-        active = false;
-      };
-    }
+  const freshChatKey = activeChatSessionId === null ? `fresh:${sessionId}` : null;
+  const [lastFreshChatKey, setLastFreshChatKey] = useState(freshChatKey);
+  if (freshChatKey !== lastFreshChatKey) {
+    setLastFreshChatKey(freshChatKey);
+    if (freshChatKey !== null) setMessages([]);
+  }
 
-    if (sessionId === undefined) return;
+  useEffect(() => {
+    if (activeChatSessionId === null) return;
+    if (justPromotedSessionRef.current === activeChatSessionId) {
+      justPromotedSessionRef.current = null;
+      return;
+    }
     let active = true;
-    loadChatHistory().then((stored) => {
-      if (active) setMessages(stored.map(messageFromStored));
+    getChatSessionMessages(activeChatSessionId).then((history) => {
+      if (active) setMessages(history.map(messageFromChatSession));
     });
     return () => {
       active = false;
     };
-  }, [sessionId, activeChatSessionId]);
+  }, [activeChatSessionId]);
 
   /**
    * Onboarding obrigatório no 1º acesso — relatório de produto, "ao logar,
