@@ -33,6 +33,8 @@ import { refreshChatSessions, setActiveChatSessionId } from '@/lib/chat-session'
 import { isOnChainTx, txExplorerUrl } from '@/lib/explorer';
 import { shortHash } from '@/lib/format';
 import { getSessionToken, getWallet } from '@/lib/session';
+import { hasSeenWelcome, markWelcomeSeen } from '@/lib/welcome';
+import { buildWelcomeCopy, welcomeLanguage, type WelcomeCopy } from '@/lib/welcome-copy';
 import { usePrivyWallet } from '@/lib/wallet';
 
 import { AnimatedAvatar } from '@/components/animated-avatar';
@@ -242,6 +244,10 @@ export default function ChatScreen() {
   // carregar a conversa de convidado por um instante antes de trocar para a da
   // conta, o que piscaria a tela.
   const sessionId = sessionLoading ? undefined : (session?.sessionId ?? null);
+  const accountId = session?.twitterUserId;
+  // Boas-vindas do 1º clique (XIAOLEEACE-19) — só existe nesta montagem e só
+  // no estado inicial: não entra no histórico nem vai para o backend.
+  const [welcome, setWelcome] = useState<WelcomeCopy | null>(null);
   const { activeChatSessionId } = useChatSession();
   const [sessionsOpen, setSessionsOpen] = useState(false);
   const [sessionsAnchor, setSessionsAnchor] = useState<{ top: number; right: number }>();
@@ -319,13 +325,25 @@ export default function ChatScreen() {
    * backend (nome + ao menos um interesse, ver `_profile_dict`); sem conta
    * (`sessionId` nulo/undefined) não há perfil a checar, e convidado segue
    * reto para o chat como sempre.
+   *
+   * Já onboarded, o mesmo perfil alimenta a boas-vindas do 1º clique
+   * (XIAOLEEACE-19): uma vez por conta, marcada como vista assim que aparece.
    */
   useEffect(() => {
     if (!sessionId) return;
     let active = true;
     getMyProfile()
-      .then((profile) => {
-        if (active && !profile.onboarded) router.replace('/onboarding');
+      .then(async (profile) => {
+        if (!active) return;
+        if (!profile.onboarded) {
+          router.replace('/onboarding');
+          return;
+        }
+        if (!accountId || (await hasSeenWelcome(accountId)) || !active) return;
+        const locale = Intl.DateTimeFormat().resolvedOptions().locale;
+        setWelcome(buildWelcomeCopy(profile, welcomeLanguage(locale)));
+        avatarAnimation.play('xiaolee_hello');
+        void markWelcomeSeen(accountId);
       })
       .catch(() => {
         // Sem backend/sessão válida — não bloqueia o chat por causa disto.
@@ -333,7 +351,7 @@ export default function ChatScreen() {
     return () => {
       active = false;
     };
-  }, [sessionId, router]);
+  }, [sessionId, accountId, router]);
 
   /**
    * Troca o botão pelo hash na mensagem que foi assinada.
@@ -497,10 +515,19 @@ export default function ChatScreen() {
                     segundo decoder na mesma tela por ganho quase nulo. */}
                 <AnimatedAvatar size={104} />
 
-                <Text style={styles.greeting}>Hi! I&apos;m Xiaolee ✨</Text>
-                <Text style={styles.pitch}>
-                  Swaps, campaigns and payments — all by message. What would you like to do?
-                </Text>
+                {welcome ? (
+                  <View style={[styles.bubble, styles.bubbleXiaolee, styles.welcome]}>
+                    <Text style={styles.welcomeTitle}>{welcome.title}</Text>
+                    <Text style={styles.bubbleText}>{welcome.body}</Text>
+                  </View>
+                ) : (
+                  <>
+                    <Text style={styles.greeting}>Hi! I&apos;m Xiaolee ✨</Text>
+                    <Text style={styles.pitch}>
+                      Swaps, campaigns and payments — all by message. What would you like to do?
+                    </Text>
+                  </>
+                )}
 
                 <View style={styles.actions}>
                   {ACTIONS.map((action) => (
@@ -1086,6 +1113,14 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: Spacing.two,
   },
+  // Sem cauda: a avatar fica acima e centralizada, não ao lado da bolha.
+  welcome: {
+    alignSelf: 'stretch',
+    marginTop: Spacing.three,
+    gap: Spacing.one,
+    borderBottomLeftRadius: Radius.lg,
+  },
+  welcomeTitle: { fontFamily: Fonts.bold, fontSize: 15, color: Colors.light.ink },
 
   // ── Conversa ───────────────────────────────────────────────────────────
   thread: {
