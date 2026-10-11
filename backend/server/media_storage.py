@@ -4,6 +4,16 @@ media_storage.py — Cloudflare R2 (API S3) para a mídia bruta do Clipper.
 O upload NÃO passa pelo backend: o app recebe uma URL pré-assinada e envia o
 arquivo direto ao bucket (um vídeo de 1h tem GBs; o Railway não deve fazer proxy).
 boto3 é síncrono, então as chamadas de rede vão por `asyncio.to_thread`.
+
+Papel: armazenamento de TRABALHO, não destino final. O vídeo longo fica aqui
+enquanto é transcrito, e os cortes enquanto o app os toca/baixa. Para onde o
+creator guarda ou posta o corte (aparelho, TikTok, Drive…) é decidido em
+`mobile/src/lib/clip-share.ts`.
+
+Trocar de provedor: é API S3, então qualquer S3-compatível (AWS S3, MinIO local
+para testes, Backblaze…) funciona só com `R2_ENDPOINT_URL` + chaves + bucket,
+sem mudar código. Pendência: regra de expiração no bucket (ex.: apagar `media/`
+depois de N dias) — hoje nada é apagado, exceto cortes substituídos.
 """
 
 from __future__ import annotations
@@ -23,6 +33,12 @@ def _client():
     endpoint = settings.r2_endpoint_url or (
         f"https://{settings.r2_account_id}.r2.cloudflarestorage.com" if settings.r2_account_id else ""
     )
+    if endpoint.startswith("http://"):
+        # Sem TLS só o "R2" falso de scripts/clipper_demo_seed.py (`http://localhost:9000`), e só em dev: as
+        # credenciais do bucket iriam em texto puro. Checa o host também porque XIAOLEE_ENV vazio vira "dev".
+        host = endpoint[len("http://"):].split("/")[0].split(":")[0]
+        if host not in ("localhost", "127.0.0.1") or settings.environment != "dev":
+            raise StorageNotConfigured("R2_ENDPOINT_URL sem TLS só é aceito para localhost em dev")
     if not (endpoint and settings.r2_access_key_id and settings.r2_secret_access_key and settings.r2_bucket):
         raise StorageNotConfigured("R2_ACCOUNT_ID (ou R2_ENDPOINT_URL)/R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY/R2_BUCKET não configurados")
     import boto3
