@@ -61,7 +61,8 @@
       "@react-native-firebase/messaging",
       "expo-video",
       "expo-image",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true,
