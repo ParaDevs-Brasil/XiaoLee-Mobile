@@ -3,7 +3,7 @@
 export const catalog = [
   {
     id: "clip-highlights", price: "$0.05", upstream: "clip-highlights",
-    summary: "Encontra os melhores momentos de um vídeo longo a partir da transcrição: janelas de 20-75 s com título, motivo e gancho, prontas para virar Shorts/Reels/TikTok",
+    summary: "Finds the best moments of a long video from its transcript: 20-75 s clip windows with title, reason and hook, ready for Shorts, Reels and TikTok",
     schema: {
       type: "object", required: ["transcript"],
       properties: {
@@ -21,7 +21,7 @@ export const catalog = [
   },
   {
     id: "campaign-plan", price: "$0.10", upstream: "campaign-plan",
-    summary: "Plano de campanha para criadores: divisão de orçamento, tarefas por plataforma e regra de pagamento",
+    summary: "Creator campaign plan: budget split, tasks per platform and the payout rule",
     schema: {
       type: "object", required: ["goal", "budget_usdc"],
       properties: {
