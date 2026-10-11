@@ -1,4 +1,4 @@
-import { forwardRef } from 'react';
+import { forwardRef, type ReactNode } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 import QRCodeStyled from 'react-native-qrcode-styled';
 import Svg, { Circle, Defs, LinearGradient, Path, RadialGradient, Rect, Stop } from 'react-native-svg';
@@ -22,9 +22,12 @@ import { initials, interestLabel, profileTagline, SHARE_URL } from '@/lib/share-
  *
  * É uma `View` comum que o `ShareProfileSheet` mostra como preview e captura
  * com `react-native-view-shot` — o que o usuário vê é exatamente o PNG que
- * sai. Proporção 9:16 — a de Status do WhatsApp e Stories — alta o bastante
- * para os cinco interesses respirarem; X e WhatsApp mostram a imagem inteira
- * ao abrir.
+ * sai. Dois formatos, porque cada destino recorta diferente:
+ *  - **story** (9:16): Status do WhatsApp e Stories. Coluna centralizada,
+ *    alta o bastante para os cinco interesses respirarem.
+ *  - **post** (3:4): o X mostra imagem inteira na timeline só até 3:4 — um
+ *    9:16 sai cortado acima do rodapé. Para caber sem apertar, a foto vai à
+ *    esquerda com nome/redes/frase ao lado.
  *
  * Restrições da captura que moldam o visual:
  *  - Fundo, brilhos e formas são SVG, não sombra: `elevation` é desenhada
@@ -37,8 +40,14 @@ import { initials, interestLabel, profileTagline, SHARE_URL } from '@/lib/share-
  *    contêiner no sheet.
  */
 
+export type CardFormat = 'story' | 'post';
+
+/** Altura / largura de cada formato — o sheet usa o mesmo valor para exportar o PNG. */
+export const CARD_RATIOS: Record<CardFormat, number> = { story: 16 / 9, post: 4 / 3 };
+
 export interface ShareProfileCardProps {
-  /** Largura em dp; a altura sai de `CARD_RATIO`. */
+  format: CardFormat;
+  /** Largura em dp; a altura sai de `CARD_RATIOS[format]`. */
   width: number;
   name: string | null;
   /** Handles sem `@`; cada um aparece com o logo da rede, para não haver dúvida. */
@@ -58,28 +67,126 @@ const INTEREST_ICONS: Record<string, (p: IconProps) => React.ReactElement> = {
   memecoins: IconRocket,
 };
 
-/** Altura / largura do card — o sheet usa o mesmo valor para exportar o PNG. */
-export const CARD_RATIO = 16 / 9;
-
 const mascot = require('../../assets/images/xiaolee-avatar.png');
 
 export const ShareProfileCard = forwardRef<View, ShareProfileCardProps>(function ShareProfileCard(
-  { width, name, socials, interests, photoUrl, onPhotoSettled },
+  { format, width, name, socials, interests, photoUrl, onPhotoSettled },
   ref,
 ) {
   // Tudo escala com a largura, para o preview do sheet e o PNG terem o mesmo
   // layout em qualquer tela.
   const u = width / 320;
-  const height = width * CARD_RATIO;
-  // Orçamento vertical (em unidades de 320x569): topo 48 + corpo ~345 (com
-  // os cinco chips em duas linhas e as duas redes) + rodapé ~95 deixa ~30
-  // de folga, que o
-  // corpo centralizado divide entre cima e baixo. Mexer em tamanho aqui
-  // exige refazer a conta, senão o rodapé sai cortado no PNG.
-  const avatar = 116 * u;
-  const halo = avatar + 36 * u;
+  const height = width * CARD_RATIOS[format];
+  const isStory = format === 'story';
   // A frase sob o nome vem do interesse principal — é o que personaliza o card.
   const tagline = profileTagline(interests);
+  const displayName = name?.trim() || 'Xiaolee creator';
+
+  // Orçamentos verticais (em unidades de largura 320). Mexer em tamanho aqui
+  // exige refazer a conta, senão o rodapé sai cortado no PNG.
+  //  - story, 320x569: topo 48 + corpo ~345 + rodapé ~95 → ~30 de folga.
+  //  - post, 320x427: topo 42 + herói ~110 + chips ~76 + rodapé ~88 → ~70
+  //    de folga, dividida pelo corpo centralizado.
+  const avatar = (isStory ? 116 : 84) * u;
+  const halo = avatar + (isStory ? 36 : 22) * u;
+
+  const photo = (
+    <View style={[styles.halo, { width: halo, height: halo, borderWidth: 1.5 * u }]}>
+      <View style={[styles.avatar, { width: avatar, height: avatar, borderWidth: 4 * u }]}>
+        {photoUrl ? (
+          <Image
+            source={{ uri: photoUrl }}
+            style={StyleSheet.absoluteFill}
+            onLoadEnd={onPhotoSettled}
+            accessibilityIgnoresInvertColors
+          />
+        ) : (
+          <Text style={[styles.initials, { fontSize: avatar * 0.4 }]}>{initials(name)}</Text>
+        )}
+      </View>
+    </View>
+  );
+
+  const pills = socials.x || socials.instagram ? (
+    <View
+      style={[
+        isStory ? styles.socialsRow : styles.socialsColumn,
+        { gap: 6 * u, marginTop: 6 * u },
+      ]}
+    >
+      {socials.x ? <SocialPill Icon={IconXLogo} handle={socials.x} u={u} /> : null}
+      {socials.instagram ? (
+        <SocialPill Icon={IconInstagram} handle={socials.instagram} u={u} />
+      ) : null}
+    </View>
+  ) : null;
+
+  const chips = interests.length ? (
+    <View
+      style={[
+        styles.chips,
+        { columnGap: Spacing.two * u, rowGap: 10 * u, marginTop: (isStory ? 24 : 20) * u },
+      ]}
+    >
+      {/* Todos os interesses — com os cinco, a quebra sai 3 + 2. */}
+      {interests.map((id) => {
+        const Icon = INTEREST_ICONS[id] ?? IconSpark;
+        return (
+          <View
+            key={id}
+            style={[styles.chip, { gap: 5 * u, paddingHorizontal: 10 * u, paddingVertical: 6 * u }]}
+          >
+            <Icon size={14 * u} sw={2} color={Colors.light.accent} />
+            <Text style={[styles.chipText, { fontSize: 11.5 * u }]}>{interestLabel(id)}</Text>
+          </View>
+        );
+      })}
+    </View>
+  ) : null;
+
+  let body: ReactNode;
+  if (isStory) {
+    body = (
+      <>
+        {photo}
+        <Text style={[styles.name, { fontSize: 28 * u, marginTop: 18 * u }]} numberOfLines={1}>
+          {displayName}
+        </Text>
+        {pills}
+        <Text
+          style={[styles.tagline, { fontSize: 12 * u, lineHeight: 16 * u, marginTop: 8 * u }]}
+          numberOfLines={2}
+        >
+          {tagline}
+        </Text>
+        {chips}
+      </>
+    );
+  } else {
+    body = (
+      <>
+        <View style={[styles.hero, { gap: 14 * u }]}>
+          {photo}
+          <View style={styles.heroText}>
+            <Text style={[styles.nameLeft, { fontSize: 22 * u }]} numberOfLines={2}>
+              {displayName}
+            </Text>
+            {pills}
+            <Text
+              style={[
+                styles.taglineLeft,
+                { fontSize: 11.5 * u, lineHeight: 15 * u, marginTop: 8 * u },
+              ]}
+              numberOfLines={2}
+            >
+              {tagline}
+            </Text>
+          </View>
+        </View>
+        {chips}
+      </>
+    );
+  }
 
   return (
     <View
@@ -87,97 +194,29 @@ export const ShareProfileCard = forwardRef<View, ShareProfileCardProps>(function
       // Sem isso o Android pode achatar a View na árvore nativa e o
       // view-shot não encontra o que capturar.
       collapsable={false}
-      style={[styles.card, { width, height, padding: 24 * u }]}
+      style={[styles.card, { width, height, padding: (isStory ? 24 : 20) * u }]}
     >
       <CardBackground width={width} height={height} />
 
       <View style={styles.top}>
         <View style={styles.brandRow}>
-          <Text style={[styles.brand, { fontSize: 30 * u }]}>Xiaolee</Text>
+          <Text style={[styles.brand, { fontSize: (isStory ? 30 : 26) * u }]}>Xiaolee</Text>
           <View style={{ marginTop: -10 * u, marginLeft: 2 * u }}>
             <IconSpark size={14 * u} color={Colors.light.card} />
           </View>
         </View>
         <Image
           source={mascot}
-          style={[styles.mascot, { width: 46 * u, height: 46 * u, borderWidth: 2 * u }]}
+          style={[
+            styles.mascot,
+            { width: (isStory ? 46 : 40) * u, height: (isStory ? 46 : 40) * u, borderWidth: 2 * u },
+          ]}
         />
       </View>
 
-      <View style={styles.body}>
-        <View style={[styles.halo, { width: halo, height: halo, borderWidth: 1.5 * u }]}>
-          <View style={[styles.avatar, { width: avatar, height: avatar, borderWidth: 4 * u }]}>
-            {photoUrl ? (
-              <Image
-                source={{ uri: photoUrl }}
-                style={StyleSheet.absoluteFill}
-                onLoadEnd={onPhotoSettled}
-                accessibilityIgnoresInvertColors
-              />
-            ) : (
-              <Text style={[styles.initials, { fontSize: 46 * u }]}>{initials(name)}</Text>
-            )}
-          </View>
-        </View>
+      <View style={styles.body}>{body}</View>
 
-        <Text
-          style={[styles.name, { fontSize: 28 * u, marginTop: 18 * u }]}
-          numberOfLines={1}
-        >
-          {name?.trim() || 'Xiaolee creator'}
-        </Text>
-        {socials.x || socials.instagram ? (
-          <View style={[styles.socials, { gap: 6 * u, marginTop: 6 * u }]}>
-            {socials.x ? <SocialPill Icon={IconXLogo} handle={socials.x} u={u} /> : null}
-            {socials.instagram ? (
-              <SocialPill Icon={IconInstagram} handle={socials.instagram} u={u} />
-            ) : null}
-          </View>
-        ) : null}
-        <Text
-          style={[styles.tagline, { fontSize: 12 * u, lineHeight: 16 * u, marginTop: 8 * u }]}
-          numberOfLines={2}
-        >
-          {tagline}
-        </Text>
-
-        {interests.length ? (
-          <View
-            style={[
-              styles.chips,
-              { columnGap: Spacing.two * u, rowGap: 10 * u, marginTop: 24 * u },
-            ]}
-          >
-            {/* Todos os interesses — com os cinco, a quebra sai 3 + 2. */}
-            {interests.map((id) => {
-              const Icon = INTEREST_ICONS[id] ?? IconSpark;
-              return (
-                <View
-                  key={id}
-                  style={[
-                    styles.chip,
-                    {
-                      gap: 5 * u,
-                      paddingHorizontal: 10 * u,
-                      paddingVertical: 6 * u,
-                    },
-                  ]}
-                >
-                  <Icon size={14 * u} sw={2} color={Colors.light.accent} />
-                  <Text style={[styles.chipText, { fontSize: 11.5 * u }]}>{interestLabel(id)}</Text>
-                </View>
-              );
-            })}
-          </View>
-        ) : null}
-      </View>
-
-      <View
-        style={[
-          styles.footer,
-          { padding: 12 * u, gap: 10 * u, borderRadius: Radius.lg * u },
-        ]}
-      >
+      <View style={[styles.footer, { padding: 12 * u, gap: 10 * u, borderRadius: Radius.lg * u }]}>
         <View style={styles.footerText}>
           <View style={[styles.accentRow, { gap: 6 * u, marginBottom: 6 * u }]}>
             <IconSpark size={13 * u} color={Colors.light.accent} />
@@ -189,7 +228,12 @@ export const ShareProfileCard = forwardRef<View, ShareProfileCardProps>(function
           </Text>
         </View>
         <View style={[styles.qrBox, { padding: 5 * u, borderRadius: Radius.md * u }]}>
-          <QRCodeStyled data={SHARE_URL} size={58 * u} padding={0} color={Colors.light.ink} />
+          <QRCodeStyled
+            data={SHARE_URL}
+            size={(isStory ? 58 : 54) * u}
+            padding={0}
+            color={Colors.light.ink}
+          />
         </View>
       </View>
     </View>
@@ -307,7 +351,12 @@ const styles = StyleSheet.create({
   },
   initials: { fontFamily: Fonts.bold, color: Colors.light.card },
   name: { fontFamily: Fonts.bold, color: Colors.light.card, textAlign: 'center' },
-  socials: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center' },
+  socialsRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center' },
+  socialsColumn: { alignItems: 'flex-start' },
+  hero: { flexDirection: 'row', alignItems: 'center', alignSelf: 'stretch' },
+  heroText: { flex: 1 },
+  nameLeft: { fontFamily: Fonts.bold, color: Colors.light.card },
+  taglineLeft: { fontFamily: Fonts.medium, color: Colors.light.card, opacity: 0.9 },
   socialPill: {
     flexDirection: 'row',
     alignItems: 'center',
