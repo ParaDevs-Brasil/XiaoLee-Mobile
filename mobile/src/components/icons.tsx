@@ -1,4 +1,4 @@
-import { Circle, Line, Path, Polygon, Polyline, Svg } from 'react-native-svg';
+import { Circle, Line, Path, Polygon, Polyline, Rect, Svg } from 'react-native-svg';
 
 /**
  * Ícones SVG inline — porta direta de `frontend/src/components/icons.tsx`.
@@ -288,5 +288,35 @@ export const IconShare = (p: IconProps) => (
     <Circle cx="18" cy="19" r="3" />
     <Line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
     <Line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+  </Svg>
+);
+
+/** Blocos empilhados — DeFi como "lego de dinheiro", o chip do card de share. */
+export const IconBlocks = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Rect x="8.5" y="2.5" width="7" height="7" rx="1.5" />
+    <Rect x="3" y="14" width="7" height="7" rx="1.5" />
+    <Rect x="14" y="14" width="7" height="7" rx="1.5" />
+    <Path d="M12 9.5v2.5M6.5 14v-2h11v2" />
+  </Svg>
+);
+
+/** Controle de videogame — interesse "Games". */
+export const IconGamepad = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Path d="M6 8h12a4 4 0 0 1 4 4v1a4 4 0 0 1-7 2.65L14 15h-4l-1 .65A4 4 0 0 1 2 13v-1a4 4 0 0 1 4-4z" />
+    <Line x1="7" y1="10.5" x2="7" y2="13.5" />
+    <Line x1="5.5" y1="12" x2="8.5" y2="12" />
+    <Line x1="16" y1="11" x2="16.01" y2="11" />
+    <Line x1="18" y1="13" x2="18.01" y2="13" />
+  </Svg>
+);
+
+/** Duas cartas em leque — interesse "Cards". */
+export const IconCards = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Rect x="8" y="3" width="12" height="16" rx="2" />
+    <Path d="M8 6.5 4.6 7.6a2 2 0 0 0-1.3 2.5l3.4 10.5a2 2 0 0 0 2.5 1.3l4.3-1.4" />
+    <Path d="m14 8 1.2 2.4 2.3.4-1.7 1.6.4 2.3L14 13.6l-2.2 1.1.4-2.3-1.7-1.6 2.3-.4z" />
   </Svg>
 );
