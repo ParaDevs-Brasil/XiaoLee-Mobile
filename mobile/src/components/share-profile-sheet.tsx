@@ -19,7 +19,7 @@ import { APP_NOT_INSTALLED, shareImage } from '../../modules/share-intent';
 
 import { getMyProfile, type MyProfile } from '@/api/backend';
 import { IconClose, IconShare, IconUser } from '@/components/icons';
-import { ShareProfileCard } from '@/components/share-profile-card';
+import { CARD_RATIO, ShareProfileCard } from '@/components/share-profile-card';
 import { CardShadow, Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { useProfilePhoto } from '@/hooks/use-profile-photo';
 import {
@@ -76,7 +76,7 @@ const TARGETS: Record<ShareChannel, { packageName: string; className?: string }>
 
 export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) {
   const insets = useSafeAreaInsets();
-  const { width: screenWidth } = useWindowDimensions();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { user } = usePrivy();
   const { photo: localPhoto, busy: pickingPhoto, pick, canPick } = useProfilePhoto();
   const cardRef = useRef<View>(null);
@@ -129,16 +129,16 @@ export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) 
   }
 
   /**
-   * Captura o card como PNG 1080x1350 e devolve a URI `content://` que outro
+   * Captura o card como PNG 1080x1920 e devolve a URI `content://` que outro
    * app consegue ler (o FileProvider do `expo-file-system` cobre o cache).
    */
   async function captureCard(): Promise<string> {
     const path = await captureRef(cardRef, {
       format: 'png',
       quality: 1,
-      // O view-shot só reescala com as duas medidas; mesma proporção 4:5.
+      // O view-shot só reescala com as duas medidas; mesma proporção do card.
       width: EXPORT_WIDTH,
-      height: EXPORT_WIDTH * 1.25,
+      height: EXPORT_WIDTH * CARD_RATIO,
       result: 'tmpfile',
     });
     return new File(path.startsWith('file://') ? path : `file://${path}`).contentUri;
@@ -174,7 +174,13 @@ export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) 
     }
   }
 
-  const cardWidth = Math.min(screenWidth - Spacing.four * 2, 320);
+  // Limite de altura do preview: o card 9:16 é alto, e os botões precisam
+  // continuar à vista sem rolar na maioria dos aparelhos.
+  const cardWidth = Math.min(
+    screenWidth - Spacing.four * 2,
+    320,
+    (screenHeight * 0.5) / CARD_RATIO,
+  );
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={close}>
@@ -211,7 +217,7 @@ export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) 
                   onPhotoSettled={() => setSettledPhoto(photoUrl)}
                 />
               ) : (
-                <View style={[styles.placeholder, { width: cardWidth, height: cardWidth * 1.25 }]}>
+                <View style={[styles.placeholder, { width: cardWidth, height: cardWidth * CARD_RATIO }]}>
                   <ActivityIndicator color={Colors.light.accent} />
                 </View>
               )}
