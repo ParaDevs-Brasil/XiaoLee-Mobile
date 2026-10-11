@@ -63,20 +63,6 @@
       "expo-image",
       "expo-web-browser",
       [
-        "react-native-share",
-        {
-          "ios": [
-            "whatsapp",
-            "twitter"
-          ],
-          "android": [
-            "com.whatsapp",
-            "com.whatsapp.w4b",
-            "com.twitter.android"
-          ]
-        }
-      ],
-      [
         "expo-image-picker",
         {
           "photosPermission": "Xiaolee uses your photo on the profile card you share.",

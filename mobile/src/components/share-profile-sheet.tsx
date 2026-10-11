@@ -1,4 +1,5 @@
 import { usePrivy } from '@privy-io/expo';
+import { File } from 'expo-file-system';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -12,8 +13,9 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Share, { Social } from 'react-native-share';
 import { captureRef } from 'react-native-view-shot';
+
+import { APP_NOT_INSTALLED, shareImage } from '../../modules/share-intent';
 
 import { getMyProfile, type MyProfile } from '@/api/backend';
 import { IconClose, IconShare, IconUser } from '@/components/icons';
@@ -34,9 +36,10 @@ import {
  * Sheet do "compartilhar perfil" (XIAOLEEACE-21), aberto pelo `ProfileMenu`.
  *
  * Mostra o `ShareProfileCard` como preview e manda imagem **e** legenda
- * juntas, num só intent (`react-native-share`), direto para o app escolhido:
+ * juntas, num só intent (`modules/share-intent`), direto para o app:
  *  - **WhatsApp** — legenda pessoal com o link.
- *  - **X** — post curto com hashtags dos interesses e a imagem anexada.
+ *  - **X** — post curto com hashtags dos interesses e a imagem anexada,
+ *    direto no compositor (sem o "Post ou Chat?" do X).
  *  - **More apps** — o seletor do sistema, com a legenda do WhatsApp.
  *
  * Sem o app instalado, o X cai no intent web (só texto — a web não aceita
@@ -62,6 +65,15 @@ const EMPTY_PROFILE: MyProfile = {
 };
 
 type Busy = 'none' | 'photo' | ShareChannel | 'more';
+
+/**
+ * Para onde vai cada canal. O X tem duas telas de compartilhar (post e DM);
+ * a atividade exata do compositor manda direto para o post.
+ */
+const TARGETS: Record<ShareChannel, { packageName: string; className?: string }> = {
+  whatsapp: { packageName: 'com.whatsapp' },
+  x: { packageName: 'com.twitter.android', className: 'com.twitter.composer.ComposerActivity' },
+};
 
 export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) {
   const insets = useSafeAreaInsets();
@@ -130,7 +142,10 @@ export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) 
     }
   }
 
-  /** Captura o card como PNG 1080x1350 e devolve a URI `file://`. */
+  /**
+   * Captura o card como PNG 1080x1350 e devolve a URI `content://` que outro
+   * app consegue ler (o FileProvider do `expo-file-system` cobre o cache).
+   */
   async function captureCard(): Promise<string> {
     const path = await captureRef(cardRef, {
       format: 'png',
@@ -140,37 +155,34 @@ export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) 
       height: EXPORT_WIDTH * 1.25,
       result: 'tmpfile',
     });
-    return path.startsWith('file://') ? path : `file://${path}`;
+    return new File(path.startsWith('file://') ? path : `file://${path}`).contentUri;
   }
 
   async function shareTo(channel: ShareChannel | 'more') {
     setBusy(channel);
     setNotice(null);
-    const message = buildShareCaption(captionInput, channel === 'x' ? 'x' : 'whatsapp');
+    const text = buildShareCaption(captionInput, channel === 'x' ? 'x' : 'whatsapp');
     try {
-      const url = await captureCard();
-      const file = { url, type: 'image/png', filename: 'xiaolee-profile', message };
-
+      const uri = await captureCard();
       if (channel === 'more') {
-        await Share.open({ ...file, failOnCancel: false });
+        await shareImage({ uri, text, chooserTitle: 'Share your Xiaolee profile' });
         return;
       }
       try {
-        await Share.shareSingle({
-          ...file,
-          social: channel === 'x' ? Social.Twitter : Social.Whatsapp,
-        });
-      } catch {
-        // App não instalado (ou recusou o intent).
+        await shareImage({ uri, text, ...TARGETS[channel] });
+      } catch (error) {
+        if ((error as { code?: string }).code !== APP_NOT_INSTALLED) throw error;
+        // Sem o app: o X vai pra web (só texto — a web não aceita anexo);
+        // o WhatsApp vira o seletor do sistema.
         if (channel === 'x') {
           setNotice("X app not found — opening the web, where the image can't be attached.");
-          await Linking.openURL(xIntentUrl(message));
+          await Linking.openURL(xIntentUrl(text));
         } else {
-          await Share.open({ ...file, failOnCancel: false });
+          await shareImage({ uri, text, chooserTitle: 'Share your Xiaolee profile' });
         }
       }
     } catch {
-      setNotice("Couldn't create the image. Try again.");
+      setNotice("Couldn't share the image. Try again.");
     } finally {
       setBusy('none');
     }
