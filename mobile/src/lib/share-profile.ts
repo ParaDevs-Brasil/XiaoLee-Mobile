@@ -17,60 +17,83 @@ export const SHARE_URL = 'https://xiaolee-landing-production.up.railway.app';
  * O que cada interesse muda no card e na legenda. Mesmos ids de `INTERESTS`
  * em `app/onboarding.tsx` (o backend recusa qualquer outro com 422).
  *
- * `tagline` vai embaixo do nome no card (do interesse principal, o primeiro
- * marcado); `hook` entra na legenda. O ícone de cada um vive no componente,
- * que é o lado com React Native.
+ * As frases descrevem o que a pessoa curte, nunca prometem ganho: o card vai
+ * para post público, e "earning yield" leria como promessa financeira que o
+ * produto ainda não faz. O ícone de cada um vive no componente, que é o lado
+ * com React Native.
  */
 export interface InterestTheme {
   label: string;
-  tagline: string;
-  hook: string;
+  /** Frase de quando este é o único interesse ("exploring DeFi with my AI agent"). */
+  phrase: string;
+  /** Nome curto para juntar dois interesses ("DeFi & Web3 games"). */
+  short: string;
   hashtag: string;
 }
 
 export const INTEREST_THEMES: Record<string, InterestTheme> = {
   defi: {
     label: 'DeFi',
-    tagline: 'Earning yield with my AI agent',
-    hook: 'my AI agent puts my USDC to work in DeFi',
+    phrase: 'exploring DeFi with my AI agent',
+    short: 'DeFi',
     hashtag: '#DeFi',
   },
   games: {
     label: 'Games',
-    tagline: 'Leveling up in Web3 games',
-    hook: 'I play Web3 games and get rewarded for it',
+    phrase: 'into Web3 games',
+    short: 'Web3 games',
     hashtag: '#Web3Gaming',
   },
   cards: {
     label: 'Cards',
-    tagline: 'Collecting cards on-chain',
-    hook: 'I collect and trade cards on-chain',
+    phrase: 'collecting cards on-chain',
+    short: 'on-chain cards',
     hashtag: '#TCG',
   },
   trader: {
     label: 'Trader',
-    tagline: 'Trading smarter with AI',
-    hook: 'my AI agent helps me trade smarter',
+    phrase: 'following the markets with my AI agent',
+    short: 'trading',
     hashtag: '#Trading',
   },
   memecoins: {
     label: 'Memecoins',
-    tagline: 'Hunting the next memecoin',
-    hook: "I'm hunting the next memecoin",
+    phrase: 'hunting the next memecoin',
+    short: 'memecoins',
     hashtag: '#Memecoins',
   },
 };
 
-const FALLBACK_TAGLINE = 'Earning USDC with my AI agent';
+/** Sem interesse marcado, ou com três ou mais (os chips já listam todos). */
+const GENERAL_PHRASE = 'exploring Web3 with my AI agent';
 
 export function interestLabel(id: string): string {
   return INTEREST_THEMES[id]?.label ?? id;
 }
 
-/** Frase do card: a do interesse principal, ou a genérica. */
+function knownThemes(interests: readonly string[]): InterestTheme[] {
+  return interests.map((id) => INTEREST_THEMES[id]).filter(Boolean);
+}
+
+/**
+ * A frase do perfil, pelo número de interesses — card e legendas usam a
+ * mesma, para não dizerem coisas diferentes:
+ *  - 1: a frase do interesse ("exploring DeFi with my AI agent");
+ *  - 2: os dois juntos ("into DeFi & Web3 games");
+ *  - 0 ou 3+: a geral — com muitos, os chips abaixo já mostram cada um, e
+ *    escolher só um pela ordem do toque parecia arbitrário.
+ */
+export function interestPhrase(interests: readonly string[]): string {
+  const themes = knownThemes(interests);
+  if (themes.length === 1) return themes[0].phrase;
+  if (themes.length === 2) return `into ${themes[0].short} & ${themes[1].short}`;
+  return GENERAL_PHRASE;
+}
+
+/** Frase do card, sob o nome: a `interestPhrase` com maiúscula inicial. */
 export function profileTagline(interests: readonly string[]): string {
-  const primary = interests.find((id) => INTEREST_THEMES[id]);
-  return primary ? INTEREST_THEMES[primary].tagline : FALLBACK_TAGLINE;
+  const phrase = interestPhrase(interests);
+  return phrase.charAt(0).toUpperCase() + phrase.slice(1);
 }
 
 /**
@@ -145,31 +168,32 @@ export interface ShareCaptionInput {
 export type ShareChannel = 'whatsapp' | 'x';
 
 /**
- * Legenda que acompanha a imagem, montada a partir dos interesses.
+ * Legenda que acompanha a imagem, com a mesma frase do card
+ * (`interestPhrase`).
  *
- * - **whatsapp**: conversa com amigo — tom pessoal, até dois interesses e o
- *   link no fim (o WhatsApp gera a prévia dele).
- * - **x**: curta, com hashtags dos interesses. O X conta qualquer URL como
- *   23 caracteres; o texto fica bem abaixo dos 280.
+ * - **whatsapp**: conversa com amigo — tom pessoal e o link no fim (o
+ *   WhatsApp gera a prévia dele).
+ * - **x**: curta, com até três hashtags dos interesses. O X conta qualquer
+ *   URL como 23 caracteres; o texto fica bem abaixo dos 280.
  */
 export function buildShareCaption(
   { name, interests }: ShareCaptionInput,
   channel: ShareChannel,
   url: string = SHARE_URL,
 ): string {
-  const themes = interests.map((id) => INTEREST_THEMES[id]).filter(Boolean);
+  const phrase = interestPhrase(interests);
   const first = name?.trim().split(/\s+/)[0];
 
   if (channel === 'whatsapp') {
-    const hooks = themes.slice(0, 2).map((t) => t.hook);
-    const why = hooks.length ? ` — ${hooks.join(' and ')}` : ' — my AI agent that earns USDC';
     const hello = first ? `Hey! It's ${first} 👋` : 'Hey! 👋';
-    return `${hello}\nI'm on Xiaolee${why}.\nJoin me: ${url}`;
+    return `${hello}\nI'm on Xiaolee — ${phrase}.\nJoin me: ${url}`;
   }
 
-  const tags = ['#Xiaolee', ...themes.slice(0, 2).map((t) => t.hashtag), '#USDC'];
-  const what = themes[0]?.hook ?? 'my AI agent earns USDC for me';
-  return `I'm on Xiaolee — ${what} ✨\n${tags.join(' ')}\n${url}`;
+  const hashtags = knownThemes(interests)
+    .slice(0, 3)
+    .map((t) => t.hashtag);
+  const tags = ['#Xiaolee', ...(hashtags.length ? hashtags : ['#Web3'])];
+  return `I'm on Xiaolee — ${phrase} ✨\n${tags.join(' ')}\n${url}`;
 }
 
 /**
