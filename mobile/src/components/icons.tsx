@@ -320,3 +320,19 @@ export const IconCards = (p: IconProps) => (
     <Path d="m14 8 1.2 2.4 2.3.4-1.7 1.6.4 2.3L14 13.6l-2.2 1.1.4-2.3-1.7-1.6 2.3-.4z" />
   </Svg>
 );
+
+/** Logo do X. Preenchido, como o `IconSpark` — é marca, não ícone de traço. */
+export const IconXLogo = ({ size = 24, color = 'currentColor' }: IconProps) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+    <Path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+  </Svg>
+);
+
+/** Instagram — câmera de cantos redondos. */
+export const IconInstagram = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Rect x="2.5" y="2.5" width="19" height="19" rx="5.5" />
+    <Circle cx="12" cy="12" r="4.2" />
+    <Line x1="17.4" y1="6.6" x2="17.41" y2="6.6" />
+  </Svg>
+);
