@@ -28,11 +28,13 @@ import {
   avatarAnimation,
   type AnimationKey,
 } from '@/lib/avatar-animation';
-import { appendChatMessage, loadChatHistory, type StoredMessage } from '@/lib/chat-history';
+import { appendChatMessage } from '@/lib/chat-history';
 import { refreshChatSessions, setActiveChatSessionId } from '@/lib/chat-session';
 import { isOnChainTx, txExplorerUrl } from '@/lib/explorer';
 import { shortHash } from '@/lib/format';
 import { getSessionToken, getWallet } from '@/lib/session';
+import { hasSeenWelcome, markWelcomeSeen } from '@/lib/welcome';
+import { buildWelcomeCopy, prioritizeActions, type WelcomeCopy } from '@/lib/welcome-copy';
 import { usePrivyWallet } from '@/lib/wallet';
 
 import { AnimatedAvatar } from '@/components/animated-avatar';
@@ -187,23 +189,6 @@ function now(): string {
 }
 
 /**
- * Uma mensagem gravada (`lib/chat-history.ts`) de volta para o formato da
- * tela. Sem `transfer`/`txHash`: um botão de assinar de uma sessão anterior
- * não deve reaparecer — se não foi assinado a tempo, o pedido já esfriou.
- *
- * `id` usa o índice porque o histórico local não tem um próprio — a mesma
- * folga que `history.tsx` já assume (posição estável, lista só cresce no fim).
- */
-function messageFromStored(stored: StoredMessage, index: number): Message {
-  return {
-    id: `h${index}`,
-    author: stored.role === 'user' ? 'user' : 'xiaolee',
-    text: stored.content,
-    time: new Date(stored.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-  };
-}
-
-/**
  * Uma mensagem de sessão (backend) para o formato da tela. Ao contrário do
  * web (`ChatPanel.tsx`, que agrupa um par user+bot numa única bolha), aqui
  * `Message` já é por bolha — então não há pareamento a fazer, só mapear.
@@ -242,6 +227,12 @@ export default function ChatScreen() {
   // carregar a conversa de convidado por um instante antes de trocar para a da
   // conta, o que piscaria a tela.
   const sessionId = sessionLoading ? undefined : (session?.sessionId ?? null);
+  const accountId = session?.twitterUserId;
+  // Boas-vindas do 1º clique (XIAOLEEACE-19) — só existe nesta montagem e só
+  // no estado inicial: não entra no histórico nem vai para o backend.
+  const [welcome, setWelcome] = useState<WelcomeCopy | null>(null);
+  // Interesses do onboarding — só reordenam os cards do estado inicial.
+  const [interests, setInterests] = useState<string[]>([]);
   const { activeChatSessionId } = useChatSession();
   const [sessionsOpen, setSessionsOpen] = useState(false);
   const [sessionsAnchor, setSessionsAnchor] = useState<{ top: number; right: number }>();
@@ -281,37 +272,47 @@ export default function ChatScreen() {
   /**
    * Repõe a conversa: se há uma sessão de chat ativa (`lib/chat-session.ts`),
    * o histórico daquela thread vem do backend — trocar de sessão é trocar de
-   * conversa, então substitui em vez de mesclar. Sem sessão ativa, mantém o
-   * comportamento de sempre: repõe o log local (`lib/chat-history.ts`) sempre
-   * que a conta muda, inclusive na primeira montagem. Sem isto a tela sempre
-   * abre vazia: `appendChatMessage` grava, mas nada nunca lia de volta para
-   * `messages`, e era só isso que sobrava para reabrir o app e a Xiaolee
-   * "esquecer" tudo.
+   * conversa, então substitui em vez de mesclar. Sem sessão ativa (toda
+   * abertura do app, ou troca de conta), o chat começa limpo, no estado
+   * inicial: reabrir direto na última conversa confundia quem chegava para
+   * algo novo e escondia os atalhos e a boas-vindas do 1º clique. A conversa
+   * anterior não se perde — segue no painel de sessões e na tela de
+   * Histórico (`lib/chat-history.ts`, que `send()` continua alimentando).
+   *
+   * A limpeza é feita no render, e não no efeito, ao mudar de chave — o
+   * padrão do React para "resetar estado quando uma prop muda".
    */
-  useEffect(() => {
-    if (activeChatSessionId !== null) {
-      if (justPromotedSessionRef.current === activeChatSessionId) {
-        justPromotedSessionRef.current = null;
-        return;
-      }
-      let active = true;
-      getChatSessionMessages(activeChatSessionId).then((history) => {
-        if (active) setMessages(history.map(messageFromChatSession));
-      });
-      return () => {
-        active = false;
-      };
-    }
+  const freshChatKey = activeChatSessionId === null ? `fresh:${sessionId}` : null;
+  const [lastFreshChatKey, setLastFreshChatKey] = useState(freshChatKey);
+  if (freshChatKey !== lastFreshChatKey) {
+    setLastFreshChatKey(freshChatKey);
+    if (freshChatKey !== null) setMessages([]);
+  }
 
-    if (sessionId === undefined) return;
+  useEffect(() => {
+    if (activeChatSessionId === null) return;
+    if (justPromotedSessionRef.current === activeChatSessionId) {
+      justPromotedSessionRef.current = null;
+      return;
+    }
     let active = true;
-    loadChatHistory().then((stored) => {
-      if (active) setMessages(stored.map(messageFromStored));
-    });
+    getChatSessionMessages(activeChatSessionId)
+      .then((history) => {
+        if (active) setMessages(history.map(messageFromChatSession));
+      })
+      .catch((error) => {
+        // 404: a sessão não é desta conta (troca de conta, ou o token sendo
+        // renovado no meio do caminho) ou não existe mais — volta para uma
+        // conversa nova em vez de ficar presa nela. Falha de rede mantém a
+        // tela como está: a sessão continua válida, só não deu para ler agora.
+        if (active && error instanceof ApiError && error.status === 404) {
+          setActiveChatSessionId(null);
+        }
+      });
     return () => {
       active = false;
     };
-  }, [sessionId, activeChatSessionId]);
+  }, [activeChatSessionId]);
 
   /**
    * Onboarding obrigatório no 1º acesso — relatório de produto, "ao logar,
@@ -319,13 +320,26 @@ export default function ChatScreen() {
    * backend (nome + ao menos um interesse, ver `_profile_dict`); sem conta
    * (`sessionId` nulo/undefined) não há perfil a checar, e convidado segue
    * reto para o chat como sempre.
+   *
+   * Já onboarded, o mesmo perfil alimenta a boas-vindas do 1º clique
+   * (XIAOLEEACE-19): aparece em toda abertura até a conta mandar a primeira
+   * mensagem (ver `send()`) — só aí conta como vista. Marcar ao exibir perdia
+   * a boas-vindas de quem fechava o app antes de ler.
    */
   useEffect(() => {
     if (!sessionId) return;
     let active = true;
     getMyProfile()
-      .then((profile) => {
-        if (active && !profile.onboarded) router.replace('/onboarding');
+      .then(async (profile) => {
+        if (!active) return;
+        if (!profile.onboarded) {
+          router.replace('/onboarding');
+          return;
+        }
+        setInterests(profile.interest_profile);
+        if (!accountId || (await hasSeenWelcome(accountId)) || !active) return;
+        setWelcome(buildWelcomeCopy(profile));
+        avatarAnimation.play('xiaolee_hello');
       })
       .catch(() => {
         // Sem backend/sessão válida — não bloqueia o chat por causa disto.
@@ -333,7 +347,7 @@ export default function ChatScreen() {
     return () => {
       active = false;
     };
-  }, [sessionId, router]);
+  }, [sessionId, accountId, router]);
 
   /**
    * Troca o botão pelo hash na mensagem que foi assinada.
@@ -372,6 +386,8 @@ export default function ChatScreen() {
     // que grava no `localStorage` em vez de esperar o backend (`lib/chat-history.ts`).
     // Nunca rejeita, então não precisa de `catch` aqui.
     appendChatMessage('user', message);
+    // 1ª interação de verdade: a boas-vindas cumpriu o papel e não volta.
+    if (welcome && accountId) void markWelcomeSeen(accountId);
     // Enquanto pensa, a personagem pensa junto.
     avatarAnimation.play('xiaolee_thinklow');
 
@@ -437,6 +453,10 @@ export default function ChatScreen() {
   }
 
   const empty = messages.length === 0;
+  const actions = prioritizeActions(
+    ACTIONS.map((action) => action.key),
+    interests,
+  ).map((key) => ACTIONS.find((action) => action.key === key)!);
 
   return (
     <ScreenShell>
@@ -497,13 +517,22 @@ export default function ChatScreen() {
                     segundo decoder na mesma tela por ganho quase nulo. */}
                 <AnimatedAvatar size={104} />
 
-                <Text style={styles.greeting}>Hi! I&apos;m Xiaolee ✨</Text>
-                <Text style={styles.pitch}>
-                  Swaps, campaigns and payments — all by message. What would you like to do?
-                </Text>
+                {welcome ? (
+                  <View style={[styles.bubble, styles.bubbleXiaolee, styles.welcome]}>
+                    <Text style={styles.welcomeTitle}>{welcome.title}</Text>
+                    <Text style={styles.bubbleText}>{welcome.body}</Text>
+                  </View>
+                ) : (
+                  <>
+                    <Text style={styles.greeting}>Hi! I&apos;m Xiaolee ✨</Text>
+                    <Text style={styles.pitch}>
+                      Swaps, campaigns and payments — all by message. What would you like to do?
+                    </Text>
+                  </>
+                )}
 
                 <View style={styles.actions}>
-                  {ACTIONS.map((action) => (
+                  {actions.map((action) => (
                     <ActionCard key={action.key} action={action} onPress={() => send(action.prompt)} />
                   ))}
                 </View>
@@ -1086,6 +1115,14 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: Spacing.two,
   },
+  // Sem cauda: a avatar fica acima e centralizada, não ao lado da bolha.
+  welcome: {
+    alignSelf: 'stretch',
+    marginTop: Spacing.three,
+    gap: Spacing.one,
+    borderBottomLeftRadius: Radius.lg,
+  },
+  welcomeTitle: { fontFamily: Fonts.bold, fontSize: 15, color: Colors.light.ink },
 
   // ── Conversa ───────────────────────────────────────────────────────────
   thread: {
