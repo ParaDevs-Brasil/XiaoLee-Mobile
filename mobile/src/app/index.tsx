@@ -294,9 +294,19 @@ export default function ChatScreen() {
       return;
     }
     let active = true;
-    getChatSessionMessages(activeChatSessionId).then((history) => {
-      if (active) setMessages(history.map(messageFromChatSession));
-    });
+    getChatSessionMessages(activeChatSessionId)
+      .then((history) => {
+        if (active) setMessages(history.map(messageFromChatSession));
+      })
+      .catch((error) => {
+        // 404: a sessão não é desta conta (troca de conta, ou o token sendo
+        // renovado no meio do caminho) ou não existe mais — volta para uma
+        // conversa nova em vez de ficar presa nela. Falha de rede mantém a
+        // tela como está: a sessão continua válida, só não deu para ler agora.
+        if (active && error instanceof ApiError && error.status === 404) {
+          setActiveChatSessionId(null);
+        }
+      });
     return () => {
       active = false;
     };
