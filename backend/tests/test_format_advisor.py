@@ -76,7 +76,7 @@ async def test_uses_the_clipper_worker_in_the_app_language_and_caches(monkeypatc
     out = await format_advisor.suggest_formats(PROFILE, SAMPLES, "pt")
     assert [s.format for s in out] == ["Série DeFi do zero", "Memecoin da semana"]
     assert calls[0][1] == "suggest_formats" and "Brazilian Portuguese" in calls[0][0]
-    assert "untrusted data" in calls[0][0]
+    assert "untrusted data" in calls[0][0] and "Never promise returns" in calls[0][0]
 
     await format_advisor.suggest_formats(PROFILE, SAMPLES, "pt")
     assert len(calls) == 1  # mesmo contexto: cache
