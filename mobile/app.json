@@ -68,7 +68,15 @@
       "@react-native-firebase/messaging",
       "expo-video",
       "expo-image",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Xiaolee uses your photo on the profile card you share.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

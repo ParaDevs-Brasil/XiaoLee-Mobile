@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getMyProfile, updateMyProfile } from '@/api/backend';
 import { ApiError } from '@/api/client';
 import { ErrorState } from '@/components/feedback';
+import { ProfilePhotoPicker } from '@/components/profile-photo-picker';
 import {
   IconBuilding,
   IconCheck,
@@ -224,6 +225,9 @@ export default function OnboardingScreen() {
                 : 'Tell us a bit about yourself so Xiaolee can point you to the right campaigns and content ideas.'}
             </Text>
           </View>
+
+          {/* A foto daqui é a do card de compartilhar e do menu de perfil. */}
+          <ProfilePhotoPicker />
 
           <Field
             label="Full name"

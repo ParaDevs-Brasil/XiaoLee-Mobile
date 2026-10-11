@@ -297,6 +297,36 @@ export const IconLogOut = (p: IconProps) => (
 );
 
 
+/** `share-2` do Feather — três nós ligados, o "compartilhar" universal. */
+export const IconShare = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Circle cx="18" cy="5" r="3" />
+    <Circle cx="6" cy="12" r="3" />
+    <Circle cx="18" cy="19" r="3" />
+    <Line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+    <Line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+  </Svg>
+);
+
+/** Blocos empilhados — DeFi como "lego de dinheiro", o chip do card de share. */
+export const IconBlocks = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Rect x="8.5" y="2.5" width="7" height="7" rx="1.5" />
+    <Rect x="3" y="14" width="7" height="7" rx="1.5" />
+    <Rect x="14" y="14" width="7" height="7" rx="1.5" />
+    <Path d="M12 9.5v2.5M6.5 14v-2h11v2" />
+  </Svg>
+);
+
+/** Duas cartas em leque — interesse "Cards". */
+export const IconCards = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Rect x="8" y="3" width="12" height="16" rx="2" />
+    <Path d="M8 6.5 4.6 7.6a2 2 0 0 0-1.3 2.5l3.4 10.5a2 2 0 0 0 2.5 1.3l4.3-1.4" />
+    <Path d="m14 8 1.2 2.4 2.3.4-1.7 1.6.4 2.3L14 13.6l-2.2 1.1.4-2.3-1.7-1.6 2.3-.4z" />
+  </Svg>
+);
+
 /** Três pontos na horizontal — o "mais opções" de um item. Preenchido: é traço de ponto, não de linha. */
 export const IconMore = ({ size = 24, color = 'currentColor' }: IconProps) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>

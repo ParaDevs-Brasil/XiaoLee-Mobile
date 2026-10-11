@@ -1,8 +1,9 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { IconBell, IconMenu, IconSpark, IconUser } from '@/components/icons';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { useProfilePhoto } from '@/hooks/use-profile-photo';
 
 /**
  * Barra superior presente nas quatro telas do Figma ("Xiaolee - AI Chat",
@@ -33,6 +34,7 @@ export function HeaderBar({
   // O frame do Figma começa em y=0 porque não desenha a status bar. No
   // aparelho, sem este inset o wordmark fica embaixo do relógio e da bateria.
   const insets = useSafeAreaInsets();
+  const { photo } = useProfilePhoto();
 
   return (
     <View style={[styles.bar, { paddingTop: insets.top, height: 53 + insets.top }]}>
@@ -86,7 +88,9 @@ export function HeaderBar({
           <IconMenu size={26} sw={2.2} color={Colors.light.accent} />
         </Pressable>
 
-        {/* Avatar: círculo cheio no acento — um dos poucos usos permitidos */}
+        {/* Avatar: a foto de perfil quando há (a mesma do card de share e do
+            menu), senão o círculo cheio no acento — um dos poucos usos
+            permitidos. */}
         <Pressable
           onPress={onPressProfile}
           hitSlop={Spacing.two}
@@ -94,7 +98,11 @@ export function HeaderBar({
           accessibilityLabel="Perfil"
           style={styles.avatar}
         >
-          <IconUser size={18} sw={2} color={Colors.light.card} />
+          {photo ? (
+            <Image source={{ uri: photo }} style={StyleSheet.absoluteFill} />
+          ) : (
+            <IconUser size={18} sw={2} color={Colors.light.card} />
+          )}
         </Pressable>
       </View>
     </View>
@@ -136,6 +144,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.light.accent,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   badge: {
     position: 'absolute',

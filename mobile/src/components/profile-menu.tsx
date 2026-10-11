@@ -1,7 +1,7 @@
 import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { DropdownPanel, PanelRow, type PanelItem } from '@/components/dropdown-panel';
 import {
@@ -10,11 +10,13 @@ import {
   IconClock,
   IconDownload,
   IconLogOut,
+  IconShare,
   IconUpload,
   IconUser,
   IconWallet,
 } from '@/components/icons';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { useProfilePhoto } from '@/hooks/use-profile-photo';
 import { usePrivyWallet } from '@/lib/wallet';
 
 /**
@@ -31,6 +33,8 @@ interface ProfileMenuProps {
   /** Endereço da carteira conectada, quando há. */
   walletAddress?: string;
   onConnectWallet: () => void;
+  /** Abre o sheet de compartilhar perfil (`ShareProfileSheet`). */
+  onShareProfile: () => void;
 }
 
 /** Abrevia o endereço como no web: início e fim, meio elidido. */
@@ -74,15 +78,26 @@ const ACTIONS: (PanelItem & { href?: '/wallet' | '/transactions' | '/history' })
   { key: 'deposit', Icon: IconUpload, title: 'Deposit', subtitle: 'Add funds to account' },
 ];
 
-export function ProfileMenu({ visible, onDismiss, walletAddress, onConnectWallet }: ProfileMenuProps) {
+export function ProfileMenu({
+  visible,
+  onDismiss,
+  walletAddress,
+  onConnectWallet,
+  onShareProfile,
+}: ProfileMenuProps) {
   const router = useRouter();
   const { disconnect } = usePrivyWallet();
+  const { photo } = useProfilePhoto();
 
   return (
     <DropdownPanel visible={visible} onDismiss={onDismiss}>
       <View style={styles.identity}>
         <View style={styles.avatar}>
-          <IconUser size={26} sw={2} color={Colors.light.card} />
+          {photo ? (
+            <Image source={{ uri: photo }} style={StyleSheet.absoluteFill} />
+          ) : (
+            <IconUser size={26} sw={2} color={Colors.light.card} />
+          )}
         </View>
         <View style={styles.identityText}>
           <Text style={styles.handle} numberOfLines={1}>
@@ -126,6 +141,22 @@ export function ProfileMenu({ visible, onDismiss, walletAddress, onConnectWallet
           }}
         />
       ))}
+
+      {walletAddress ? (
+        // Só com sessão: o card é montado do `GET /user/me/profile`.
+        <PanelRow
+          item={{
+            key: 'share-profile',
+            Icon: IconShare,
+            title: 'Share profile',
+            subtitle: 'Post your Xiaolee card',
+            onPress: () => {
+              onDismiss();
+              onShareProfile();
+            },
+          }}
+        />
+      ) : null}
 
       {walletAddress ? (
         <PanelRow
@@ -197,6 +228,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: Radius.pill,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.light.accent,

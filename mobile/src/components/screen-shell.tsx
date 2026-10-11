@@ -9,6 +9,7 @@ import { HeaderBar } from '@/components/header-bar';
 import { IconChat } from '@/components/icons';
 import { NavMenu } from '@/components/nav-menu';
 import { ProfileMenu } from '@/components/profile-menu';
+import { ShareProfileSheet } from '@/components/share-profile-sheet';
 import { CardShadow, Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { useUnreadNotificationsCount } from '@/hooks/use-unread-notifications';
 import { useWallet } from '@/hooks/use-wallet';
@@ -30,6 +31,7 @@ type OpenPanel = 'none' | 'menu' | 'profile';
 export function ScreenShell({ children }: { children: ReactNode }) {
   const [panel, setPanel] = useState<OpenPanel>('none');
   const [walletSheet, setWalletSheet] = useState(false);
+  const [shareSheet, setShareSheet] = useState(false);
   const router = useRouter();
   // A carteira É a identidade do app (`lib/wallet.tsx` grava a sessão
   // ao conectar) — não há mais um login separado dela para esperar aqui.
@@ -71,8 +73,13 @@ export function ScreenShell({ children }: { children: ReactNode }) {
           close();
           setWalletSheet(true);
         }}
+        onShareProfile={() => {
+          close();
+          setShareSheet(true);
+        }}
       />
       <ConnectWalletSheet visible={walletSheet} onClose={() => setWalletSheet(false)} />
+      <ShareProfileSheet visible={shareSheet} onClose={() => setShareSheet(false)} />
 
       <BackToChat />
     </View>
