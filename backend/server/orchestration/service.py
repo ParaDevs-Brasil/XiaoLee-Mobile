@@ -1003,6 +1003,52 @@ class OrchestrationService:
             messages.append({"role": role, "content": content})
         return messages
 
+    async def _execute_menu_action(self, menu_action: str, text: str, user_id: str,
+                                   history: list = None, platform: str = "web") -> Dict[str, Any]:
+        """Card do menu do chat (XIAOLEEACE-20): tool fixa, modelo só redige.
+
+        A tool roda SEMPRE, antes e independente do modelo — é isso que garante
+        que "Browse campaigns" traga as campanhas do perfil e "My metrics" o
+        histórico, mesmo com o LLM fora. O modelo recebe os dados prontos e não
+        tem tools para chamar; se ele falhar (ou não houver engine), a resposta
+        sai de `fallback_reply`, montada com os mesmos dados.
+        """
+        from server.chat_menu import MENU_ACTIONS, fallback_reply
+
+        stellar_wallet = self._extract_stellar_wallet_from_note(text)
+        evm_wallet = self._extract_evm_wallet_from_note(text)
+        captured: Dict[str, Any] = {"actions": [], "execution": None, "last_swap_args": {}, "animation_name": None}
+        executor = self._make_stellar_executor(stellar_wallet, captured, evm_wallet=evm_wallet, user_id=user_id)
+
+        raw = await executor(MENU_ACTIONS[menu_action], {})
+        data = json.loads(raw)
+
+        reply = ""
+        if self.claude_engine is not None and "error" not in data:
+            try:
+                result = await self.claude_engine.run(
+                    system_prompt=self._build_agentic_system_prompt(stellar_wallet, platform, evm_wallet=evm_wallet),
+                    message=(
+                        f"{self._clean_text(text)}\n\n[System Note: dados já consultados para esta resposta — "
+                        f"responda só com base neles, sem inventar nada: {raw}]"
+                    ),
+                    tools=None,
+                    tool_executor=executor,
+                    history=self._history_to_anthropic(history),
+                )
+                reply = (result.get("text") or "").strip()
+            except Exception as exc:
+                logger.warning("[MENU] %s: model failed, using fallback reply: %s", menu_action, exc)
+        if not reply:
+            reply = fallback_reply(menu_action, data)
+
+        logger.info("[MENU] action=%s tools=%s llm=%s", menu_action, captured["actions"], bool(self.claude_engine))
+        return {
+            "intent": IntentResponse(action=menu_action, confidence=1.0, entities={}),
+            "reply_text": reply,
+            "execution": {"status": "info", "menu_action": menu_action, "data": data},
+        }
+
     async def _execute_agentic(self, text: str, user_id: str, history: list = None,
                                platform: str = "web") -> Dict[str, Any]:
         stellar_wallet = self._extract_stellar_wallet_from_note(text)
@@ -1035,7 +1081,14 @@ class OrchestrationService:
     # Main execution
     # ------------------------------------------------------------------
 
-    async def execute(self, text: str, user_id: str, history: list = None, platform: str = "web") -> Dict[str, Any]:
+    async def execute(self, text: str, user_id: str, history: list = None, platform: str = "web",
+                      menu_action: str | None = None) -> Dict[str, Any]:
+        # Card do menu do chat: caminho determinístico, antes de qualquer
+        # detecção de intent — ver `_execute_menu_action`.
+        from server.chat_menu import MENU_ACTIONS
+        if menu_action in MENU_ACTIONS:
+            return await self._execute_menu_action(menu_action, text, user_id, history=history, platform=platform)
+
         # Intents do agente Arc/Circle desviam ANTES do caminho agêntico: o loop
         # Claude do chat só tem tools Stellar e responderia genérico ("help").
         arc_intent = self._detect_arc_intent(self._clean_text(text))
