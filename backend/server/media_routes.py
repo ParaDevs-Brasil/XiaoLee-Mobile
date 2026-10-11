@@ -440,6 +440,8 @@ async def format_suggestions(
         "social_links": json.loads(user.social_links) if user.social_links else {},
     }
     samples = await _format_samples(db, user.id)
+    # Fecha a transação antes da IA (até 60 s): a conexão volta ao pool em vez de ficar presa esperando o modelo.
+    await db.commit()
     try:
         picks = await format_advisor.suggest_formats(profile, samples, lang)
     except clipper.ProviderUnavailable as exc:
