@@ -34,7 +34,7 @@ import { isOnChainTx, txExplorerUrl } from '@/lib/explorer';
 import { shortHash } from '@/lib/format';
 import { getSessionToken, getWallet } from '@/lib/session';
 import { hasSeenWelcome, markWelcomeSeen } from '@/lib/welcome';
-import { buildWelcomeCopy, type WelcomeCopy } from '@/lib/welcome-copy';
+import { buildWelcomeCopy, prioritizeActions, type WelcomeCopy } from '@/lib/welcome-copy';
 import { usePrivyWallet } from '@/lib/wallet';
 
 import { AnimatedAvatar } from '@/components/animated-avatar';
@@ -231,6 +231,8 @@ export default function ChatScreen() {
   // Boas-vindas do 1º clique (XIAOLEEACE-19) — só existe nesta montagem e só
   // no estado inicial: não entra no histórico nem vai para o backend.
   const [welcome, setWelcome] = useState<WelcomeCopy | null>(null);
+  // Interesses do onboarding — só reordenam os cards do estado inicial.
+  const [interests, setInterests] = useState<string[]>([]);
   const { activeChatSessionId } = useChatSession();
   const [sessionsOpen, setSessionsOpen] = useState(false);
   const [sessionsAnchor, setSessionsAnchor] = useState<{ top: number; right: number }>();
@@ -332,6 +334,7 @@ export default function ChatScreen() {
           router.replace('/onboarding');
           return;
         }
+        setInterests(profile.interest_profile);
         if (!accountId || (await hasSeenWelcome(accountId)) || !active) return;
         setWelcome(buildWelcomeCopy(profile));
         avatarAnimation.play('xiaolee_hello');
@@ -447,6 +450,10 @@ export default function ChatScreen() {
   }
 
   const empty = messages.length === 0;
+  const actions = prioritizeActions(
+    ACTIONS.map((action) => action.key),
+    interests,
+  ).map((key) => ACTIONS.find((action) => action.key === key)!);
 
   return (
     <ScreenShell>
@@ -522,7 +529,7 @@ export default function ChatScreen() {
                 )}
 
                 <View style={styles.actions}>
-                  {ACTIONS.map((action) => (
+                  {actions.map((action) => (
                     <ActionCard key={action.key} action={action} onPress={() => send(action.prompt)} />
                   ))}
                 </View>

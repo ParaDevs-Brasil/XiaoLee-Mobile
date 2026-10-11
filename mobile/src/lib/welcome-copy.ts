@@ -59,3 +59,21 @@ export function buildWelcomeCopy(profile: WelcomeProfile | null): WelcomeCopy {
       `${audience} in USDC${swaps}. Where should we start?`,
   };
 }
+
+/**
+ * Ordem dos cards de ação do estado inicial, pelo interesse: quem opera token
+ * vê o swap primeiro; o resto, a campanha. A personalização mora aqui, no que
+ * a pessoa toca, e não numa frase a mais na bolha.
+ *
+ * Recebe e devolve chaves (`ACTIONS[].key` em `index.tsx`) para continuar
+ * pura e testável — a tela só reordena os próprios objetos por elas.
+ */
+export function prioritizeActions(keys: string[], interests: string[]): string[] {
+  const first = interests.some((interest) => SWAP_INTERESTS.has(interest))
+    ? 'swap'
+    : interests.length > 0
+      ? 'campaign'
+      : null;
+  if (!first || !keys.includes(first)) return keys;
+  return [first, ...keys.filter((key) => key !== first)];
+}

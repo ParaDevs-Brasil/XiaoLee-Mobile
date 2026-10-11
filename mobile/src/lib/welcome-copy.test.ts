@@ -6,7 +6,7 @@
  */
 import assert from 'node:assert/strict';
 
-import { buildWelcomeCopy } from './welcome-copy.ts';
+import { buildWelcomeCopy, prioritizeActions } from './welcome-copy.ts';
 
 function test(name: string, fn: () => void) {
   fn();
@@ -53,4 +53,23 @@ test('mantém o tamanho da persona: no máximo 3 frases', () => {
 test('interesse desconhecido não deixa buraco na frase', () => {
   const { body } = buildWelcomeCopy({ full_name: 'Ana', interest_profile: ['unknown'] });
   assert.doesNotMatch(body, /undefined|\s{2}/);
+});
+
+const KEYS = ['campaign', 'dashboard', 'swap', 'balance'];
+
+test('prioritizeActions: quem opera token vê o swap primeiro', () => {
+  assert.deepEqual(prioritizeActions(KEYS, ['games', 'trader']), [
+    'swap',
+    'campaign',
+    'dashboard',
+    'balance',
+  ]);
+});
+
+test('prioritizeActions: outros interesses, campanha primeiro', () => {
+  assert.deepEqual(prioritizeActions(KEYS, ['memecoins']), KEYS);
+});
+
+test('prioritizeActions: sem interesse, ordem original', () => {
+  assert.deepEqual(prioritizeActions(KEYS, []), KEYS);
 });
