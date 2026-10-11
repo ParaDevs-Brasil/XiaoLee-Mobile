@@ -45,7 +45,7 @@ import {
   IconEdit,
   IconGift,
   IconSend,
-  IconSwap,
+  IconTarget,
   IconWallet,
   type IconProps,
 } from '@/components/icons';
@@ -77,42 +77,38 @@ interface Action {
   prompt: string;
 }
 
+/**
+ * Menu do chat (XIAOLEEACE-20): três caminhos, um verbo cada, sem sobreposição.
+ * Os prompts nomeiam o que se quer de forma explícita para o agente cair na
+ * tool certa — `list_campaigns` (já ranqueada pelo perfil do onboarding),
+ * `create_campaign` e `get_my_activity`. Swap e saldo continuam a um toque,
+ * nas sugestões.
+ */
 const ACTIONS: Action[] = [
   {
-    key: 'campaign',
+    key: 'create',
     Icon: IconGift,
     title: 'Create a campaign',
-    subtitle: 'Reward your community',
+    subtitle: 'Reward your community in USDC',
     prompt: 'I want to create a campaign to reward my community',
   },
   {
-    key: 'dashboard',
+    key: 'browse',
+    Icon: IconTarget,
+    title: 'Browse campaigns',
+    subtitle: 'Picked for your interests',
+    prompt: 'Show me the campaigns that best match my interests',
+  },
+  {
+    key: 'metrics',
     Icon: IconActivity,
-    title: 'View dashboard',
-    subtitle: 'Metrics and activity',
-    prompt: 'Show me the dashboard metrics',
-  },
-  {
-    key: 'swap',
-    Icon: IconSwap,
-    title: 'Make a swap',
-    subtitle: 'Exchange tokens by chat',
-    prompt: 'I want to make a swap',
-  },
-  {
-    key: 'balance',
-    Icon: IconWallet,
-    title: 'Check balance',
-    subtitle: 'See your wallet funds',
-    prompt: 'What is my balance?',
+    title: 'My metrics',
+    subtitle: 'Everything you did on Xiaolee',
+    prompt: 'Show my metrics: everything I have done on the platform',
   },
 ];
 
-const SUGGESTIONS = [
-  'What can you do for me?',
-  'How do campaigns work?',
-  'Show my recent transactions',
-];
+const SUGGESTIONS = ['I want to make a swap', 'What is my balance?', 'Show my recent transactions'];
 
 interface Message {
   id: string;
