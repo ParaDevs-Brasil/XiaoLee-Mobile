@@ -724,12 +724,14 @@ class OrchestrationService:
 
             if tool_name == "list_campaigns":
                 # Ranqueada pelo perfil do onboarding de quem pergunta (XIAOLEEACE-20).
-                # O perfil, como a wallet, nunca é parâmetro do modelo — sai da sessão.
-                authorization = None if user_id == "web_anonymous" else f"Bearer {user_id}"
+                # O perfil, como a wallet, nunca é parâmetro do modelo — sai da
+                # identidade que o `/chat` já resolveu do Bearer.
                 try:
                     from server.campaigns_routes import list_recommended_campaigns
                     async with _campaigns_db() as db:
-                        campaigns = await list_recommended_campaigns(db, authorization)
+                        campaigns = await list_recommended_campaigns(
+                            db, None if user_id == "web_anonymous" else user_id,
+                        )
                 except Exception as exc:
                     return json.dumps({"error": "campaigns_read_failed", "message": str(exc)})
                 captured["actions"].append("list_campaigns")
@@ -757,12 +759,10 @@ class OrchestrationService:
                 try:
                     from sqlalchemy import select
                     from database.models import User
-                    from server.campaigns_routes import resolve_twitter_identity
                     from server.user_activity import build_user_activity_summary
                     async with _campaigns_db() as db:
-                        twitter_user_id, _ = await resolve_twitter_identity(db, authorization, strict=True)
                         user = (await db.execute(
-                            select(User).where(User.twitter_user_id == twitter_user_id)
+                            select(User).where(User.twitter_user_id == user_id)
                         )).scalars().first()
                         if not user:
                             return json.dumps({"error": "no_activity", "message": "Usuário ainda sem atividade na plataforma."})

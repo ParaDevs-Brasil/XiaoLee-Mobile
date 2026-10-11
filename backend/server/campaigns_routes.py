@@ -964,32 +964,28 @@ async def list_campaigns(db: AsyncSession = Depends(get_db_session)):
     )
 
 
-async def list_recommended_campaigns(db: AsyncSession, authorization: Optional[str]) -> list[dict]:
+async def list_recommended_campaigns(db: AsyncSession, twitter_user_id: Optional[str]) -> list[dict]:
     """Campanhas ativas ranqueadas pelo perfil do onboarding de quem pergunta.
 
-    Usada pela tool `list_campaigns` do chat. Sem sessão válida (ou sessão de
-    alguém que ainda não tem `User`) não personaliza — e não cria usuário só
-    por ter perguntado, ao contrário de `_resolve_user`.
+    Usada pela tool `list_campaigns` do chat, que recebe a identidade já
+    resolvida do Bearer pelo `/chat`. Sem identidade (ou de alguém que ainda
+    não tem `User`) não personaliza — e não cria usuário só por ter perguntado,
+    ao contrário de `_resolve_user`.
     """
     resp = await list_campaigns(db)
     campaigns = [c.model_dump() for c in resp.campaigns]
 
     interests: list[str] = []
     joined_ids: list[int] = []
-    if authorization:
-        try:
-            twitter_user_id, _ = await resolve_twitter_identity(db, authorization, strict=True)
-        except HTTPException:
-            twitter_user_id = None
-        user = None
-        if twitter_user_id:
-            user = (await db.execute(select(User).where(User.twitter_user_id == twitter_user_id))).scalars().first()
-        if user:
-            interests = json.loads(user.interest_profile) if user.interest_profile else []
-            joined_res = await db.execute(
-                select(CampaignParticipant.campaign_id).where(CampaignParticipant.user_id == user.id)
-            )
-            joined_ids = list(joined_res.scalars().all())
+    user = None
+    if twitter_user_id:
+        user = (await db.execute(select(User).where(User.twitter_user_id == twitter_user_id))).scalars().first()
+    if user:
+        interests = json.loads(user.interest_profile) if user.interest_profile else []
+        joined_res = await db.execute(
+            select(CampaignParticipant.campaign_id).where(CampaignParticipant.user_id == user.id)
+        )
+        joined_ids = list(joined_res.scalars().all())
 
     return rank_campaigns_for_profile(campaigns, interests, joined_ids)
 

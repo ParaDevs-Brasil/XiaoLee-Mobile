@@ -2,19 +2,20 @@
 test_chat_menu_tools.py — tools que as opções do menu do chat acionam (XIAOLEEACE-20).
 
 Regras que estes testes travam:
-- `list_campaigns` ranqueia pelo perfil da sessão do chat (o modelo não passa perfil);
+- `list_campaigns` ranqueia pelo perfil de quem está no chat (o modelo não passa perfil);
+- o executor recebe o `twitter_user_id` que o `/chat` já resolveu do Bearer — é ele
+  que identifica o usuário, não o token de sessão;
 - `get_my_activity` devolve o histórico de quem está logado e recusa anônimo.
 """
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta
 
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 import database.database as database_module
-from database.models import User, WebSession
+from database.models import User
 from server.orchestration.service import OrchestrationService
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.db]
@@ -33,20 +34,16 @@ def executor_for(db_session, test_engine, monkeypatch):
     return _make
 
 
-async def _login(db, name: str, interests: list[str]) -> str:
-    db.add(WebSession(
-        session_id=f"privy_session_{name}",
-        twitter_user_id=f"privy_{name}",
-        expires_at=datetime.utcnow() + timedelta(days=30),
-    ))
+async def _user(db, name: str, interests: list[str]) -> str:
+    """Cria o usuário e devolve o `user_id` que o `/chat` passaria ao executor."""
     db.add(User(twitter_user_id=f"privy_{name}", twitter_handle=name, interest_profile=json.dumps(interests)))
     await db.commit()
-    return f"privy_session_{name}"
+    return f"privy_{name}"
 
 
-async def test_list_campaigns_vem_ranqueada_pelo_perfil_da_sessao(db_session, executor_for):
-    session_token = await _login(db_session, "gabi", ["trader"])
-    executor, captured = executor_for(session_token)
+async def test_list_campaigns_vem_ranqueada_pelo_perfil_do_usuario(db_session, executor_for):
+    user_id = await _user(db_session, "gabi", ["trader"])
+    executor, captured = executor_for(user_id)
 
     campaigns = json.loads(await executor("list_campaigns", {}))["campaigns"]
 
@@ -62,8 +59,8 @@ async def test_list_campaigns_anonimo_continua_funcionando(db_session, executor_
 
 
 async def test_get_my_activity_devolve_o_resumo_de_quem_esta_logado(db_session, executor_for):
-    session_token = await _login(db_session, "duda", ["games"])
-    executor, captured = executor_for(session_token)
+    user_id = await _user(db_session, "duda", ["games"])
+    executor, captured = executor_for(user_id)
 
     summary = json.loads(await executor("get_my_activity", {}))
 

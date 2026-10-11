@@ -76,37 +76,29 @@ def test_nao_altera_a_lista_original():
 
 
 # ---------------------------------------------------------------------------
-# list_recommended_campaigns — perfil vem da sessão, nunca do chamador
+# list_recommended_campaigns — perfil vem da identidade que o /chat resolveu
 # ---------------------------------------------------------------------------
 
 import json  # noqa: E402
-from datetime import datetime, timedelta  # noqa: E402
-
 from sqlalchemy import func, select  # noqa: E402
 
 import pytest  # noqa: E402
 
-from database.models import CampaignParticipant, User, WebSession  # noqa: E402
+from database.models import CampaignParticipant, User  # noqa: E402
 from server.campaigns_routes import list_recommended_campaigns  # noqa: E402
 
 
-async def _login(db, name: str, interests: list[str]) -> str:
-    db.add(WebSession(
-        session_id=f"privy_session_{name}",
-        twitter_user_id=f"privy_{name}",
-        expires_at=datetime.utcnow() + timedelta(days=30),
-    ))
-    user = User(twitter_user_id=f"privy_{name}", twitter_handle=name, interest_profile=json.dumps(interests))
-    db.add(user)
+async def _user(db, name: str, interests: list[str]) -> str:
+    db.add(User(twitter_user_id=f"privy_{name}", twitter_handle=name, interest_profile=json.dumps(interests)))
     await db.commit()
-    return f"Bearer privy_session_{name}"
+    return f"privy_{name}"
 
 
 @pytest.mark.asyncio
 @pytest.mark.db
-async def test_recomendadas_seguem_o_perfil_da_sessao(db_session):
-    auth = await _login(db_session, "ana", ["trader"])
-    ranked = await list_recommended_campaigns(db_session, auth)
+async def test_recomendadas_seguem_o_perfil_do_usuario(db_session):
+    who = await _user(db_session, "ana", ["trader"])
+    ranked = await list_recommended_campaigns(db_session, who)
     assert ranked[0]["campaign_type"] == "trading"
     assert ranked[0]["matched_interests"] == ["trader"]
 
@@ -114,21 +106,21 @@ async def test_recomendadas_seguem_o_perfil_da_sessao(db_session):
 @pytest.mark.asyncio
 @pytest.mark.db
 async def test_recomendadas_marcam_campanha_ja_inscrita(db_session):
-    auth = await _login(db_session, "bia", ["trader"])
-    first = (await list_recommended_campaigns(db_session, auth))[0]
+    who = await _user(db_session, "bia", ["trader"])
+    first = (await list_recommended_campaigns(db_session, who))[0]
     user = (await db_session.execute(select(User).where(User.twitter_user_id == "privy_bia"))).scalars().one()
     db_session.add(CampaignParticipant(campaign_id=first["id"], user_id=user.id))
     await db_session.commit()
 
-    ranked = await list_recommended_campaigns(db_session, auth)
+    ranked = await list_recommended_campaigns(db_session, who)
     assert ranked[-1]["id"] == first["id"]
     assert ranked[-1]["already_joined"] is True
 
 
 @pytest.mark.asyncio
 @pytest.mark.db
-async def test_sem_sessao_nao_personaliza_nem_cria_usuario(db_session):
-    for auth in (None, "Bearer token_que_nao_existe"):
-        ranked = await list_recommended_campaigns(db_session, auth)
+async def test_sem_usuario_nao_personaliza_nem_cria(db_session):
+    for who in (None, "privy_sem_usuario"):
+        ranked = await list_recommended_campaigns(db_session, who)
         assert ranked and all(c["match_score"] == 0 for c in ranked)
     assert (await db_session.execute(select(func.count()).select_from(User))).scalar() == 0
