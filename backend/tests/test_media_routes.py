@@ -1116,3 +1116,64 @@ async def test_provider_without_credit_is_503_generic_and_stores_nothing(clips_e
     assert "credit" not in r.text and "anthropic" not in r.text.lower()
     assert (await e.db.execute(select(MediaClip))).scalars().all() == []
 
+
+
+# ── Sugestões de formato (XIAOLEEACE-32) ─────────────────────────────────────
+
+def _formats(n=3):
+    return [{"format": f"Formato {i}", "why": "porque sim", "hook": "Olha isso", "platform": "tiktok", "duration_s": 40}
+            for i in range(n)]
+
+
+@pytest.mark.asyncio
+async def test_format_suggestions_use_onboarding_profile_and_own_videos(db, monkeypatch):
+    format_advisor = importlib.import_module("server.format_advisor")
+    format_advisor._cache.clear()
+    h, other = await _login(db, "a"), await _login(db, "b")
+    assert client.patch("/user/me/profile", json={"full_name": "Ana", "interest_profile": ["defi"], "bio": "DeFi fácil"},
+                        headers=h).status_code == 200
+    mine = client.post("/v1/media", json=BODY, headers=h).json()["asset"]["id"]
+    theirs = client.post("/v1/media", json={**BODY, "filename": "segredo.mp4"}, headers=other).json()["asset"]["id"]
+    for aid, text in ((mine, "hoje eu explico pool de liquidez"), (theirs, "texto de outro creator")):
+        db.add(MediaTranscript(media_id=aid, segments_json=json.dumps([{"start": 0, "end": 2, "text": text}]), model="m"))
+    db.add(MediaClip(user_id=1, media_id=mine, rank=1, start_s=0, end_s=30, title="O erro do pool", reason="r"))
+    await db.commit()
+    seen = []
+
+    async def _call_tool(system, tool, content, max_tokens):
+        seen.append((system, content))
+        return {"suggestions": _formats()}
+
+    monkeypatch.setattr(clipper, "_call_tool", _call_tool)
+    r = client.get("/v1/media/format-suggestions?lang=pt", headers=h)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert len(body["suggestions"]) == 3 and body["based_on_videos"] == 1
+    assert set(body["suggestions"][0]) == {"format", "why", "hook", "platform", "duration_s"}
+    system, content = seen[0]
+    assert "Brazilian Portuguese" in system
+    assert "DeFi / decentralized finance" in content and "DeFi fácil" in content
+    assert "pool de liquidez" in content and "O erro do pool" in content
+    assert "segredo" not in content and "outro creator" not in content
+    format_advisor._cache.clear()
+
+
+@pytest.mark.asyncio
+async def test_format_suggestions_errors(db, monkeypatch):
+    format_advisor = importlib.import_module("server.format_advisor")
+    format_advisor._cache.clear()
+    assert client.get("/v1/media/format-suggestions").status_code == 401
+    h = await _login(db, "a")
+
+    async def _no_credit(*a):
+        raise clipper.ProviderUnavailable("anthropic: Your credit balance is too low")
+
+    monkeypatch.setattr(clipper, "_call_tool", _no_credit)
+    r = client.get("/v1/media/format-suggestions", headers=h)
+    assert r.status_code == 503 and "credit" not in r.text and "anthropic" not in r.text.lower()
+
+    async def _one(*a):
+        return {"suggestions": _formats(1)}
+
+    monkeypatch.setattr(clipper, "_call_tool", _one)
+    assert client.get("/v1/media/format-suggestions", headers=h).status_code == 502
