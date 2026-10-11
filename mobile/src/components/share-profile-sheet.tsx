@@ -110,7 +110,9 @@ export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) 
       const uri = await captureRef(cardRef, {
         format: 'png',
         quality: 1,
+        // O view-shot só reescala com as duas medidas; mesma proporção 4:5.
         width: EXPORT_WIDTH,
+        height: EXPORT_WIDTH * 1.25,
         result: 'tmpfile',
       });
       await Clipboard.setStringAsync(`${caption} ${SHARE_URL}`);
@@ -246,7 +248,7 @@ const styles = StyleSheet.create({
   headerText: { flex: 1 },
   title: { fontFamily: Fonts.bold, fontSize: 16, color: Colors.light.ink },
   subtitle: { fontFamily: Fonts.sans, fontSize: 11, color: Colors.light.ink2, marginTop: 1 },
-  preview: { alignItems: 'center' },
+  preview: { alignSelf: 'center', borderRadius: Radius.xl, overflow: 'hidden' },
   placeholder: {
     alignItems: 'center',
     justifyContent: 'center',

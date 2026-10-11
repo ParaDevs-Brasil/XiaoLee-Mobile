@@ -50,7 +50,10 @@ export const ShareProfileCard = forwardRef<View, ShareProfileCardProps>(function
     >
       <View style={styles.top}>
         <Text style={[styles.brand, { fontSize: 28 * u }]}>Xiaolee</Text>
-        <Image source={mascot} style={{ width: 44 * u, height: 44 * u }} />
+        <Image
+          source={mascot}
+          style={[styles.mascot, { width: 44 * u, height: 44 * u, borderWidth: 2 * u }]}
+        />
       </View>
 
       <View style={[styles.body, { gap: Spacing.two * u }]}>
@@ -115,7 +118,6 @@ export const ShareProfileCard = forwardRef<View, ShareProfileCardProps>(function
           size={64 * u}
           padding={0}
           color={Colors.light.ink}
-          pieceBorderRadius={1}
         />
       </View>
     </View>
@@ -123,14 +125,13 @@ export const ShareProfileCard = forwardRef<View, ShareProfileCardProps>(function
 });
 
 const styles = StyleSheet.create({
-  card: {
-    justifyContent: 'space-between',
-    borderRadius: Radius.xl,
-    overflow: 'hidden',
-    backgroundColor: Colors.light.accent,
-  },
+  // Sem raio de borda: canto arredondado vira transparência no PNG, e
+  // WhatsApp/Instagram pintam transparência de preto. O arredondado do
+  // preview é do contêiner no sheet.
+  card: { justifyContent: 'space-between', backgroundColor: Colors.light.accent },
   top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   brand: { fontFamily: Fonts.brand, color: Colors.light.card },
+  mascot: { borderRadius: Radius.pill, borderColor: Colors.light.card },
   body: { alignItems: 'center' },
   avatar: {
     borderRadius: Radius.pill,
