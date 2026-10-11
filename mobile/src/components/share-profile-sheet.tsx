@@ -21,8 +21,7 @@ import { getMyProfile, type MyProfile } from '@/api/backend';
 import { IconClose, IconShare, IconUser } from '@/components/icons';
 import { ShareProfileCard } from '@/components/share-profile-card';
 import { CardShadow, Colors, Fonts, Radius, Spacing } from '@/constants/theme';
-import { useWallet } from '@/hooks/use-wallet';
-import { pickProfilePhoto, savedProfilePhoto } from '@/lib/profile-photo';
+import { useProfilePhoto } from '@/hooks/use-profile-photo';
 import {
   buildShareCaption,
   profilePhotoUrl,
@@ -64,7 +63,7 @@ const EMPTY_PROFILE: MyProfile = {
   onboarded: false,
 };
 
-type Busy = 'none' | 'photo' | ShareChannel | 'more';
+type Busy = 'none' | ShareChannel | 'more';
 
 /**
  * Para onde vai cada canal. O X tem duas telas de compartilhar (post e DM);
@@ -79,12 +78,10 @@ export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) 
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
   const { user } = usePrivy();
-  const { address } = useWallet();
+  const { photo: localPhoto, busy: pickingPhoto, pick, canPick } = useProfilePhoto();
   const cardRef = useRef<View>(null);
 
   const [profile, setProfile] = useState<MyProfile | null>(null);
-  /** Foto escolhida no aparelho; `undefined` = ainda não lida do disco. */
-  const [localPhoto, setLocalPhoto] = useState<string | null | undefined>(undefined);
   /** URL da foto que já terminou de carregar — a captura espera por ela. */
   const [settledPhoto, setSettledPhoto] = useState<string | null>(null);
   const [busy, setBusy] = useState<Busy>('none');
@@ -112,15 +109,9 @@ export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) 
     };
   }, [visible]);
 
-  // A foto salva é lida do disco (síncrono, mas fora do render) ao abrir.
-  useEffect(() => {
-    if (!visible) return;
-    Promise.resolve().then(() => setLocalPhoto(savedProfilePhoto(address)));
-  }, [visible, address]);
-
   // Sem foto não há o que esperar; com foto, só depois do `onLoadEnd`.
   const photoReady = !photoUrl || settledPhoto === photoUrl;
-  const ready = Boolean(profile) && photoReady && busy === 'none';
+  const ready = Boolean(profile) && photoReady && busy === 'none' && !pickingPhoto;
 
   /** Fechar limpa o aviso, senão ele reaparece velho na próxima abertura. */
   function close() {
@@ -129,16 +120,11 @@ export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) 
   }
 
   async function changePhoto() {
-    if (!address) return;
-    setBusy('photo');
     setNotice(null);
     try {
-      const uri = await pickProfilePhoto(address);
-      if (uri) setLocalPhoto(uri);
+      await pick();
     } catch {
       setNotice("Couldn't load that photo. Try another one.");
-    } finally {
-      setBusy('none');
     }
   }
 
@@ -231,14 +217,14 @@ export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) 
               )}
             </View>
 
-            {address ? (
+            {canPick ? (
               <Pressable
                 onPress={changePhoto}
-                disabled={busy !== 'none'}
+                disabled={busy !== 'none' || pickingPhoto}
                 style={({ pressed }) => [styles.photoButton, pressed && styles.pressed]}
                 accessibilityRole="button"
               >
-                {busy === 'photo' ? (
+                {pickingPhoto ? (
                   <ActivityIndicator size="small" color={Colors.light.accent} />
                 ) : (
                   <IconUser size={15} color={Colors.light.accent} />
