@@ -78,7 +78,8 @@ export const ShareProfileCard = forwardRef<View, ShareProfileCardProps>(function
   const u = width / 320;
   const height = width * CARD_RATIOS[format];
   const isStory = format === 'story';
-  // A frase sob o nome vem do interesse principal — é o que personaliza o card.
+  // A frase sob o nome muda com os interesses (`interestPhrase`): é o que
+  // personaliza o card.
   const tagline = profileTagline(interests);
   const displayName = name?.trim() || 'Xiaolee creator';
 
@@ -224,7 +225,7 @@ export const ShareProfileCard = forwardRef<View, ShareProfileCardProps>(function
           </View>
           <Text style={[styles.cta, { fontSize: 16 * u }]}>Join me on Xiaolee</Text>
           <Text style={[styles.ctaSub, { fontSize: 11 * u, lineHeight: 15 * u }]}>
-            Your AI agent that earns USDC for creators.
+            Your AI agent for creators.
           </Text>
         </View>
         <View style={[styles.qrBox, { padding: 5 * u, borderRadius: Radius.md * u }]}>
