@@ -159,7 +159,14 @@ export interface ChatRequest {
   wallet_chain?: string;
   /** Sessão de chat ativa — omitido, o backend cria uma nova na primeira mensagem. */
   session_id?: number;
+  /**
+   * Card do menu do chat (XIAOLEEACE-20): o backend chama a função certa direto,
+   * sem depender do modelo — ver `backend/server/chat_menu.py`.
+   */
+  menu_action?: ChatMenuAction;
 }
+
+export type ChatMenuAction = 'browse_campaigns' | 'my_metrics';
 
 /**
  * Manda a mensagem para o agente.

@@ -20,6 +20,7 @@ import {
   getChatSessionMessages,
   getMyProfile,
   sendChatMessage,
+  type ChatMenuAction,
   type ChatSessionMessage,
 } from '@/api/backend';
 import { ApiError } from '@/api/client';
@@ -75,14 +76,20 @@ interface Action {
   subtitle: string;
   /** O que é enviado ao agente ao tocar — o card é um atalho de conversa. */
   prompt: string;
+  /**
+   * Ação fixa que o backend atende sem depender do modelo. Sem ela (criar
+   * campanha), o card é só texto e a conversa guiada segue com o agente.
+   */
+  menuAction?: ChatMenuAction;
 }
 
 /**
  * Menu do chat (XIAOLEEACE-20): três caminhos, um verbo cada, sem sobreposição.
- * Os prompts nomeiam o que se quer de forma explícita para o agente cair na
- * tool certa — `list_campaigns` (já ranqueada pelo perfil do onboarding),
- * `create_campaign` e `get_my_activity`. Swap e saldo continuam a um toque,
- * nas sugestões.
+ * "Browse campaigns" e "My metrics" mandam `menuAction`, e o backend chama a
+ * função certa direto — campanhas ranqueadas pelo perfil do onboarding e o
+ * histórico do usuário —, com resposta mesmo se o modelo cair. "Create a
+ * campaign" é uma conversa guiada, então segue como texto para o agente.
+ * Swap e saldo continuam a um toque, nas sugestões.
  */
 const ACTIONS: Action[] = [
   {
@@ -98,6 +105,7 @@ const ACTIONS: Action[] = [
     title: 'Browse campaigns',
     subtitle: 'Picked for your interests',
     prompt: 'Show me the campaigns that best match my interests',
+    menuAction: 'browse_campaigns',
   },
   {
     key: 'metrics',
@@ -105,6 +113,7 @@ const ACTIONS: Action[] = [
     title: 'My metrics',
     subtitle: 'Everything you did on Xiaolee',
     prompt: 'Show my metrics: everything I have done on the platform',
+    menuAction: 'my_metrics',
   },
 ];
 
@@ -366,7 +375,7 @@ export default function ChatScreen() {
     );
   }
 
-  async function send(text: string) {
+  async function send(text: string, menuAction?: ChatMenuAction) {
     const message = text.trim();
     if (!message || sending) return;
 
@@ -402,6 +411,7 @@ export default function ChatScreen() {
         message,
         ...(activeWallet && { wallet_address: activeWallet.address, wallet_chain: activeWallet.chain }),
         ...(activeChatSessionId !== null && { session_id: activeChatSessionId }),
+        ...(menuAction && { menu_action: menuAction }),
       });
       const reply =
         result.response?.[0]?.content?.trim() || 'Não consegui formular uma resposta agora.';
@@ -529,7 +539,7 @@ export default function ChatScreen() {
 
                 <View style={styles.actions}>
                   {actions.map((action) => (
-                    <ActionCard key={action.key} action={action} onPress={() => send(action.prompt)} />
+                    <ActionCard key={action.key} action={action} onPress={() => send(action.prompt, action.menuAction)} />
                   ))}
                 </View>
 
