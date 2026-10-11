@@ -1,42 +1,46 @@
 import { usePrivy } from '@privy-io/expo';
-import * as Clipboard from 'expo-clipboard';
-import * as Sharing from 'expo-sharing';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Linking,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Share, { Social } from 'react-native-share';
 import { captureRef } from 'react-native-view-shot';
 
 import { getMyProfile, type MyProfile } from '@/api/backend';
-import { IconClose, IconUpload } from '@/components/icons';
+import { IconClose, IconShare, IconUser } from '@/components/icons';
 import { ShareProfileCard } from '@/components/share-profile-card';
 import { CardShadow, Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { useWallet } from '@/hooks/use-wallet';
+import { pickProfilePhoto, savedProfilePhoto } from '@/lib/profile-photo';
 import {
   buildShareCaption,
   profilePhotoUrl,
-  SHARE_URL,
   xHandle,
   xIntentUrl,
   type LinkedAccountLike,
+  type ShareChannel,
 } from '@/lib/share-profile';
 
 /**
  * Sheet do "compartilhar perfil" (XIAOLEEACE-21), aberto pelo `ProfileMenu`.
  *
- * Mostra o `ShareProfileCard` como preview e oferece duas saídas:
- *  - **Share image** — captura o card em PNG e abre o share sheet nativo
- *    (X, Instagram, WhatsApp…). O Android não manda texto junto com arquivo
- *    nesse intent, então a legenda vai pro clipboard antes, pronta pra colar.
- *  - **Post on X** — intent web do X com legenda + link, para quem quer só o
- *    texto (o intent não aceita anexar imagem).
+ * Mostra o `ShareProfileCard` como preview e manda imagem **e** legenda
+ * juntas, num só intent (`react-native-share`), direto para o app escolhido:
+ *  - **WhatsApp** — legenda pessoal com o link.
+ *  - **X** — post curto com hashtags dos interesses e a imagem anexada.
+ *  - **More apps** — o seletor do sistema, com a legenda do WhatsApp.
+ *
+ * Sem o app instalado, o X cai no intent web (só texto — a web não aceita
+ * anexo) e o WhatsApp cai no seletor do sistema.
  */
 
 interface ShareProfileSheetProps {
@@ -57,25 +61,31 @@ const EMPTY_PROFILE: MyProfile = {
   onboarded: false,
 };
 
+type Busy = 'none' | 'photo' | ShareChannel | 'more';
+
 export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) {
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
   const { user } = usePrivy();
+  const { address } = useWallet();
   const cardRef = useRef<View>(null);
 
   const [profile, setProfile] = useState<MyProfile | null>(null);
+  /** Foto escolhida no aparelho; `undefined` = ainda não lida do disco. */
+  const [localPhoto, setLocalPhoto] = useState<string | null | undefined>(undefined);
   /** URL da foto que já terminou de carregar — a captura espera por ela. */
   const [settledPhoto, setSettledPhoto] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<Busy>('none');
   const [notice, setNotice] = useState<string | null>(null);
 
   const accounts = (user?.linked_accounts ?? []) as readonly LinkedAccountLike[];
-  const photoUrl = profilePhotoUrl(accounts);
+  // Ordem: a que o usuário escolheu aqui > a da conta social no Privy > iniciais.
+  const photoUrl = localPhoto ?? profilePhotoUrl(accounts);
   const handle = xHandle(profile?.social_links.twitter, accounts);
-  const caption = buildShareCaption({
+  const captionInput = {
     name: profile?.full_name ?? null,
     interests: profile?.interest_profile ?? [],
-  });
+  };
 
   // Busca o perfil a cada abertura: o usuário pode ter acabado de editar.
   useEffect(() => {
@@ -90,8 +100,15 @@ export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) 
     };
   }, [visible]);
 
+  // A foto salva é lida do disco (síncrono, mas fora do render) ao abrir.
+  useEffect(() => {
+    if (!visible) return;
+    Promise.resolve().then(() => setLocalPhoto(savedProfilePhoto(address)));
+  }, [visible, address]);
+
   // Sem foto não há o que esperar; com foto, só depois do `onLoadEnd`.
   const photoReady = !photoUrl || settledPhoto === photoUrl;
+  const ready = Boolean(profile) && photoReady && busy === 'none';
 
   /** Fechar limpa o aviso, senão ele reaparece velho na próxima abertura. */
   function close() {
@@ -99,47 +116,67 @@ export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) 
     onClose();
   }
 
-  async function shareImage() {
-    setBusy(true);
+  async function changePhoto() {
+    if (!address) return;
+    setBusy('photo');
     setNotice(null);
     try {
-      if (!(await Sharing.isAvailableAsync())) {
-        setNotice('Sharing is not available on this device.');
-        return;
-      }
-      const uri = await captureRef(cardRef, {
-        format: 'png',
-        quality: 1,
-        // O view-shot só reescala com as duas medidas; mesma proporção 4:5.
-        width: EXPORT_WIDTH,
-        height: EXPORT_WIDTH * 1.25,
-        result: 'tmpfile',
-      });
-      await Clipboard.setStringAsync(`${caption} ${SHARE_URL}`);
-      setNotice('Caption copied — paste it in your post.');
-      await Sharing.shareAsync(uri, {
-        mimeType: 'image/png',
-        UTI: 'public.png',
-        dialogTitle: 'Share your Xiaolee profile',
-      });
+      const uri = await pickProfilePhoto(address);
+      if (uri) setLocalPhoto(uri);
     } catch {
-      setNotice("Couldn't create the image. Try again.");
+      setNotice("Couldn't load that photo. Try another one.");
     } finally {
-      setBusy(false);
+      setBusy('none');
     }
   }
 
-  async function postOnX() {
+  /** Captura o card como PNG 1080x1350 e devolve a URI `file://`. */
+  async function captureCard(): Promise<string> {
+    const path = await captureRef(cardRef, {
+      format: 'png',
+      quality: 1,
+      // O view-shot só reescala com as duas medidas; mesma proporção 4:5.
+      width: EXPORT_WIDTH,
+      height: EXPORT_WIDTH * 1.25,
+      result: 'tmpfile',
+    });
+    return path.startsWith('file://') ? path : `file://${path}`;
+  }
+
+  async function shareTo(channel: ShareChannel | 'more') {
+    setBusy(channel);
     setNotice(null);
+    const message = buildShareCaption(captionInput, channel === 'x' ? 'x' : 'whatsapp');
     try {
-      await Linking.openURL(xIntentUrl(caption));
+      const url = await captureCard();
+      const file = { url, type: 'image/png', filename: 'xiaolee-profile', message };
+
+      if (channel === 'more') {
+        await Share.open({ ...file, failOnCancel: false });
+        return;
+      }
+      try {
+        await Share.shareSingle({
+          ...file,
+          social: channel === 'x' ? Social.Twitter : Social.Whatsapp,
+        });
+      } catch {
+        // App não instalado (ou recusou o intent).
+        if (channel === 'x') {
+          setNotice("X app not found — opening the web, where the image can't be attached.");
+          await Linking.openURL(xIntentUrl(message));
+        } else {
+          await Share.open({ ...file, failOnCancel: false });
+        }
+      }
     } catch {
-      setNotice("Couldn't open X.");
+      setNotice("Couldn't create the image. Try again.");
+    } finally {
+      setBusy('none');
     }
   }
 
   const cardWidth = Math.min(screenWidth - Spacing.four * 2, 320);
-  const ready = Boolean(profile) && photoReady && !busy;
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={close}>
@@ -152,7 +189,7 @@ export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) 
 
           <View style={styles.header}>
             <View style={styles.icon}>
-              <IconUpload size={20} color={Colors.light.accent} />
+              <IconShare size={20} color={Colors.light.accent} />
             </View>
             <View style={styles.headerText}>
               <Text style={styles.title}>Share profile</Text>
@@ -163,51 +200,104 @@ export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) 
             </Pressable>
           </View>
 
-          <View style={styles.preview}>
-            {profile ? (
-              <ShareProfileCard
-                ref={cardRef}
-                width={cardWidth}
-                name={profile.full_name}
-                handle={handle}
-                bio={profile.bio}
-                interests={profile.interest_profile}
-                photoUrl={photoUrl}
-                onPhotoSettled={() => setSettledPhoto(photoUrl)}
+          <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+            <View style={styles.preview}>
+              {profile ? (
+                <ShareProfileCard
+                  ref={cardRef}
+                  width={cardWidth}
+                  name={profile.full_name}
+                  handle={handle}
+                  interests={profile.interest_profile}
+                  photoUrl={photoUrl}
+                  onPhotoSettled={() => setSettledPhoto(photoUrl)}
+                />
+              ) : (
+                <View style={[styles.placeholder, { width: cardWidth, height: cardWidth * 1.25 }]}>
+                  <ActivityIndicator color={Colors.light.accent} />
+                </View>
+              )}
+            </View>
+
+            {address ? (
+              <Pressable
+                onPress={changePhoto}
+                disabled={busy !== 'none'}
+                style={({ pressed }) => [styles.photoButton, pressed && styles.pressed]}
+                accessibilityRole="button"
+              >
+                {busy === 'photo' ? (
+                  <ActivityIndicator size="small" color={Colors.light.accent} />
+                ) : (
+                  <IconUser size={15} color={Colors.light.accent} />
+                )}
+                <Text style={styles.photoLabel}>{photoUrl ? 'Change photo' : 'Add your photo'}</Text>
+              </Pressable>
+            ) : null}
+
+            {notice ? <Text style={styles.notice}>{notice}</Text> : null}
+
+            <View style={styles.row}>
+              <ShareButton
+                label="WhatsApp"
+                variant="primary"
+                loading={busy === 'whatsapp'}
+                disabled={!ready}
+                onPress={() => shareTo('whatsapp')}
               />
-            ) : (
-              <View style={[styles.placeholder, { width: cardWidth, height: cardWidth * 1.25 }]}>
-                <ActivityIndicator color={Colors.light.accent} />
-              </View>
-            )}
-          </View>
-
-          {notice ? <Text style={styles.notice}>{notice}</Text> : null}
-
-          <Pressable
-            onPress={shareImage}
-            disabled={!ready}
-            style={({ pressed }) => [styles.button, (pressed || !ready) && styles.pressed]}
-            accessibilityRole="button"
-          >
-            {busy ? (
-              <ActivityIndicator color={Colors.light.card} />
-            ) : (
-              <Text style={styles.buttonLabel}>Share image</Text>
-            )}
-          </Pressable>
-
-          <Pressable
-            onPress={postOnX}
-            disabled={!profile}
-            style={({ pressed }) => [styles.secondary, (pressed || !profile) && styles.pressed]}
-            accessibilityRole="button"
-          >
-            <Text style={styles.secondaryLabel}>Post on X</Text>
-          </Pressable>
+              <ShareButton
+                label="Post on X"
+                variant="ink"
+                loading={busy === 'x'}
+                disabled={!ready}
+                onPress={() => shareTo('x')}
+              />
+            </View>
+            <ShareButton
+              label="More apps"
+              variant="secondary"
+              loading={busy === 'more'}
+              disabled={!ready}
+              onPress={() => shareTo('more')}
+            />
+          </ScrollView>
         </Pressable>
       </Pressable>
     </Modal>
+  );
+}
+
+function ShareButton({
+  label,
+  variant,
+  loading,
+  disabled,
+  onPress,
+}: {
+  label: string;
+  variant: 'primary' | 'ink' | 'secondary';
+  loading: boolean;
+  disabled: boolean;
+  onPress: () => void;
+}) {
+  const color = variant === 'secondary' ? Colors.light.ink : Colors.light.card;
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={({ pressed }) => [
+        styles.button,
+        styles[variant],
+        (pressed || disabled) && styles.pressed,
+      ]}
+      accessibilityRole="button"
+    >
+      {loading ? (
+        <ActivityIndicator color={color} />
+      ) : (
+        <Text style={[styles.buttonLabel, { color }]}>{label}</Text>
+      )}
+    </Pressable>
   );
 }
 
@@ -218,6 +308,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheet: {
+    maxHeight: '94%',
     gap: Spacing.three - 4,
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.two,
@@ -248,36 +339,46 @@ const styles = StyleSheet.create({
   headerText: { flex: 1 },
   title: { fontFamily: Fonts.bold, fontSize: 16, color: Colors.light.ink },
   subtitle: { fontFamily: Fonts.sans, fontSize: 11, color: Colors.light.ink2, marginTop: 1 },
+  content: { gap: Spacing.three - 4 },
   preview: { alignSelf: 'center', borderRadius: Radius.xl, overflow: 'hidden' },
   placeholder: {
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: Radius.xl,
     backgroundColor: Colors.light.accentSoft,
   },
+  photoButton: {
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two - 2,
+    paddingHorizontal: Spacing.three,
+    height: 34,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.light.accentSoft,
+  },
+  photoLabel: { fontFamily: Fonts.bold, fontSize: 12, color: Colors.light.accent },
   notice: {
     fontFamily: Fonts.semibold,
     fontSize: 12,
     color: Colors.light.ink2,
     textAlign: 'center',
   },
+  row: { flexDirection: 'row', gap: Spacing.two },
   button: {
+    flex: 1,
     height: 46,
     borderRadius: Radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.light.accent,
   },
-  buttonLabel: { fontFamily: Fonts.bold, fontSize: 14, color: Colors.light.card },
+  primary: { backgroundColor: Colors.light.accent },
+  ink: { backgroundColor: Colors.light.ink },
   secondary: {
-    height: 46,
-    borderRadius: Radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
+    flex: 0,
     backgroundColor: Colors.light.bg,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: Colors.light.border,
   },
-  secondaryLabel: { fontFamily: Fonts.bold, fontSize: 14, color: Colors.light.ink },
+  buttonLabel: { fontFamily: Fonts.bold, fontSize: 14 },
   pressed: { opacity: 0.6 },
 });
