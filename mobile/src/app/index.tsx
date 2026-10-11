@@ -322,7 +322,9 @@ export default function ChatScreen() {
    * reto para o chat como sempre.
    *
    * Já onboarded, o mesmo perfil alimenta a boas-vindas do 1º clique
-   * (XIAOLEEACE-19): uma vez por conta, marcada como vista assim que aparece.
+   * (XIAOLEEACE-19): aparece em toda abertura até a conta mandar a primeira
+   * mensagem (ver `send()`) — só aí conta como vista. Marcar ao exibir perdia
+   * a boas-vindas de quem fechava o app antes de ler.
    */
   useEffect(() => {
     if (!sessionId) return;
@@ -338,7 +340,6 @@ export default function ChatScreen() {
         if (!accountId || (await hasSeenWelcome(accountId)) || !active) return;
         setWelcome(buildWelcomeCopy(profile));
         avatarAnimation.play('xiaolee_hello');
-        void markWelcomeSeen(accountId);
       })
       .catch(() => {
         // Sem backend/sessão válida — não bloqueia o chat por causa disto.
@@ -385,6 +386,8 @@ export default function ChatScreen() {
     // que grava no `localStorage` em vez de esperar o backend (`lib/chat-history.ts`).
     // Nunca rejeita, então não precisa de `catch` aqui.
     appendChatMessage('user', message);
+    // 1ª interação de verdade: a boas-vindas cumpriu o papel e não volta.
+    if (welcome && accountId) void markWelcomeSeen(accountId);
     // Enquanto pensa, a personagem pensa junto.
     avatarAnimation.play('xiaolee_thinklow');
 
