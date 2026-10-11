@@ -1,4 +1,4 @@
-import { Circle, Line, Path, Polygon, Polyline, Svg } from 'react-native-svg';
+import { Circle, Line, Path, Polygon, Polyline, Rect, Svg } from 'react-native-svg';
 
 /**
  * Ícones SVG inline — porta direta de `frontend/src/components/icons.tsx`.
@@ -279,3 +279,69 @@ export const IconLogOut = (p: IconProps) => (
   </Svg>
 );
 
+// ── Onboarding (campos de perfil e perfil de interesse) ────────────────────
+
+export const IconMapPin = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z" />
+    <Circle cx="12" cy="10" r="3" />
+  </Svg>
+);
+
+export const IconBuilding = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18z" />
+    <Path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
+    <Path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2" />
+    <Path d="M10 6h4M10 10h4M10 14h4M10 18h4" />
+  </Svg>
+);
+
+export const IconCube = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+    <Path d="M3.3 7 12 12l8.7-5" />
+    <Path d="M12 22V12" />
+  </Svg>
+);
+
+export const IconGamepad = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Line x1="6" y1="11" x2="10" y2="11" />
+    <Line x1="8" y1="9" x2="8" y2="13" />
+    <Line x1="15" y1="12" x2="15.01" y2="12" />
+    <Line x1="18" y1="10" x2="18.01" y2="10" />
+    <Path d="M17.32 5H6.68a4 4 0 0 0-3.98 3.59C2.6 9.42 2 14.46 2 16a3 3 0 0 0 3 3c1 0 1.5-.5 2-1l1.41-1.41A2 2 0 0 1 9.83 16h4.34a2 2 0 0 1 1.41.59L17 18c.5.5 1 1 2 1a3 3 0 0 0 3-3c0-1.55-.6-6.58-.69-7.26A4 4 0 0 0 17.32 5z" />
+  </Svg>
+);
+
+export const IconTrendingUp = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
+    <Polyline points="16 7 22 7 22 13" />
+  </Svg>
+);
+
+export const IconSmile = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Circle cx="12" cy="12" r="10" />
+    <Path d="M8 14s1.5 2 4 2 4-2 4-2" />
+    <Line x1="9" y1="9" x2="9.01" y2="9" />
+    <Line x1="15" y1="9" x2="15.01" y2="9" />
+  </Svg>
+);
+
+/** Logo do X (ex-Twitter). Preenchido, sem traço — é marca, não pictograma. */
+export const IconXSocial = ({ size = 24, color = 'currentColor' }: IconProps) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+    <Path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+  </Svg>
+);
+
+export const IconInstagram = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+    <Path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+    <Line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
+  </Svg>
+);
