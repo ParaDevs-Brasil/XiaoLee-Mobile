@@ -72,11 +72,11 @@ def plan_campaign(p: CampaignPlanIn) -> dict:
         "budget_split": {"rewards_usdc": reward_pool, "ops_reserve_usdc": round(p.budget_usdc - reward_pool, 2)},
         "platforms": [
             {"platform": pl, "reward_budget_usdc": per_platform,
-             "suggested_tasks": ["publicar 1 vídeo com a mensagem da campanha", "marcar o perfil da marca", "manter o post no ar até o fim"]}
+             "suggested_tasks": ["publish 1 video carrying the campaign message", "tag the brand profile", "keep the post live until the campaign ends"]}
             for pl in p.platforms
         ],
-        "creator_payout_rule": "pagamento em USDC após verificação das tarefas (cada tarefa verificada libera sua parcela)",
-        "success_metrics": ["tarefas verificadas / participantes", "custo por tarefa verificada", "alcance reportado"],
+        "creator_payout_rule": "paid in USDC after task verification (each verified task releases its share)",
+        "success_metrics": ["verified tasks / participants", "cost per verified task", "reported reach"],
     }
 
 

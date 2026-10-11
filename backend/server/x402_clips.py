@@ -114,7 +114,7 @@ def heuristic(segs: list[dict], n: int) -> list[dict]:
         if any(start < o["end"] and o["start"] < end for o in out):
             continue
         out.append({"start": start, "end": end, "title": first[:70],
-                    "reason": "Trecho com maior densidade de fala, perguntas e ênfase (seleção por regras, sem IA)"})
+                    "reason": "Segment with the highest density of speech, questions and emphasis (rule-based selection, no AI)"})
     return sorted(out, key=lambda o: o["start"])
 
 
@@ -168,5 +168,5 @@ async def pick_clips(segments: list[dict], language: str = "", max_clips: int = 
         "model": model,
         "language": language or None,
         "segments_used": len(segs),
-        "note": None if clips else "Nenhuma janela de 20-75 s encontrada: a transcrição é curta demais ou os segmentos têm tempos inválidos.",
+        "note": None if clips else "No 20-75 s window found: the transcript is too short or the segments have invalid timings.",
     }

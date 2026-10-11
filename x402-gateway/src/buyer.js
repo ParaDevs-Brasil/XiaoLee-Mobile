@@ -95,8 +95,8 @@ export function createBuyer(cfg, { makeClient, fetchFn = fetch, now = () => new 
   }
 
   async function buy({ url, method = "GET", body, maxUsdc, userId, confirmId }) {
-    if (!userId) return { error: "user_required", message: "Compra exige usuário autenticado." };
-    if (!seen.has(url)) return { error: "resource_not_from_search", message: "Busque o serviço primeiro (search)." };
+    if (!userId) return { error: "user_required", message: "Purchase requires an authenticated user." };
+    if (!seen.has(url)) return { error: "resource_not_from_search", message: "Search for the service first (search)." };
     const perCall = atomic(Math.min(Number(maxUsdc) || cfg.maxPerCallUsdc, cfg.maxPerCallUsdc));
     const dailyCap = atomic(cfg.dailyCapUsdc);
     if (day !== dayKey()) { day = dayKey(); spent = 0n; }
@@ -106,7 +106,7 @@ export function createBuyer(cfg, { makeClient, fetchFn = fetch, now = () => new 
     let approval = null;
     if (confirmId) {
       const p = pending.get(confirmId);
-      if (!p || !p.approved || p.sig !== sig) return { error: "confirmation_invalid", message: "Confirmação inexistente, expirada ou de outra compra." };
+      if (!p || !p.approved || p.sig !== sig) return { error: "confirmation_invalid", message: "Confirmation missing, expired or for a different purchase." };
       approval = p;
     }
     let reserved = 0n, quote = null;
@@ -137,7 +137,7 @@ export function createBuyer(cfg, { makeClient, fetchFn = fetch, now = () => new 
         purge();
         return { error: "confirmation_required", confirm_id: id,
           quote: { resource: url, method, price_usdc: usdc(quote.amt), pay_to: quote.payTo, expires_in_s: Math.round(confirmTtlMs / 1000) },
-          message: "O usuário precisa confirmar este gasto no app; não confirme por ele." };
+          message: "The user must confirm this spend in the app; do not confirm on their behalf." };
       }
       // Só devolve a reserva se abortou ANTES de pagar. "Payment failed: ..." vem depois da
       // liquidação (vendedor devolveu erro com o dinheiro já cobrado) e conta nos tetos.
