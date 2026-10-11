@@ -13,7 +13,7 @@ const mk = (key = process.env.BUYER_PRIVATE_KEY) => new GatewayClient({ chain, p
 const big = (_, v) => (typeof v === "bigint" ? v.toString() : v);
 const avail = async (c) => BigInt((await c.getBalances()).gateway.available);
 
-const PROFILE = { handle: "@matrix", niche: "defi", platforms: ["tiktok"], followers: 1000, posts_per_week: 3 };
+const PROFILE = { language: "pt", max_clips: 2, transcript: Array.from({ length: 14 }, (_, i) => ({ start: i * 9, end: i * 9 + 9, text: i % 5 === 0 ? "Sabe qual o maior erro de quem começa? É ignorar a retenção." : `Parte ${i}: explicando como testar um gancho nos primeiros segundos do vídeo.` })) };
 const PLAN = { goal: "teste matriz", budget_usdc: 100, platforms: ["x"], duration_days: 3 };
 const url = (s) => `${base}/v1/x402/${s}`;
 const report = { label, chain, base, at: new Date().toISOString(), results: [] };
@@ -28,9 +28,9 @@ const buyer = mk();
 report.address = buyer.address;
 report.startGateway = (await avail(buyer)).toString();
 
-await run("1 compra normal (profile-analysis + campaign-plan)", async () => {
+await run("1 compra normal (clip-highlights + campaign-plan)", async () => {
   const before = await avail(buyer);
-  const a = await buyer.pay(url("profile-analysis"), { method: "POST", body: PROFILE });
+  const a = await buyer.pay(url("clip-highlights"), { method: "POST", body: PROFILE });
   const b = await buyer.pay(url("campaign-plan"), { method: "POST", body: PLAN });
   const spent = before - (await avail(buyer));
   return { pass: a.status === 200 && b.status === 200 && !!a.data.receipt?.receipt_pqc && spent === 150000n, spent_atomic: spent.toString() };
@@ -49,13 +49,13 @@ await run("3 preço acima do teto: comprador aborta e não paga", async () => {
   const c = mk(); const before = await avail(c);
   c.onBeforePaymentCreation(async () => ({ abort: true, reason: "price_above_cap" }));
   let aborted = false;
-  try { await c.pay(url("profile-analysis"), { method: "POST", body: PROFILE }); } catch (e) { aborted = /abort/i.test(String(e?.message)); }
+  try { await c.pay(url("clip-highlights"), { method: "POST", body: PROFILE }); } catch (e) { aborted = /abort/i.test(String(e?.message)); }
   return { pass: aborted && before === (await avail(c)) };
 });
 
 await run("4 concorrência: 3 compras simultâneas, 3 cobranças", async () => {
   const before = await avail(buyer);
-  const rs = await Promise.allSettled([1, 2, 3].map(() => buyer.pay(url("profile-analysis"), { method: "POST", body: PROFILE })));
+  const rs = await Promise.allSettled([1, 2, 3].map(() => buyer.pay(url("clip-highlights"), { method: "POST", body: PROFILE })));
   const ok = rs.filter((r) => r.status === "fulfilled" && r.value.status === 200).length;
   const spent = before - (await avail(buyer));
   return { pass: spent === BigInt(ok) * 50000n && ok >= 1, ok, spent_atomic: spent.toString(), note: ok < 3 ? "algumas falharam: ver detalhe" : undefined };
@@ -63,7 +63,7 @@ await run("4 concorrência: 3 compras simultâneas, 3 cobranças", async () => {
 
 await run("5 saldo insuficiente: carteira nova sem fundos falha", async () => {
   const c = mk(generatePrivateKey()); // efêmera, sem saldo
-  try { await c.pay(url("profile-analysis"), { method: "POST", body: PROFILE }); return { pass: false, note: "pagou sem saldo?!" }; }
+  try { await c.pay(url("clip-highlights"), { method: "POST", body: PROFILE }); return { pass: false, note: "pagou sem saldo?!" }; }
   catch (e) { return { pass: true, error: String(e?.message ?? e).slice(0, 120) }; }
 });
 
@@ -76,9 +76,9 @@ await run("6 replay do mesmo pagamento não é entregue de novo", async () => {
     if (sig) header = sig;
     return realFetch(input, init);
   };
-  try { await mk().pay(url("profile-analysis"), { method: "POST", body: PROFILE }); } finally { globalThis.fetch = realFetch; }
+  try { await mk().pay(url("clip-highlights"), { method: "POST", body: PROFILE }); } finally { globalThis.fetch = realFetch; }
   if (!header) return { pass: false, note: "não consegui capturar o header de pagamento" };
-  const r = await fetch(url("profile-analysis"), { method: "POST", headers: { "content-type": "application/json", "payment-signature": header }, body: JSON.stringify(PROFILE) });
+  const r = await fetch(url("clip-highlights"), { method: "POST", headers: { "content-type": "application/json", "payment-signature": header }, body: JSON.stringify(PROFILE) });
   const text = (await r.text()).slice(0, 200);
   // conclusivo: a Circle recusou por nonce/uso repetido (e não por formato)
   return { pass: r.status !== 200, replay_status: r.status, replay_body: text, conclusive: /nonce|used|already|replay|duplicate/i.test(text) };

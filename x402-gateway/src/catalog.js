@@ -2,14 +2,21 @@
 // + a rota interna correspondente no FastAPI (/internal/x402/<upstream>).
 export const catalog = [
   {
-    id: "profile-analysis", price: "$0.05", upstream: "profile-analysis",
-    summary: "Análise de prontidão de crescimento de um criador",
+    id: "clip-highlights", price: "$0.05", upstream: "clip-highlights",
+    summary: "Encontra os melhores momentos de um vídeo longo a partir da transcrição: janelas de 20-75 s com título, motivo e gancho, prontas para virar Shorts/Reels/TikTok",
     schema: {
-      type: "object", required: ["handle", "niche"],
+      type: "object", required: ["transcript"],
       properties: {
-        handle: { type: "string", minLength: 1, maxLength: 64 }, niche: { type: "string", minLength: 1, maxLength: 64 },
-        platforms: { type: "array", items: { type: "string" }, maxItems: 8 },
-        followers: { type: "integer", minimum: 0, maximum: 1000000000 }, posts_per_week: { type: "number", minimum: 0, maximum: 100 } },
+        transcript: {
+          type: "array", minItems: 3, maxItems: 200,
+          items: {
+            type: "object", required: ["start", "end", "text"],
+            properties: {
+              start: { type: "number", minimum: 0, maximum: 86400 }, end: { type: "number", minimum: 0, maximum: 86400 },
+              text: { type: "string", minLength: 1, maxLength: 200 } },
+          },
+        },
+        language: { type: "string", maxLength: 32 }, max_clips: { type: "integer", minimum: 1, maximum: 5 } },
     },
   },
   {
@@ -21,22 +28,6 @@ export const catalog = [
         goal: { type: "string", minLength: 1, maxLength: 200 }, budget_usdc: { type: "number", exclusiveMinimum: 0, maximum: 1000000 },
         platforms: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 8 },
         duration_days: { type: "integer", minimum: 1, maximum: 90 }, niche: { type: "string", maxLength: 64 } },
-    },
-  },
-  {
-    id: "task-verification", price: "$0.03", upstream: "task-verification",
-    summary: "Verifica se um post enviado cumpre os requisitos de uma tarefa de campanha (hashtags, menções, palavras-chave, autor); devolve veredito por critério e se o pagamento ao criador deve ser liberado",
-    schema: {
-      type: "object", required: ["platform", "post_url", "post_text", "handle"],
-      properties: {
-        platform: { type: "string", enum: ["x", "tiktok", "instagram", "youtube", "telegram"] },
-        post_url: { type: "string", minLength: 1, maxLength: 300 },
-        post_text: { type: "string", minLength: 1, maxLength: 2000 },
-        handle: { type: "string", minLength: 1, maxLength: 64 },
-        required_hashtags: { type: "array", items: { type: "string", maxLength: 64 }, maxItems: 10 },
-        required_mentions: { type: "array", items: { type: "string", maxLength: 64 }, maxItems: 10 },
-        required_keywords: { type: "array", items: { type: "string", maxLength: 64 }, maxItems: 10 },
-        min_chars: { type: "integer", minimum: 0, maximum: 2000 } },
     },
   },
 ];

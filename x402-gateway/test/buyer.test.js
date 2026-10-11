@@ -146,7 +146,7 @@ test("teto por usuário isola usuários; teto global segue valendo", async () =>
 });
 
 test("catálogo próprio entra na busca e fica comprável sem Discovery", async () => {
-  const own = [{ resource: "https://gw/v1/x402/task-verification", method: "POST", price_usdc: 0.03, provider: "XiaoLee", description: "verifica tarefa" }];
+  const own = [{ resource: "https://gw/v1/x402/campaign-plan", method: "POST", price_usdc: 0.10, provider: "XiaoLee", description: "verifica tarefa" }];
   const down = async () => ({ ok: false, status: 500, headers: new Map() });
   const b = createBuyer({ maxPerCallUsdc: 0.1, dailyCapUsdc: 1 }, { makeClient: payFake(), fetchFn: down, extra: own, sleep: async () => {} });
   const items = await b.search({ q: "tarefa" });

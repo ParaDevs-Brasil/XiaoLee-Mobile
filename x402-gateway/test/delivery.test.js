@@ -38,18 +38,21 @@ test("deliver: esgotou as tentativas -> 502 com tx e registro p/ reconciliação
   assert.equal(r.status, 502); assert.equal(r.body.payment_tx, "tx-1");
   const open = await ledger.open();
   assert.equal(open.length, 1);
-  assert.equal(open[0].payment_tx, "tx-1"); assert.equal(open[0].service, "profile-analysis"); assert.equal(open[0].status, "failed");
+  assert.equal(open[0].payment_tx, "tx-1"); assert.equal(open[0].service, "clip-highlights"); assert.equal(open[0].status, "failed");
 });
 
-test("validate: minLength, enum e itens de array (iguais ao Pydantic, antes de cobrar)", () => {
+test("validate: minLength, limites e itens de array (strings e objetos), antes de cobrar", () => {
   const svc = (id) => catalog.find((s) => s.id === id).schema;
   assert.match(validate(svc("campaign-plan"), { goal: "", budget_usdc: 10 }), /too short/);
-  assert.match(validate(svc("profile-analysis"), { handle: "@a", niche: "x", followers: 2_000_000_000 }), /above maximum/);
-  const t = { platform: "x", post_url: "https://x.com/a", post_text: "t", handle: "@a" };
-  assert.equal(validate(svc("task-verification"), t), null);
-  assert.match(validate(svc("task-verification"), { ...t, platform: "myspace" }), /not one of/);
-  assert.match(validate(svc("task-verification"), { ...t, required_hashtags: ["x".repeat(65)] }), /invalid item/);
-  assert.match(validate(svc("task-verification"), { ...t, required_hashtags: [1] }), /invalid item/);
+  const seg = (i) => ({ start: i * 10, end: i * 10 + 9, text: `fala ${i}` });
+  const t = { transcript: [seg(0), seg(1), seg(2)] };
+  assert.equal(validate(svc("clip-highlights"), t), null);
+  assert.match(validate(svc("clip-highlights"), { transcript: [seg(0), seg(1)] }), /too few items/);
+  assert.match(validate(svc("clip-highlights"), { transcript: Array.from({ length: 201 }, (_, i) => seg(i)) }), /too many items/);
+  assert.match(validate(svc("clip-highlights"), { transcript: [seg(0), seg(1), { start: 0, end: 5 }] }), /transcript\[2\]: missing field: text/);
+  assert.match(validate(svc("clip-highlights"), { transcript: [seg(0), seg(1), { ...seg(2), text: "x".repeat(201) }] }), /transcript\[2\]: text: too long/);
+  assert.match(validate(svc("clip-highlights"), { transcript: [seg(0), seg(1), { ...seg(2), start: -1 }] }), /below minimum/);
+  assert.match(validate(svc("clip-highlights"), { ...t, max_clips: 9 }), /above maximum/);
 });
 
 test("ledger: entrega concluída sai da lista aberta; crash no meio fica como settled", async () => {

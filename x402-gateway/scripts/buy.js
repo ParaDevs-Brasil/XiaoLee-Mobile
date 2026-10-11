@@ -1,12 +1,11 @@
-// Compra de teste: node scripts/buy.js [profile-analysis|campaign-plan|task-verification] [base-url]. Chave do COMPRADOR em BUYER_PRIVATE_KEY (carteira com USDC de teste).
+// Compra de teste: node scripts/buy.js [clip-highlights|campaign-plan] [base-url]. Chave do COMPRADOR em BUYER_PRIVATE_KEY (carteira com USDC de teste).
 import { GatewayClient } from "@circle-fin/x402-batching/client";
 
-const svc = process.argv[2] ?? "profile-analysis";
+const svc = process.argv[2] ?? "clip-highlights";
 const base = process.argv[3] ?? "http://localhost:3100";
 const url = `${base}/v1/x402/${svc}`;
 const bodies = {
-  "task-verification": { platform: "x", post_url: "https://x.com/fontz/status/1", handle: "@fontz", post_text: "Testando o #XiaoLee com @arc_network, nanopayments na veia", required_hashtags: ["XiaoLee"], required_mentions: ["arc_network"], required_keywords: ["nanopayments"] },
-  "profile-analysis": { handle: "@fontz", niche: "defi", platforms: ["tiktok"], followers: 12000, posts_per_week: 2 },
+  "clip-highlights": { language: "pt", max_clips: 2, transcript: Array.from({ length: 14 }, (_, i) => ({ start: i * 9, end: i * 9 + 9, text: i % 5 === 0 ? "Sabe qual o maior erro de quem começa? É ignorar a retenção." : `Parte ${i}: explicando como testar um gancho nos primeiros segundos do vídeo.` })) },
   "campaign-plan": { goal: "lançar token X", budget_usdc: 500, platforms: ["tiktok", "x"], duration_days: 7 },
 };
 // SDK 3.5.0 usa rpc.testnet.arc.network por padrão (bloqueado em alguns IPs); domínio atual é arc.io

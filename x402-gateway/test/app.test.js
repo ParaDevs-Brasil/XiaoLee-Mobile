@@ -13,7 +13,7 @@ const cfg = {
 test("catálogo: cada serviço responde 402 com o seu preço", async () => {
   const srv = createApp(cfg).listen(0);
   try {
-    for (const [id, amount] of [["profile-analysis", "50000"], ["campaign-plan", "100000"]]) {
+    for (const [id, amount] of [["clip-highlights", "50000"], ["campaign-plan", "100000"]]) {
       const r = await fetch(`http://127.0.0.1:${srv.address().port}/v1/x402/${id}`, { method: "POST", body: "{}", headers: { "content-type": "application/json" } });
       assert.equal(r.status, 402, id);
       const pr = JSON.parse(Buffer.from(r.headers.get("payment-required"), "base64").toString());
@@ -25,7 +25,7 @@ test("catálogo: cada serviço responde 402 com o seu preço", async () => {
 test("sem pagamento: 402 padrão x402 v2 com accepts[] em Arc Testnet", async () => {
   const srv = createApp(cfg).listen(0);
   try {
-    const r = await fetch(`http://127.0.0.1:${srv.address().port}/v1/x402/profile-analysis`, { method: "POST", body: "{}", headers: { "content-type": "application/json" } });
+    const r = await fetch(`http://127.0.0.1:${srv.address().port}/v1/x402/clip-highlights`, { method: "POST", body: "{}", headers: { "content-type": "application/json" } });
     assert.equal(r.status, 402);
     const pr = JSON.parse(Buffer.from(r.headers.get("payment-required"), "base64").toString());
     assert.equal(pr.x402Version, 2);
@@ -40,7 +40,7 @@ test("/openapi.json expõe a rota paga", async () => {
   const srv = createApp({ ...cfg, publicUrl: "http://x" }).listen(0);
   try {
     const d = await (await fetch(`http://127.0.0.1:${srv.address().port}/openapi.json`)).json();
-    assert.ok(d.paths["/v1/x402/profile-analysis"].post);
+    assert.ok(d.paths["/v1/x402/clip-highlights"].post);
     assert.ok(d.paths["/v1/x402/campaign-plan"].post);
   } finally { srv.close(); }
 });
@@ -86,21 +86,21 @@ test("pausa: 503 sem cobrar, liga/desliga em runtime com o segredo", async () =>
   const base = `http://127.0.0.1:${srv.address().port}`;
   const post = (path, headers = {}, body = "{}") => fetch(base + path, { method: "POST", body, headers: { "content-type": "application/json", ...headers } });
   try {
-    assert.equal((await post("/v1/x402/profile-analysis")).status, 402);
+    assert.equal((await post("/v1/x402/clip-highlights")).status, 402);
     assert.equal((await post("/internal/pause", {}, '{"paused":true}')).status, 403);
     assert.equal((await post("/internal/pause", { "x-internal-secret": "s" }, '{"paused":true}')).status, 200);
-    const r = await post("/v1/x402/profile-analysis");
+    const r = await post("/v1/x402/clip-highlights");
     assert.equal(r.status, 503);
     assert.equal(r.headers.get("payment-required"), null); // nem oferece pagamento
     assert.equal((await fetch(base + "/health")).status, 200);
     await post("/internal/pause", { "x-internal-secret": "s" }, '{"paused":false}');
-    assert.equal((await post("/v1/x402/profile-analysis")).status, 402);
+    assert.equal((await post("/v1/x402/clip-highlights")).status, 402);
   } finally { srv.close(); }
 });
 
 test("limite de taxa: excedeu -> 429 antes de cobrar; pagadores distintos têm cotas separadas", async () => {
   const srv = createApp({ ...cfg, rateLimitPerMin: 2 }).listen(0);
-  const url = `http://127.0.0.1:${srv.address().port}/v1/x402/profile-analysis`;
+  const url = `http://127.0.0.1:${srv.address().port}/v1/x402/clip-highlights`;
   const hdr = (addr) => ({ "content-type": "application/json", "payment-signature": Buffer.from(JSON.stringify({ payload: { authorization: { from: addr } } })).toString("base64") });
   const A = "0x" + "a".repeat(40), B = "0x" + "b".repeat(40);
   try {
@@ -115,7 +115,7 @@ test("limite de taxa: excedeu -> 429 antes de cobrar; pagadores distintos têm c
 
 test("reconcile/resolve: exige segredo e nota, fecha caso aberto e 404 se não está aberto", async () => {
   const ledger = memoryLedger();
-  await ledger.begin({ id: "profile-analysis" }, { payer: "0xabc", transaction: "tx-r" });
+  await ledger.begin({ id: "clip-highlights" }, { payer: "0xabc", transaction: "tx-r" });
   const srv = createApp({ ...cfg, internalSecret: "s" }, null, ledger).listen(0);
   const base = `http://127.0.0.1:${srv.address().port}`;
   const post = (tx, headers, body) => fetch(`${base}/internal/reconcile/${tx}/resolve`, { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json", ...headers } });

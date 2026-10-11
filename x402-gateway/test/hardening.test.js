@@ -11,7 +11,7 @@ const cfg = { sellerAddress: "0x08cdF8De63700A66467EaBFfc603B6A14BA89125", facil
 
 test("rate limit: pagador forjado em loop não escapa do limite por IP", async () => {
   const srv = createApp({ ...cfg, ipRateLimitPerMin: 3 }).listen(0);
-  const url = `http://127.0.0.1:${srv.address().port}/v1/x402/profile-analysis`;
+  const url = `http://127.0.0.1:${srv.address().port}/v1/x402/clip-highlights`;
   const fake = (i) => ({ "content-type": "application/json", "payment-signature": Buffer.from(JSON.stringify({ payload: { authorization: { from: "0x" + String(i).padStart(40, "0") } } })).toString("base64") });
   try {
     const st = [];
@@ -56,7 +56,7 @@ test("teto diário: pagamento liquidado seguido de erro do vendedor CONTA no tet
 test("deliver: 4xx do upstream depois de liquidar vai para a reconciliação", async () => {
   const ledger = memoryLedger();
   const p = { payer: "0xabc", network: "eip155:5042002", amount: "50000", transaction: "tx-403" };
-  const svc = { id: "profile-analysis", upstream: "profile-analysis" };
+  const svc = { id: "clip-highlights", upstream: "clip-highlights" };
   const r = await deliver(cfg, svc, p, {}, { ledger, fetchFn: async () => ({ status: 403, json: async () => ({ detail: "forbidden" }) }) });
   assert.equal(r.status, 403);
   const open = await ledger.open();

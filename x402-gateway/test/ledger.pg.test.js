@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { createLedger } from "../src/ledger.js";
 
 const url = process.env.TEST_DATABASE_URL;
-const svc = { id: "profile-analysis" };
+const svc = { id: "clip-highlights" };
 const P = (tx) => ({ payer: "0xabc", network: "eip155:5042", amount: 50000, transaction: tx });
 
 test("pg ledger: begin/finish/open, idempotência e sobrevivência a novo pool", { skip: !url }, async () => {

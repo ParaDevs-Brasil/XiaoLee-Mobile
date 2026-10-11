@@ -22,6 +22,9 @@ export function validate(schema, body) {
     if (s.minItems !== undefined && v.length < s.minItems) return `${k}: too few items`;
     if (s.maxItems !== undefined && v.length > s.maxItems) return `${k}: too many items`;
     if (s.type === "array" && s.items?.type === "string" && v.some((x) => typeof x !== "string" || x.length > (s.items.maxLength ?? Infinity))) return `${k}: invalid item`;
+    if (s.type === "array" && s.items?.type === "object") {
+      for (const [i, it] of v.entries()) { const e = validate(s.items, it); if (e) return `${k}[${i}]: ${e}`; }
+    }
   }
   return null;
 }
