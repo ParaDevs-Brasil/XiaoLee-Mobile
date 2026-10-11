@@ -11,7 +11,7 @@ import {
   IconInstagram,
   IconRocket,
   IconSpark,
-  IconXLogo,
+  IconXSocial,
   type IconProps,
 } from '@/components/icons';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
@@ -112,7 +112,7 @@ export const ShareProfileCard = forwardRef<View, ShareProfileCardProps>(function
         { gap: 6 * u, marginTop: 6 * u },
       ]}
     >
-      {socials.x ? <SocialPill Icon={IconXLogo} handle={socials.x} u={u} /> : null}
+      {socials.x ? <SocialPill Icon={IconXSocial} handle={socials.x} u={u} /> : null}
       {socials.instagram ? (
         <SocialPill Icon={IconInstagram} handle={socials.instagram} u={u} />
       ) : null}

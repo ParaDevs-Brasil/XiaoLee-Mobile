@@ -47,3 +47,7 @@ example
 
 # build artifacts (APKs from local eas build)
 builds/
+
+# build output of local native modules (Gradle)
+modules/*/android/build/
+modules/*/android/.gradle/
