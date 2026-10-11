@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { deleteMedia, listMedia, renameMedia, type MediaAsset } from '@/api/backend';
 import { EmptyState, ErrorState, Skeleton } from '@/components/feedback';
+import { FormatIdeasCard } from '@/components/format-ideas-card';
 import { GlossaryCard } from '@/components/glossary-card';
 import { IconScissors, IconUpload } from '@/components/icons';
 import { ItemMenu } from '@/components/item-menu';
@@ -102,6 +103,8 @@ export default function ClipsScreen() {
         ) : null}
 
         <GlossaryCard />
+
+        <FormatIdeasCard />
 
         <View style={styles.sectionHead}>
           <Text style={styles.sectionTitle}>Your videos</Text>
