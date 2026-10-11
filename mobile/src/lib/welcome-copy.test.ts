@@ -6,7 +6,7 @@
  */
 import assert from 'node:assert/strict';
 
-import { buildWelcomeCopy, welcomeLanguage } from './welcome-copy.ts';
+import { buildWelcomeCopy } from './welcome-copy.ts';
 
 function test(name: string, fn: () => void) {
   fn();
@@ -15,50 +15,42 @@ function test(name: string, fn: () => void) {
 
 console.log('welcome-copy');
 
-test('welcomeLanguage reconhece variantes de português', () => {
-  assert.equal(welcomeLanguage('pt-BR'), 'pt');
-  assert.equal(welcomeLanguage('pt_PT'), 'pt');
-  assert.equal(welcomeLanguage('PT'), 'pt');
-});
-
-test('welcomeLanguage cai no inglês para o resto', () => {
-  assert.equal(welcomeLanguage('en-US'), 'en');
-  assert.equal(welcomeLanguage('es-ES'), 'en');
-  assert.equal(welcomeLanguage(undefined), 'en');
-});
-
 test('saúda pelo primeiro nome do perfil', () => {
-  const copy = buildWelcomeCopy({ full_name: '  Maria Clara Souza ', interest_profile: [] }, 'pt');
-  assert.equal(copy.title, 'Boas-vindas, Maria! Eu sou a Xiaolee ✨');
+  const copy = buildWelcomeCopy({ full_name: '  Maria Clara Souza ', interest_profile: [] });
+  assert.equal(copy.title, 'Hi, Maria! 💖');
 });
 
 test('sem perfil ou sem nome, saudação genérica', () => {
-  assert.equal(buildWelcomeCopy(null, 'en').title, 'Welcome! I’m Xiaolee ✨');
+  assert.equal(buildWelcomeCopy(null).title, 'Hi there! 💖');
+  assert.equal(buildWelcomeCopy({ full_name: '', interest_profile: [] }).title, 'Hi there! 💖');
+});
+
+test('sem interesse, recompensa a comunidade e não fala de swap', () => {
+  const { body } = buildWelcomeCopy(null);
   assert.equal(
-    buildWelcomeCopy({ full_name: '', interest_profile: [] }, 'en').title,
-    'Welcome! I’m Xiaolee ✨',
+    body,
+    "I'm Xiaolee, your crypto companion. I run the campaigns that reward your community in USDC. Where should we start?",
   );
 });
 
-test('explica as funções principais nos dois idiomas', () => {
-  for (const language of ['en', 'pt'] as const) {
-    const { body } = buildWelcomeCopy(null, language);
-    for (const word of ['campa', 'dashboard', 'swap']) {
-      assert.match(body, new RegExp(word, 'i'), `${language} deveria citar ${word}`);
-    }
-  }
+test('o público da campanha segue o interesse', () => {
+  const { body } = buildWelcomeCopy({ full_name: 'Ana', interest_profile: ['games'] });
+  assert.match(body, /reward your players in USDC\./);
 });
 
-test('usa só o primeiro interesse conhecido', () => {
-  const { body } = buildWelcomeCopy(
-    { full_name: 'Ana', interest_profile: ['unknown', 'games', 'defi'] },
-    'en',
-  );
-  assert.match(body, /games/);
-  assert.doesNotMatch(body, /DeFi/);
+test('DeFi ou trader ganham a menção aos swaps', () => {
+  const defi = buildWelcomeCopy({ full_name: 'Ana', interest_profile: ['defi'] }).body;
+  assert.match(defi, /community in USDC, and since you're into DeFi, your swaps too\./);
+  const trader = buildWelcomeCopy({ full_name: 'Ana', interest_profile: ['trader'] }).body;
+  assert.match(trader, /since you're into trading, your swaps too/);
+});
+
+test('mantém o tamanho da persona: no máximo 3 frases', () => {
+  const { body } = buildWelcomeCopy({ full_name: 'Ana', interest_profile: ['cards', 'defi'] });
+  assert.ok(body.split(/[.?!](\s|$)/).filter((s) => s.trim()).length <= 3, body);
 });
 
 test('interesse desconhecido não deixa buraco na frase', () => {
-  const { body } = buildWelcomeCopy({ full_name: 'Ana', interest_profile: ['unknown'] }, 'en');
+  const { body } = buildWelcomeCopy({ full_name: 'Ana', interest_profile: ['unknown'] });
   assert.doesNotMatch(body, /undefined|\s{2}/);
 });

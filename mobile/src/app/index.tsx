@@ -34,7 +34,7 @@ import { isOnChainTx, txExplorerUrl } from '@/lib/explorer';
 import { shortHash } from '@/lib/format';
 import { getSessionToken, getWallet } from '@/lib/session';
 import { hasSeenWelcome, markWelcomeSeen } from '@/lib/welcome';
-import { buildWelcomeCopy, welcomeLanguage, type WelcomeCopy } from '@/lib/welcome-copy';
+import { buildWelcomeCopy, type WelcomeCopy } from '@/lib/welcome-copy';
 import { usePrivyWallet } from '@/lib/wallet';
 
 import { AnimatedAvatar } from '@/components/animated-avatar';
@@ -333,8 +333,7 @@ export default function ChatScreen() {
           return;
         }
         if (!accountId || (await hasSeenWelcome(accountId)) || !active) return;
-        const locale = Intl.DateTimeFormat().resolvedOptions().locale;
-        setWelcome(buildWelcomeCopy(profile, welcomeLanguage(locale)));
+        setWelcome(buildWelcomeCopy(profile));
         avatarAnimation.play('xiaolee_hello');
         void markWelcomeSeen(accountId);
       })
