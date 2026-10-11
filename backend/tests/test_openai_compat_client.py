@@ -105,3 +105,40 @@ def test_so_texto_encerra_o_turno():
     response = openai_choice_to_anthropic(SimpleNamespace(content="pronto", tool_calls=None))
     assert response.stop_reason == "end_turn"
     assert [b.type for b in response.content] == ["text"]
+
+
+# ---------------------------------------------------------------------------
+# LLM_PROVIDER escolhe o engine do OrchestrationService
+# ---------------------------------------------------------------------------
+
+from server.orchestration.service import _build_agent_engine  # noqa: E402
+
+
+def _cfg(provider: str, anthropic_key: str = "", groq_key: str = "") -> SimpleNamespace:
+    return SimpleNamespace(
+        llm_provider=provider,
+        anthropic_api_key=anthropic_key, anthropic_model="claude-sonnet-4-6",
+        groq_api_key=groq_key, groq_model="openai/gpt-oss-120b",
+    )
+
+
+def test_groq_com_chave_usa_o_adapter():
+    engine = _build_agent_engine(_cfg("groq", groq_key="gsk_test"))
+    assert isinstance(engine.client, OpenAICompatAnthropicClient)
+    assert engine.model == "openai/gpt-oss-120b"
+
+
+def test_anthropic_com_chave_usa_o_sdk_da_anthropic():
+    import anthropic
+
+    engine = _build_agent_engine(_cfg("anthropic", anthropic_key="sk-ant-test"))
+    assert isinstance(engine.client, anthropic.AsyncAnthropic)
+
+
+@pytest.mark.parametrize("cfg", [
+    _cfg("groq"),                                  # sem chave
+    _cfg("anthropic", groq_key="gsk_test"),        # chave do provider errado
+    _cfg("gemini", anthropic_key="k", groq_key="k"),  # provider sem loop agêntico
+])
+def test_sem_chave_do_provider_escolhido_fica_desligado(cfg):
+    assert _build_agent_engine(cfg) is None

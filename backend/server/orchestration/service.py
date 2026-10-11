@@ -271,6 +271,32 @@ _STELLAR_CONTEXT = (
 _AUTO_DETECT_CLAUDE_ENGINE = object()  # sentinel: distingue "não passado" de "explicitamente None"
 
 
+def _build_agent_engine(cfg) -> Any:
+    """Engine do loop agêntico pelo `LLM_PROVIDER`, ou None (fica só o caminho Gemini)."""
+    try:
+        from chat_agent import ChatAgentEngine
+
+        if cfg.llm_provider == "anthropic" and cfg.anthropic_api_key:
+            import anthropic
+            engine = ChatAgentEngine(anthropic.AsyncAnthropic(api_key=cfg.anthropic_api_key), cfg.anthropic_model)
+            logger.info("🤖 [AGENTIC] OrchestrationService running on Claude — model=%s", cfg.anthropic_model)
+            return engine
+        if cfg.llm_provider == "groq" and cfg.groq_api_key:
+            from openai_compat_client import OpenAICompatAnthropicClient
+            engine = ChatAgentEngine(OpenAICompatAnthropicClient(api_key=cfg.groq_api_key), cfg.groq_model)
+            logger.warning(
+                "🤖 [AGENTIC] OrchestrationService running on Groq (free, test only) — model=%s", cfg.groq_model,
+            )
+            return engine
+    except Exception as exc:
+        logger.warning("Agent engine init failed (provider=%s), staying on Gemini path: %s", cfg.llm_provider, exc)
+        return None
+
+    if cfg.llm_provider in ("anthropic", "groq"):
+        logger.warning("[AGENTIC] LLM_PROVIDER=%s sem chave configurada — loop agêntico desligado", cfg.llm_provider)
+    return None
+
+
 class OrchestrationService:
     def __init__(
         self,
@@ -283,7 +309,8 @@ class OrchestrationService:
         self.solana = solana
         self.stellar = stellar
 
-        # Claude agentic engine — active only when LLM_PROVIDER=anthropic + key set.
+        # Agentic engine — LLM_PROVIDER=anthropic (Claude) ou groq (modelo free,
+        # mesmo loop via adapter OpenAI-compatible) com a chave configurada.
         # When on, execute() routes through the multi-step tool-use loop and the
         # legacy Gemini intent state machine below becomes the fallback.
         # `claude_engine` aceita override explícito (inclusive None) — usado pelos
@@ -293,16 +320,7 @@ class OrchestrationService:
             self.claude_engine = claude_engine
             return
 
-        self.claude_engine = None
-        if settings.llm_provider == "anthropic" and settings.anthropic_api_key:
-            try:
-                import anthropic
-                from chat_agent import ChatAgentEngine
-                self._anthropic = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-                self.claude_engine = ChatAgentEngine(self._anthropic, settings.anthropic_model)
-                logger.info("🤖 [AGENTIC] OrchestrationService running on Claude — model=%s", settings.anthropic_model)
-            except Exception as exc:
-                logger.warning("Claude engine init failed, staying on Gemini path: %s", exc)
+        self.claude_engine = _build_agent_engine(settings)
 
     # ------------------------------------------------------------------
     # Helpers

@@ -38,10 +38,16 @@ class Settings:
     gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
     # ── LLM provider / Claude (engine agêntica) ──────────────────────────────────
-    # LLM_PROVIDER=anthropic ativa o loop agêntico Claude no OrchestrationService.
-    llm_provider: str = os.getenv("LLM_PROVIDER", "gemini")
+    # LLM_PROVIDER escolhe quem roda o loop agêntico do OrchestrationService:
+    #   anthropic → Claude (produção);
+    #   groq      → modelo free OpenAI-compatible, mesmas tools e prompt (teste local);
+    #   gemini    → sem loop agêntico, só a máquina de intents legada.
+    llm_provider: str = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
     anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
     anthropic_model: str = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+    groq_api_key: str = os.getenv("GROQ_API_KEY", "")
+    # Precisa suportar tool calling; `GET https://api.groq.com/openai/v1/models` lista os atuais.
+    groq_model: str = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 
     solana_rpc_url: str = os.getenv("SOLANA_RPC_URL", "https://api.devnet.solana.com")
     solana_cluster: str = os.getenv("SOLANA_CLUSTER", "devnet")
