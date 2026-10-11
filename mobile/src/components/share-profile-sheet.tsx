@@ -3,6 +3,8 @@ import { File } from 'expo-file-system';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   Linking,
   Modal,
   Pressable,
@@ -35,12 +37,14 @@ import {
 /**
  * Sheet do "compartilhar perfil" (XIAOLEEACE-21), aberto pelo `ProfileMenu`.
  *
- * Mostra o `ShareProfileCard` como preview e manda imagem **e** legenda
- * juntas, num só intent (`modules/share-intent`), direto para o app:
- *  - **WhatsApp** — legenda pessoal com o link.
- *  - **X** — post curto com hashtags dos interesses e a imagem anexada,
- *    direto no compositor (sem o "Post ou Chat?" do X).
- *  - **More apps** — o seletor do sistema, com a legenda do WhatsApp.
+ * Mostra o `ShareProfileCard` como preview, no formato que a pessoa escolher
+ * (3:4, o padrão, ou 9:16), e manda imagem **e** legenda juntas, num só
+ * intent (`modules/share-intent`), direto para o app:
+ *  - **WhatsApp** — formato escolhido, legenda pessoal com o link.
+ *  - **X** — sempre 3:4, o máximo que a timeline do X mostra sem cortar,
+ *    mesmo com 9:16 escolhido; post curto com hashtags, direto no
+ *    compositor (sem o "Post ou Chat?" do X).
+ *  - **More apps** — formato escolhido, seletor do sistema.
  *
  * Sem o app instalado, o X cai no intent web (só texto — a web não aceita
  * anexo) e o WhatsApp cai no seletor do sistema.
@@ -54,17 +58,23 @@ interface ShareProfileSheetProps {
 /** Largura do PNG final — 1080 é o padrão de imagem de feed. */
 const EXPORT_WIDTH = 1080;
 
-/** Cada canal recebe o formato que ele exibe inteiro (ver `ShareProfileCard`). */
-const CHANNEL_FORMAT: Record<ShareChannel | 'more', CardFormat> = {
-  whatsapp: 'story',
-  more: 'story',
-  x: 'post',
-};
+/**
+ * Formato que cada canal recebe: o escolhido, exceto o X, que sempre leva o
+ * 3:4 — um 9:16 sai cortado na timeline dele (ver `ShareProfileCard`).
+ */
+function channelFormat(channel: ShareChannel | 'more', chosen: CardFormat): CardFormat {
+  return channel === 'x' ? 'post' : chosen;
+}
 
+/** Ordem das abas — o 3:4 primeiro, que é o padrão. */
 const FORMAT_TABS: { format: CardFormat; label: string }[] = [
-  { format: 'story', label: 'Story · WhatsApp' },
-  { format: 'post', label: 'Post · X' },
+  { format: 'post', label: '3:4' },
+  { format: 'story', label: '9:16' },
 ];
+
+const TAB_WIDTH = 76;
+/** Duração do crossfade entre formatos — curta, para a troca parecer imediata. */
+const SWITCH_MS = 260;
 
 const EMPTY_PROFILE: MyProfile = {
   full_name: null,
@@ -97,8 +107,13 @@ export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) 
   const cardRefs: Record<CardFormat, typeof storyRef> = { story: storyRef, post: postRef };
 
   const [profile, setProfile] = useState<MyProfile | null>(null);
-  /** Formato mostrado no preview; o outro fica montado fora da tela para a captura. */
-  const [previewFormat, setPreviewFormat] = useState<CardFormat>('story');
+  /** Formato escolhido — vale para o preview, o WhatsApp e o "More apps". */
+  const [format, setFormat] = useState<CardFormat>('post');
+  /**
+   * 0 = 3:4, 1 = 9:16. Anima o crossfade, a altura do preview e o seletor.
+   * Mesmo idioma do `DropdownPanel`: nasce uma vez e sobrevive aos re-renders.
+   */
+  const [progress] = useState(() => new Animated.Value(0));
   /** URL da foto que já carregou em cada card — a captura espera pelos dois. */
   const [settledPhoto, setSettledPhoto] = useState<Record<CardFormat, string | null>>({
     story: null,
@@ -174,7 +189,7 @@ export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) 
     setNotice(null);
     const text = buildShareCaption(captionInput, channel === 'x' ? 'x' : 'whatsapp');
     try {
-      const uri = await captureCard(CHANNEL_FORMAT[channel]);
+      const uri = await captureCard(channelFormat(channel, format));
       if (channel === 'more') {
         await shareImage({ uri, text, chooserTitle: 'Share your Xiaolee profile' });
         return;
@@ -199,25 +214,74 @@ export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) 
     }
   }
 
+  function chooseFormat(next: CardFormat) {
+    if (next === format) return;
+    setFormat(next);
+    // Sem driver nativo: a altura do preview não é animável por ele, e um só
+    // valor mantém crossfade, altura e seletor em sincronia.
+    Animated.timing(progress, {
+      toValue: next === 'story' ? 1 : 0,
+      duration: SWITCH_MS,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }
+
   // Limite de altura do preview: o card 9:16 é alto, e os botões precisam
   // continuar à vista sem rolar na maioria dos aparelhos.
-  const cardWidth = (format: CardFormat) =>
-    Math.min(screenWidth - Spacing.four * 2, 320, (screenHeight * 0.5) / CARD_RATIOS[format]);
-  const offscreenFormat: CardFormat = previewFormat === 'story' ? 'post' : 'story';
+  const size = (f: CardFormat) => {
+    const width = Math.min(
+      screenWidth - Spacing.four * 2,
+      320,
+      (screenHeight * 0.5) / CARD_RATIOS[f],
+    );
+    return { width, height: width * CARD_RATIOS[f] };
+  };
+  const post = size('post');
+  const story = size('story');
+  const stageWidth = Math.max(post.width, story.width);
 
-  const renderCard = (format: CardFormat, width: number) =>
-    profile ? (
-      <ShareProfileCard
-        ref={cardRefs[format]}
-        format={format}
-        width={width}
-        name={profile.full_name}
-        socials={socials}
-        interests={profile.interest_profile}
-        photoUrl={photoUrl}
-        onPhotoSettled={() => setSettledPhoto((s) => ({ ...s, [format]: photoUrl }))}
-      />
-    ) : null;
+  /**
+   * Os dois cards ficam sempre montados, empilhados no mesmo lugar: trocar o
+   * formato só cruza a opacidade. Remontar a cada troca recarregava foto, QR
+   * e SVG — era o que deixava a troca lenta. O card escondido continua
+   * capturável: o view-shot desenha a própria View, sem a opacidade do pai.
+   */
+  const renderCard = (f: CardFormat) => {
+    const { width, height } = f === 'post' ? post : story;
+    const shown = f === 'story' ? progress : Animated.subtract(1, progress);
+    return (
+      <Animated.View
+        key={f}
+        pointerEvents={f === format ? 'auto' : 'none'}
+        accessibilityElementsHidden={f !== format}
+        importantForAccessibility={f === format ? 'auto' : 'no-hide-descendants'}
+        style={[
+          styles.stageCard,
+          {
+            width,
+            height,
+            left: (stageWidth - width) / 2,
+            opacity: shown,
+            transform: [
+              { scale: shown.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
+            ],
+          },
+        ]}
+      >
+        <ShareProfileCard
+          ref={cardRefs[f]}
+          format={f}
+          width={width}
+          name={profile?.full_name ?? null}
+          socials={socials}
+          interests={profile?.interest_profile ?? []}
+          photoUrl={photoUrl}
+          onPhotoSettled={() => setSettledPhoto((s) => ({ ...s, [f]: photoUrl }))}
+        />
+      </Animated.View>
+    );
+  };
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={close}>
@@ -243,16 +307,34 @@ export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) 
 
           <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
             <View style={styles.formats} accessibilityRole="tablist">
-              {FORMAT_TABS.map(({ format, label }) => {
-                const active = previewFormat === format;
+              {/* Pílula que desliza até a aba ativa. */}
+              <Animated.View
+                style={[
+                  styles.formatIndicator,
+                  {
+                    transform: [
+                      {
+                        translateX: progress.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0, TAB_WIDTH],
+                        }),
+                      },
+                    ],
+                  },
+                ]}
+              />
+              {FORMAT_TABS.map(({ format: f, label }) => {
+                const active = format === f;
                 return (
                   <Pressable
-                    key={format}
-                    onPress={() => setPreviewFormat(format)}
-                    style={[styles.formatTab, active && styles.formatTabActive]}
+                    key={f}
+                    onPress={() => chooseFormat(f)}
+                    style={styles.formatTab}
                     accessibilityRole="tab"
                     accessibilityState={{ selected: active }}
+                    accessibilityLabel={`Format ${label}`}
                   >
+                    <AspectGlyph format={f} active={active} />
                     <Text style={[styles.formatLabel, active && styles.formatLabelActive]}>
                       {label}
                     </Text>
@@ -261,27 +343,33 @@ export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) 
               })}
             </View>
 
-            <View style={styles.preview}>
-              {renderCard(previewFormat, cardWidth(previewFormat)) ?? (
-                <View
-                  style={[
-                    styles.placeholder,
-                    {
-                      width: cardWidth(previewFormat),
-                      height: cardWidth(previewFormat) * CARD_RATIOS[previewFormat],
-                    },
-                  ]}
-                >
-                  <ActivityIndicator color={Colors.light.accent} />
-                </View>
-              )}
-            </View>
+            {profile ? (
+              <Animated.View
+                style={[
+                  styles.stage,
+                  {
+                    width: stageWidth,
+                    height: progress.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [post.height, story.height],
+                    }),
+                  },
+                ]}
+              >
+                {renderCard('post')}
+                {renderCard('story')}
+              </Animated.View>
+            ) : (
+              <View style={[styles.placeholder, post]}>
+                <ActivityIndicator color={Colors.light.accent} />
+              </View>
+            )}
 
-            {/* O outro formato, montado fora da tela: a captura precisa dele
-                desenhado, mas o usuário só vê o que escolheu no preview. */}
-            <View style={styles.offscreen} pointerEvents="none" accessibilityElementsHidden>
-              {renderCard(offscreenFormat, 320)}
-            </View>
+            {format === 'story' ? (
+              <Text style={styles.formatHint}>
+                X always gets the 3:4 version, so it isn&apos;t cropped in the timeline.
+              </Text>
+            ) : null}
 
             {canPick ? (
               <Pressable
@@ -328,6 +416,20 @@ export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) 
         </Pressable>
       </Pressable>
     </Modal>
+  );
+}
+
+/** Retângulo na proporção do formato, ao lado do rótulo da aba. */
+function AspectGlyph({ format, active }: { format: CardFormat; active: boolean }) {
+  const height = 14;
+  return (
+    <View
+      style={[
+        styles.glyph,
+        { height, width: height / CARD_RATIOS[format] },
+        active && styles.glyphActive,
+      ]}
+    />
   );
 }
 
@@ -411,23 +513,46 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     backgroundColor: Colors.light.bg,
   },
-  formatTab: {
-    paddingHorizontal: Spacing.three - 2,
+  formatIndicator: {
+    position: 'absolute',
+    top: 3,
+    left: 3,
+    width: TAB_WIDTH,
     height: 30,
-    justifyContent: 'center',
     borderRadius: Radius.pill,
-  },
-  formatTabActive: {
     backgroundColor: Colors.light.card,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: Colors.light.border,
   },
+  formatTab: {
+    width: TAB_WIDTH,
+    height: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
   formatLabel: { fontFamily: Fonts.semibold, fontSize: 12, color: Colors.light.ink3 },
   formatLabelActive: { color: Colors.light.ink },
-  preview: { alignSelf: 'center', borderRadius: Radius.xl, overflow: 'hidden' },
-  // Fora da área visível, mas ainda desenhado — é o que o view-shot captura.
-  offscreen: { position: 'absolute', left: -10000, top: 0 },
+  glyph: { borderRadius: 2, borderWidth: 1.5, borderColor: Colors.light.ink3 },
+  glyphActive: { borderColor: Colors.light.accent },
+  formatHint: {
+    fontFamily: Fonts.sans,
+    fontSize: 11,
+    color: Colors.light.ink3,
+    textAlign: 'center',
+    marginTop: -Spacing.one,
+  },
+  stage: { alignSelf: 'center' },
+  stageCard: {
+    position: 'absolute',
+    top: 0,
+    borderRadius: Radius.xl,
+    overflow: 'hidden',
+  },
   placeholder: {
+    alignSelf: 'center',
+    borderRadius: Radius.xl,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.light.accentSoft,
