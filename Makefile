@@ -23,6 +23,7 @@ help:
 	@echo "═══════════════════════════════════════"
 	@echo "  make init              → Setup inicial completo"
 	@echo "  make dev               → Sobe backend + frontend em modo dev"
+	@echo "  make dev-backend LLM=groq → Backend com o chat no modelo free (anthropic = Claude)"
 	@echo "  make test-backend      → Suite de testes Python (65 testes)"
 	@echo "  make db-migrate        → Aplica migrações Alembic"
 	@echo "  make run-docker        → Sobe stack completa (PostgreSQL + Redis + Grafana)"
@@ -65,8 +66,10 @@ dev:
 	@$(MAKE) dev-backend &
 	@$(MAKE) dev-frontend
 
+# LLM=groq|anthropic|gemini troca o cérebro do chat só nesta execução, sem editar
+# o .env (variável de ambiente ganha do .env). Ex.: make dev-backend LLM=groq
 dev-backend:
-	@cd backend && ../.venv/bin/uvicorn server.app:app --reload --host 0.0.0.0 --port 8000
+	@cd backend && $(if $(LLM),LLM_PROVIDER=$(LLM) ,)../.venv/bin/uvicorn server.app:app --reload --host 0.0.0.0 --port 8000
 
 dev-frontend:
 	@cd frontend && npm run dev

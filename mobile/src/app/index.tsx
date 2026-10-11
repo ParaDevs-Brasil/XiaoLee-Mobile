@@ -20,6 +20,7 @@ import {
   getChatSessionMessages,
   getMyProfile,
   sendChatMessage,
+  type ChatMenuAction,
   type ChatSessionMessage,
 } from '@/api/backend';
 import { ApiError } from '@/api/client';
@@ -45,7 +46,7 @@ import {
   IconEdit,
   IconGift,
   IconSend,
-  IconSwap,
+  IconTarget,
   IconWallet,
   type IconProps,
 } from '@/components/icons';
@@ -75,44 +76,48 @@ interface Action {
   subtitle: string;
   /** O que é enviado ao agente ao tocar — o card é um atalho de conversa. */
   prompt: string;
+  /**
+   * Ação fixa que o backend atende sem depender do modelo. Sem ela (criar
+   * campanha), o card é só texto e a conversa guiada segue com o agente.
+   */
+  menuAction?: ChatMenuAction;
 }
 
+/**
+ * Menu do chat (XIAOLEEACE-20): três caminhos, um verbo cada, sem sobreposição.
+ * "Browse campaigns" e "My metrics" mandam `menuAction`, e o backend chama a
+ * função certa direto — campanhas ranqueadas pelo perfil do onboarding e o
+ * histórico do usuário —, com resposta mesmo se o modelo cair. "Create a
+ * campaign" é uma conversa guiada, então segue como texto para o agente.
+ * Swap e saldo continuam a um toque, nas sugestões.
+ */
 const ACTIONS: Action[] = [
   {
-    key: 'campaign',
+    key: 'create',
     Icon: IconGift,
     title: 'Create a campaign',
-    subtitle: 'Reward your community',
+    subtitle: 'Reward your community in USDC',
     prompt: 'I want to create a campaign to reward my community',
   },
   {
-    key: 'dashboard',
+    key: 'browse',
+    Icon: IconTarget,
+    title: 'Browse campaigns',
+    subtitle: 'Picked for your interests',
+    prompt: 'Show me the campaigns that best match my interests',
+    menuAction: 'browse_campaigns',
+  },
+  {
+    key: 'metrics',
     Icon: IconActivity,
-    title: 'View dashboard',
-    subtitle: 'Metrics and activity',
-    prompt: 'Show me the dashboard metrics',
-  },
-  {
-    key: 'swap',
-    Icon: IconSwap,
-    title: 'Make a swap',
-    subtitle: 'Exchange tokens by chat',
-    prompt: 'I want to make a swap',
-  },
-  {
-    key: 'balance',
-    Icon: IconWallet,
-    title: 'Check balance',
-    subtitle: 'See your wallet funds',
-    prompt: 'What is my balance?',
+    title: 'My metrics',
+    subtitle: 'Everything you did on Xiaolee',
+    prompt: 'Show my metrics: everything I have done on the platform',
+    menuAction: 'my_metrics',
   },
 ];
 
-const SUGGESTIONS = [
-  'What can you do for me?',
-  'How do campaigns work?',
-  'Show my recent transactions',
-];
+const SUGGESTIONS = ['I want to make a swap', 'What is my balance?', 'Show my recent transactions'];
 
 interface Message {
   id: string;
@@ -370,7 +375,7 @@ export default function ChatScreen() {
     );
   }
 
-  async function send(text: string) {
+  async function send(text: string, menuAction?: ChatMenuAction) {
     const message = text.trim();
     if (!message || sending) return;
 
@@ -406,6 +411,7 @@ export default function ChatScreen() {
         message,
         ...(activeWallet && { wallet_address: activeWallet.address, wallet_chain: activeWallet.chain }),
         ...(activeChatSessionId !== null && { session_id: activeChatSessionId }),
+        ...(menuAction && { menu_action: menuAction }),
       });
       const reply =
         result.response?.[0]?.content?.trim() || 'Não consegui formular uma resposta agora.';
@@ -533,7 +539,7 @@ export default function ChatScreen() {
 
                 <View style={styles.actions}>
                   {actions.map((action) => (
-                    <ActionCard key={action.key} action={action} onPress={() => send(action.prompt)} />
+                    <ActionCard key={action.key} action={action} onPress={() => send(action.prompt, action.menuAction)} />
                   ))}
                 </View>
 

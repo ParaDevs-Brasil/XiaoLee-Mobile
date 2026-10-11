@@ -50,6 +50,18 @@ class LLMClient:
                 base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
             )
             self.model = os.getenv("GEMINI_MODEL", "gemini-3.1-pro-preview")
+        elif self.provider == "groq":
+            # Free tier OpenAI-compatible — o mesmo LLM_PROVIDER que liga o Groq no
+            # OrchestrationService (ver server/settings.py) não pode quebrar aqui.
+            api_key = os.getenv("GROQ_API_KEY")
+            if not api_key:
+                raise ValueError("Groq API key missing")
+
+            self.client = openai.AsyncOpenAI(
+                api_key=api_key,
+                base_url="https://api.groq.com/openai/v1"
+            )
+            self.model = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
         elif self.provider == "ollama":
             self.base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
             self.model = os.getenv("OLLAMA_MODEL", "llama2")
@@ -61,7 +73,7 @@ class LLMClient:
             user_context = await self._get_user_context(user_id)
             formatted_message = await self._format_message(message, user_context)
             
-            if self.provider in ["deepseek", "openai", "gemini"]:
+            if self.provider in ["deepseek", "openai", "gemini", "groq"]:
                 return await self._generate_openai_style(formatted_message, tools)
             elif self.provider == "ollama":
                 return await self._generate_ollama(formatted_message)
@@ -76,7 +88,7 @@ class LLMClient:
         try:
             prompt = system_prompt if system_prompt else self._get_system_prompt()
 
-            if self.provider in ["deepseek", "openai", "gemini"]:
+            if self.provider in ["deepseek", "openai", "gemini", "groq"]:
                 messages = [
                     {"role": "system", "content": prompt},
                     {"role": "user", "content": message}
@@ -169,7 +181,7 @@ Assistant:"""
         It does NOT inject the default system prompt or any other context.
         """
         try:
-            if self.provider in ["deepseek", "openai", "gemini"]:
+            if self.provider in ["deepseek", "openai", "gemini", "groq"]:
                 messages = [
                     {"role": "user", "content": classification_prompt}
                 ]

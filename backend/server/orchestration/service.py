@@ -54,9 +54,20 @@ STELLAR_AGENT_TOOLS = [
         "name": "list_campaigns",
         "description": (
             "Lista as campanhas de creators ativas (nome, descrição, tipo, reward por participante, "
-            "token de recompensa, participantes já pagos). Use quando o usuário perguntar quais "
-            "campanhas existem, rewards disponíveis ou quiser saber o que pode participar — não peça "
-            "para ele ir no dashboard, responda direto com os dados desta tool."
+            "token de recompensa, participantes já pagos), já ordenadas da mais para a menos indicada "
+            "ao perfil de interesses do usuário (match_score, matched_interests, already_joined). Use "
+            "quando o usuário perguntar quais campanhas existem, rewards disponíveis ou quiser saber o "
+            "que pode participar — não peça para ele ir no dashboard, responda direto com os dados desta tool."
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    }},
+    {"type": "function", "function": {
+        "name": "get_my_activity",
+        "description": (
+            "Histórico consolidado do usuário na plataforma: campanhas que criou (com participantes), "
+            "campanhas em que entrou por status, quanto já ganhou por token, USDC enviado pelo Arc, "
+            "conversas e vídeos/clips do Clipper. Use quando ele pedir as métricas dele, o dashboard, "
+            "o que já fez aqui ou quanto ganhou."
         ),
         "parameters": {"type": "object", "properties": {}},
     }},
@@ -192,9 +203,11 @@ _PLATFORM_CONTEXT = (
     "works, comparing two options) — even then, flowing paragraphs, never a list of bullet points. "
     "NEVER use markdown headers, '---' dividers, tables, or a bulleted/numbered catalog with a bold or "
     "*italic* title per line — this applies to EVERYTHING, including tool results with multiple items "
-    "like list_campaigns: weave them into 1-2 flowing sentences, like telling a friend, e.g. 'Rolando "
-    "agora: a <nome> (<o que fazer>, <n> USDC), a <nome> (<n> USDC por <ação>) e a <nome> (<n> USDC "
-    "por <ação>). Qual te chama mais atenção?' — every <placeholder> there is a SHAPE, never data: "
+    "like list_campaigns: weave them into 1-2 flowing sentences, like telling a friend, e.g. in English "
+    "'Live right now: <name> (<what to do>, <n> USDC), <name> (<n> USDC per <action>) and <name> (<n> "
+    "USDC per <action>). Which one catches your eye?' or in Portuguese 'Rolando agora: a <nome> (<o que "
+    "fazer>, <n> USDC), a <nome> (<n> USDC por <ação>) e a <nome> (<n> USDC por <ação>). Qual te chama "
+    "mais atenção?' — always in the user's language; every <placeholder> there is a SHAPE, never data: "
     "names, rewards and participant counts come only from a list_campaigns result in THIS turn. If you "
     "have not called the tool this turn you do NOT know the catalog — call it instead of answering from "
     "memory, and never invent a failure to excuse not calling it. — plain text, no "
@@ -253,11 +266,37 @@ _STELLAR_CONTEXT = (
     "depositar via âncora SEP-24 (testanchor.stellar.org), micropagamentos AI via x402, "
     "participar de campanhas com recompensa em USDC. "
     "Apresente sempre o quote antes de executar qualquer swap. "
-    "Responda em PT-BR."
+    "Responda no idioma do usuário (PT-BR ou EN)."
 )
 
 
 _AUTO_DETECT_CLAUDE_ENGINE = object()  # sentinel: distingue "não passado" de "explicitamente None"
+
+
+def _build_agent_engine(cfg) -> Any:
+    """Engine do loop agêntico pelo `LLM_PROVIDER`, ou None (fica só o caminho Gemini)."""
+    try:
+        from chat_agent import ChatAgentEngine
+
+        if cfg.llm_provider == "anthropic" and cfg.anthropic_api_key:
+            import anthropic
+            engine = ChatAgentEngine(anthropic.AsyncAnthropic(api_key=cfg.anthropic_api_key), cfg.anthropic_model)
+            logger.info("🤖 [AGENTIC] OrchestrationService running on Claude — model=%s", cfg.anthropic_model)
+            return engine
+        if cfg.llm_provider == "groq" and cfg.groq_api_key:
+            from openai_compat_client import OpenAICompatAnthropicClient
+            engine = ChatAgentEngine(OpenAICompatAnthropicClient(api_key=cfg.groq_api_key), cfg.groq_model)
+            logger.warning(
+                "🤖 [AGENTIC] OrchestrationService running on Groq (free, test only) — model=%s", cfg.groq_model,
+            )
+            return engine
+    except Exception as exc:
+        logger.warning("Agent engine init failed (provider=%s), staying on Gemini path: %s", cfg.llm_provider, exc)
+        return None
+
+    if cfg.llm_provider in ("anthropic", "groq"):
+        logger.warning("[AGENTIC] LLM_PROVIDER=%s sem chave configurada — loop agêntico desligado", cfg.llm_provider)
+    return None
 
 
 class OrchestrationService:
@@ -272,7 +311,8 @@ class OrchestrationService:
         self.solana = solana
         self.stellar = stellar
 
-        # Claude agentic engine — active only when LLM_PROVIDER=anthropic + key set.
+        # Agentic engine — LLM_PROVIDER=anthropic (Claude) ou groq (modelo free,
+        # mesmo loop via adapter OpenAI-compatible) com a chave configurada.
         # When on, execute() routes through the multi-step tool-use loop and the
         # legacy Gemini intent state machine below becomes the fallback.
         # `claude_engine` aceita override explícito (inclusive None) — usado pelos
@@ -282,16 +322,7 @@ class OrchestrationService:
             self.claude_engine = claude_engine
             return
 
-        self.claude_engine = None
-        if settings.llm_provider == "anthropic" and settings.anthropic_api_key:
-            try:
-                import anthropic
-                from chat_agent import ChatAgentEngine
-                self._anthropic = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-                self.claude_engine = ChatAgentEngine(self._anthropic, settings.anthropic_model)
-                logger.info("🤖 [AGENTIC] OrchestrationService running on Claude — model=%s", settings.anthropic_model)
-            except Exception as exc:
-                logger.warning("Claude engine init failed, staying on Gemini path: %s", exc)
+        self.claude_engine = _build_agent_engine(settings)
 
     # ------------------------------------------------------------------
     # Helpers
@@ -625,7 +656,14 @@ class OrchestrationService:
             "- list_campaigns: chame quando o usuário perguntar quais campanhas existem, rewards "
             "disponíveis ou quiser saber o que pode participar. Responda direto com os dados reais "
             "desta tool (nome, tipo, reward, quantos já participaram) — NUNCA diga que não tem essa "
-            "informação ou que precisa olhar o dashboard, você TEM essa tool.\n"
+            "informação ou que precisa olhar o dashboard, você TEM essa tool. A lista já vem na ordem "
+            "do perfil do usuário: apresente primeiro as do topo e, quando matched_interests não for "
+            "vazio, diga em poucas palavras por que combina com ele; já inscritas (already_joined) "
+            "não são recomendação nova.\n"
+            "- get_my_activity: chame quando o usuário pedir as métricas dele, o dashboard ou o que já "
+            "fez na plataforma. Resuma em poucas frases o que tiver número (criadas, participações, "
+            "ganhos, envios, clips) e pule o que estiver zerado; se tudo estiver zerado, sugira um "
+            "primeiro passo (ver campanhas para ele).\n"
             "- create_campaign: cria uma campanha nova com o usuário como criador. Colete campo por "
             "campo em turnos separados (título, descrição, tipo, token, valor por participante, máximo "
             "de participantes, e perfil/tweet se for social) e SÓ chame a tool depois de resumir tudo e "
@@ -705,14 +743,19 @@ class OrchestrationService:
                 return json.dumps({"wallet": evm_wallet, "chain": "arc", "usdc_balance": balance})
 
             if tool_name == "list_campaigns":
+                # Ranqueada pelo perfil do onboarding de quem pergunta (XIAOLEEACE-20).
+                # O perfil, como a wallet, nunca é parâmetro do modelo — sai da
+                # identidade que o `/chat` já resolveu do Bearer.
                 try:
-                    from server.campaigns_routes import list_campaigns as _list_campaigns_route
+                    from server.campaigns_routes import list_recommended_campaigns
                     async with _campaigns_db() as db:
-                        resp = await _list_campaigns_route(db)
+                        campaigns = await list_recommended_campaigns(
+                            db, None if user_id == "web_anonymous" else user_id,
+                        )
                 except Exception as exc:
                     return json.dumps({"error": "campaigns_read_failed", "message": str(exc)})
                 captured["actions"].append("list_campaigns")
-                return json.dumps({"campaigns": [c.model_dump() for c in resp.campaigns]})
+                return json.dumps({"campaigns": campaigns})
 
             # As quatro tools abaixo escrevem no mesmo caminho que a UI usa
             # (POST /campaigns/*) — importam e chamam a função de rota direto,
@@ -723,6 +766,7 @@ class OrchestrationService:
             # que o endpoint REST receberia do app.
             if tool_name in {
                 "create_campaign", "join_campaign", "verify_campaign_tasks", "prepare_campaign_claim",
+                "get_my_activity",
             }:
                 if user_id == "web_anonymous":
                     return json.dumps({
@@ -730,6 +774,24 @@ class OrchestrationService:
                         "message": "Usuário precisa estar logado para isso — peça para conectar/entrar antes.",
                     })
                 authorization = f"Bearer {user_id}"
+
+            if tool_name == "get_my_activity":
+                try:
+                    from sqlalchemy import select
+                    from database.models import User
+                    from server.user_activity import build_user_activity_summary
+                    async with _campaigns_db() as db:
+                        user = (await db.execute(
+                            select(User).where(User.twitter_user_id == user_id)
+                        )).scalars().first()
+                        if not user:
+                            return json.dumps({"error": "no_activity", "message": "Usuário ainda sem atividade na plataforma."})
+                        summary = await build_user_activity_summary(db, user)
+                except Exception as exc:
+                    logger.warning("[chat-tool] get_my_activity failed", exc_info=True)
+                    return json.dumps({"error": "activity_read_failed", "message": str(exc)})
+                captured["actions"].append("get_my_activity")
+                return json.dumps(summary)
 
             if tool_name == "create_campaign":
                 try:
@@ -921,6 +983,16 @@ class OrchestrationService:
         return IntentResponse(action="help", confidence=0.7, entities={})
 
     @staticmethod
+    def _with_language(system_prompt: str, message: str, history: list | None) -> str:
+        """Fecha o prompt com o idioma da conversa — ver `server/language.py`.
+
+        No fim de propósito: o prompt é quase todo em PT, e a regra de espelhar o
+        idioma no meio dele perdia para os exemplos em português.
+        """
+        from server.language import conversation_language, language_directive
+        return f"{system_prompt}\n\n{language_directive(conversation_language(message, history))}"
+
+    @staticmethod
     def _history_to_anthropic(history: list | None) -> list[dict]:
         """DB history (`role: user/bot`, from `DatabaseRepository.get_user_history`) to
         Anthropic's `messages` shape (`role: user/assistant`).
@@ -943,6 +1015,55 @@ class OrchestrationService:
             messages.append({"role": role, "content": content})
         return messages
 
+    async def _execute_menu_action(self, menu_action: str, text: str, user_id: str,
+                                   history: list = None, platform: str = "web") -> Dict[str, Any]:
+        """Card do menu do chat (XIAOLEEACE-20): tool fixa, modelo só redige.
+
+        A tool roda SEMPRE, antes e independente do modelo — é isso que garante
+        que "Browse campaigns" traga as campanhas do perfil e "My metrics" o
+        histórico, mesmo com o LLM fora. O modelo recebe os dados prontos e não
+        tem tools para chamar; se ele falhar (ou não houver engine), a resposta
+        sai de `fallback_reply`, montada com os mesmos dados.
+        """
+        from server.chat_menu import MENU_ACTIONS, fallback_reply
+
+        stellar_wallet = self._extract_stellar_wallet_from_note(text)
+        evm_wallet = self._extract_evm_wallet_from_note(text)
+        captured: Dict[str, Any] = {"actions": [], "execution": None, "last_swap_args": {}, "animation_name": None}
+        executor = self._make_stellar_executor(stellar_wallet, captured, evm_wallet=evm_wallet, user_id=user_id)
+
+        raw = await executor(MENU_ACTIONS[menu_action], {})
+        data = json.loads(raw)
+
+        reply = ""
+        if self.claude_engine is not None and "error" not in data:
+            try:
+                result = await self.claude_engine.run(
+                    system_prompt=self._with_language(
+                        self._build_agentic_system_prompt(stellar_wallet, platform, evm_wallet=evm_wallet),
+                        self._clean_text(text), history,
+                    ),
+                    message=(
+                        f"{self._clean_text(text)}\n\n[System Note: dados já consultados para esta resposta — "
+                        f"responda só com base neles, sem inventar nada: {raw}]"
+                    ),
+                    tools=None,
+                    tool_executor=executor,
+                    history=self._history_to_anthropic(history),
+                )
+                reply = (result.get("text") or "").strip()
+            except Exception as exc:
+                logger.warning("[MENU] %s: model failed, using fallback reply: %s", menu_action, exc)
+        if not reply:
+            reply = fallback_reply(menu_action, data)
+
+        logger.info("[MENU] action=%s tools=%s llm=%s", menu_action, captured["actions"], bool(self.claude_engine))
+        return {
+            "intent": IntentResponse(action=menu_action, confidence=1.0, entities={}),
+            "reply_text": reply,
+            "execution": {"status": "info", "menu_action": menu_action, "data": data},
+        }
+
     async def _execute_agentic(self, text: str, user_id: str, history: list = None,
                                platform: str = "web") -> Dict[str, Any]:
         stellar_wallet = self._extract_stellar_wallet_from_note(text)
@@ -950,7 +1071,10 @@ class OrchestrationService:
         clean_text = self._clean_text(text)
         captured: Dict[str, Any] = {"actions": [], "execution": None, "last_swap_args": {}, "animation_name": None}
 
-        system_prompt = self._build_agentic_system_prompt(stellar_wallet, platform, evm_wallet=evm_wallet)
+        system_prompt = self._with_language(
+            self._build_agentic_system_prompt(stellar_wallet, platform, evm_wallet=evm_wallet),
+            clean_text, history,
+        )
         executor = self._make_stellar_executor(
             stellar_wallet, captured, evm_wallet=evm_wallet, user_id=user_id,
         )
@@ -975,7 +1099,14 @@ class OrchestrationService:
     # Main execution
     # ------------------------------------------------------------------
 
-    async def execute(self, text: str, user_id: str, history: list = None, platform: str = "web") -> Dict[str, Any]:
+    async def execute(self, text: str, user_id: str, history: list = None, platform: str = "web",
+                      menu_action: str | None = None) -> Dict[str, Any]:
+        # Card do menu do chat: caminho determinístico, antes de qualquer
+        # detecção de intent — ver `_execute_menu_action`.
+        from server.chat_menu import MENU_ACTIONS
+        if menu_action in MENU_ACTIONS:
+            return await self._execute_menu_action(menu_action, text, user_id, history=history, platform=platform)
+
         # Intents do agente Arc/Circle desviam ANTES do caminho agêntico: o loop
         # Claude do chat só tem tools Stellar e responderia genérico ("help").
         arc_intent = self._detect_arc_intent(self._clean_text(text))
