@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getMyProfile, updateMyProfile } from '@/api/backend';
 import { ApiError } from '@/api/client';
 import { ErrorState } from '@/components/feedback';
+import { ProfilePhotoPicker } from '@/components/profile-photo-picker';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { useKeyboard } from '@/hooks/use-keyboard';
 
@@ -173,6 +174,9 @@ export default function OnboardingScreen() {
             ? 'Update your info — Xiaolee uses it to point you to the right campaigns and content ideas.'
             : 'Tell us a bit about yourself so Xiaolee can point you to the right campaigns and content ideas.'}
         </Text>
+
+        {/* A foto daqui é a do card de compartilhar e do menu de perfil. */}
+        <ProfilePhotoPicker />
 
         {error ? <ErrorState title="Couldn't save your profile" message={error} /> : null}
 
