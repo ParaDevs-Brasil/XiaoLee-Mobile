@@ -62,6 +62,16 @@ STELLAR_AGENT_TOOLS = [
         "parameters": {"type": "object", "properties": {}},
     }},
     {"type": "function", "function": {
+        "name": "get_my_activity",
+        "description": (
+            "Histórico consolidado do usuário na plataforma: campanhas que criou (com participantes), "
+            "campanhas em que entrou por status, quanto já ganhou por token, USDC enviado pelo Arc, "
+            "conversas e vídeos/clips do Clipper. Use quando ele pedir as métricas dele, o dashboard, "
+            "o que já fez aqui ou quanto ganhou."
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    }},
+    {"type": "function", "function": {
         "name": "create_campaign",
         "description": (
             "Cria uma nova campanha de creator, com o usuário atual como criador. NÃO chame esta tool "
@@ -630,6 +640,10 @@ class OrchestrationService:
             "do perfil do usuário: apresente primeiro as do topo e, quando matched_interests não for "
             "vazio, diga em poucas palavras por que combina com ele; já inscritas (already_joined) "
             "não são recomendação nova.\n"
+            "- get_my_activity: chame quando o usuário pedir as métricas dele, o dashboard ou o que já "
+            "fez na plataforma. Resuma em poucas frases o que tiver número (criadas, participações, "
+            "ganhos, envios, clips) e pule o que estiver zerado; se tudo estiver zerado, sugira um "
+            "primeiro passo (ver campanhas para ele).\n"
             "- create_campaign: cria uma campanha nova com o usuário como criador. Colete campo por "
             "campo em turnos separados (título, descrição, tipo, token, valor por participante, máximo "
             "de participantes, e perfil/tweet se for social) e SÓ chame a tool depois de resumir tudo e "
@@ -730,6 +744,7 @@ class OrchestrationService:
             # que o endpoint REST receberia do app.
             if tool_name in {
                 "create_campaign", "join_campaign", "verify_campaign_tasks", "prepare_campaign_claim",
+                "get_my_activity",
             }:
                 if user_id == "web_anonymous":
                     return json.dumps({
@@ -737,6 +752,26 @@ class OrchestrationService:
                         "message": "Usuário precisa estar logado para isso — peça para conectar/entrar antes.",
                     })
                 authorization = f"Bearer {user_id}"
+
+            if tool_name == "get_my_activity":
+                try:
+                    from sqlalchemy import select
+                    from database.models import User
+                    from server.campaigns_routes import resolve_twitter_identity
+                    from server.user_activity import build_user_activity_summary
+                    async with _campaigns_db() as db:
+                        twitter_user_id, _ = await resolve_twitter_identity(db, authorization, strict=True)
+                        user = (await db.execute(
+                            select(User).where(User.twitter_user_id == twitter_user_id)
+                        )).scalars().first()
+                        if not user:
+                            return json.dumps({"error": "no_activity", "message": "Usuário ainda sem atividade na plataforma."})
+                        summary = await build_user_activity_summary(db, user)
+                except Exception as exc:
+                    logger.warning("[chat-tool] get_my_activity failed", exc_info=True)
+                    return json.dumps({"error": "activity_read_failed", "message": str(exc)})
+                captured["actions"].append("get_my_activity")
+                return json.dumps(summary)
 
             if tool_name == "create_campaign":
                 try:
