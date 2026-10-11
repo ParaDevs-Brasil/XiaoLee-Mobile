@@ -19,7 +19,7 @@ import { APP_NOT_INSTALLED, shareImage } from '../../modules/share-intent';
 
 import { getMyProfile, type MyProfile } from '@/api/backend';
 import { IconClose, IconShare, IconUser } from '@/components/icons';
-import { CARD_RATIO, ShareProfileCard } from '@/components/share-profile-card';
+import { CARD_RATIOS, ShareProfileCard, type CardFormat } from '@/components/share-profile-card';
 import { CardShadow, Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { useProfilePhoto } from '@/hooks/use-profile-photo';
 import {
@@ -54,6 +54,18 @@ interface ShareProfileSheetProps {
 /** Largura do PNG final — 1080 é o padrão de imagem de feed. */
 const EXPORT_WIDTH = 1080;
 
+/** Cada canal recebe o formato que ele exibe inteiro (ver `ShareProfileCard`). */
+const CHANNEL_FORMAT: Record<ShareChannel | 'more', CardFormat> = {
+  whatsapp: 'story',
+  more: 'story',
+  x: 'post',
+};
+
+const FORMAT_TABS: { format: CardFormat; label: string }[] = [
+  { format: 'story', label: 'Story · WhatsApp' },
+  { format: 'post', label: 'Post · X' },
+];
+
 const EMPTY_PROFILE: MyProfile = {
   full_name: null,
   state: null,
@@ -80,11 +92,18 @@ export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) 
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { user } = usePrivy();
   const { photo: localPhoto, busy: pickingPhoto, pick, canPick } = useProfilePhoto();
-  const cardRef = useRef<View>(null);
+  const storyRef = useRef<View>(null);
+  const postRef = useRef<View>(null);
+  const cardRefs: Record<CardFormat, typeof storyRef> = { story: storyRef, post: postRef };
 
   const [profile, setProfile] = useState<MyProfile | null>(null);
-  /** URL da foto que já terminou de carregar — a captura espera por ela. */
-  const [settledPhoto, setSettledPhoto] = useState<string | null>(null);
+  /** Formato mostrado no preview; o outro fica montado fora da tela para a captura. */
+  const [previewFormat, setPreviewFormat] = useState<CardFormat>('story');
+  /** URL da foto que já carregou em cada card — a captura espera pelos dois. */
+  const [settledPhoto, setSettledPhoto] = useState<Record<CardFormat, string | null>>({
+    story: null,
+    post: null,
+  });
   const [busy, setBusy] = useState<Busy>('none');
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -114,7 +133,8 @@ export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) 
   }, [visible]);
 
   // Sem foto não há o que esperar; com foto, só depois do `onLoadEnd`.
-  const photoReady = !photoUrl || settledPhoto === photoUrl;
+  const photoReady =
+    !photoUrl || (settledPhoto.story === photoUrl && settledPhoto.post === photoUrl);
   const ready = Boolean(profile) && photoReady && busy === 'none' && !pickingPhoto;
 
   /** Fechar limpa o aviso, senão ele reaparece velho na próxima abertura. */
@@ -133,16 +153,17 @@ export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) 
   }
 
   /**
-   * Captura o card como PNG 1080x1920 e devolve a URI `content://` que outro
-   * app consegue ler (o FileProvider do `expo-file-system` cobre o cache).
+   * Captura o card no formato pedido (1080x1920 ou 1080x1440) e devolve a URI
+   * `content://` que outro app consegue ler (o FileProvider do
+   * `expo-file-system` cobre o cache).
    */
-  async function captureCard(): Promise<string> {
-    const path = await captureRef(cardRef, {
+  async function captureCard(format: CardFormat): Promise<string> {
+    const path = await captureRef(cardRefs[format], {
       format: 'png',
       quality: 1,
       // O view-shot só reescala com as duas medidas; mesma proporção do card.
       width: EXPORT_WIDTH,
-      height: EXPORT_WIDTH * CARD_RATIO,
+      height: EXPORT_WIDTH * CARD_RATIOS[format],
       result: 'tmpfile',
     });
     return new File(path.startsWith('file://') ? path : `file://${path}`).contentUri;
@@ -153,7 +174,7 @@ export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) 
     setNotice(null);
     const text = buildShareCaption(captionInput, channel === 'x' ? 'x' : 'whatsapp');
     try {
-      const uri = await captureCard();
+      const uri = await captureCard(CHANNEL_FORMAT[channel]);
       if (channel === 'more') {
         await shareImage({ uri, text, chooserTitle: 'Share your Xiaolee profile' });
         return;
@@ -180,11 +201,23 @@ export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) 
 
   // Limite de altura do preview: o card 9:16 é alto, e os botões precisam
   // continuar à vista sem rolar na maioria dos aparelhos.
-  const cardWidth = Math.min(
-    screenWidth - Spacing.four * 2,
-    320,
-    (screenHeight * 0.5) / CARD_RATIO,
-  );
+  const cardWidth = (format: CardFormat) =>
+    Math.min(screenWidth - Spacing.four * 2, 320, (screenHeight * 0.5) / CARD_RATIOS[format]);
+  const offscreenFormat: CardFormat = previewFormat === 'story' ? 'post' : 'story';
+
+  const renderCard = (format: CardFormat, width: number) =>
+    profile ? (
+      <ShareProfileCard
+        ref={cardRefs[format]}
+        format={format}
+        width={width}
+        name={profile.full_name}
+        socials={socials}
+        interests={profile.interest_profile}
+        photoUrl={photoUrl}
+        onPhotoSettled={() => setSettledPhoto((s) => ({ ...s, [format]: photoUrl }))}
+      />
+    ) : null;
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={close}>
@@ -209,22 +242,45 @@ export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) 
           </View>
 
           <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+            <View style={styles.formats} accessibilityRole="tablist">
+              {FORMAT_TABS.map(({ format, label }) => {
+                const active = previewFormat === format;
+                return (
+                  <Pressable
+                    key={format}
+                    onPress={() => setPreviewFormat(format)}
+                    style={[styles.formatTab, active && styles.formatTabActive]}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: active }}
+                  >
+                    <Text style={[styles.formatLabel, active && styles.formatLabelActive]}>
+                      {label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
             <View style={styles.preview}>
-              {profile ? (
-                <ShareProfileCard
-                  ref={cardRef}
-                  width={cardWidth}
-                  name={profile.full_name}
-                  socials={socials}
-                  interests={profile.interest_profile}
-                  photoUrl={photoUrl}
-                  onPhotoSettled={() => setSettledPhoto(photoUrl)}
-                />
-              ) : (
-                <View style={[styles.placeholder, { width: cardWidth, height: cardWidth * CARD_RATIO }]}>
+              {renderCard(previewFormat, cardWidth(previewFormat)) ?? (
+                <View
+                  style={[
+                    styles.placeholder,
+                    {
+                      width: cardWidth(previewFormat),
+                      height: cardWidth(previewFormat) * CARD_RATIOS[previewFormat],
+                    },
+                  ]}
+                >
                   <ActivityIndicator color={Colors.light.accent} />
                 </View>
               )}
+            </View>
+
+            {/* O outro formato, montado fora da tela: a captura precisa dele
+                desenhado, mas o usuário só vê o que escolheu no preview. */}
+            <View style={styles.offscreen} pointerEvents="none" accessibilityElementsHidden>
+              {renderCard(offscreenFormat, 320)}
             </View>
 
             {canPick ? (
@@ -348,7 +404,29 @@ const styles = StyleSheet.create({
   title: { fontFamily: Fonts.bold, fontSize: 16, color: Colors.light.ink },
   subtitle: { fontFamily: Fonts.sans, fontSize: 11, color: Colors.light.ink2, marginTop: 1 },
   content: { gap: Spacing.three - 4 },
+  formats: {
+    alignSelf: 'center',
+    flexDirection: 'row',
+    padding: 3,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.light.bg,
+  },
+  formatTab: {
+    paddingHorizontal: Spacing.three - 2,
+    height: 30,
+    justifyContent: 'center',
+    borderRadius: Radius.pill,
+  },
+  formatTabActive: {
+    backgroundColor: Colors.light.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.light.border,
+  },
+  formatLabel: { fontFamily: Fonts.semibold, fontSize: 12, color: Colors.light.ink3 },
+  formatLabelActive: { color: Colors.light.ink },
   preview: { alignSelf: 'center', borderRadius: Radius.xl, overflow: 'hidden' },
+  // Fora da área visível, mas ainda desenhado — é o que o view-shot captura.
+  offscreen: { position: 'absolute', left: -10000, top: 0 },
   placeholder: {
     alignItems: 'center',
     justifyContent: 'center',
