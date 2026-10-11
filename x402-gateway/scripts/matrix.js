@@ -13,7 +13,7 @@ const mk = (key = process.env.BUYER_PRIVATE_KEY) => new GatewayClient({ chain, p
 const big = (_, v) => (typeof v === "bigint" ? v.toString() : v);
 const avail = async (c) => BigInt((await c.getBalances()).gateway.available);
 
-const PROFILE = { language: "pt", max_clips: 2, transcript: Array.from({ length: 14 }, (_, i) => ({ start: i * 9, end: i * 9 + 9, text: i % 5 === 0 ? "Sabe qual o maior erro de quem começa? É ignorar a retenção." : `Parte ${i}: explicando como testar um gancho nos primeiros segundos do vídeo.` })) };
+const PROFILE = { language: "en", max_clips: 2, transcript: Array.from({ length: 14 }, (_, i) => ({ start: i * 9, end: i * 9 + 9, text: i % 5 === 0 ? "Know the biggest mistake beginners make? Ignoring retention." : `Part ${i}: explaining how to test a hook in the first seconds of the video.` })) };
 const PLAN = { goal: "teste matriz", budget_usdc: 100, platforms: ["x"], duration_days: 3 };
 const url = (s) => `${base}/v1/x402/${s}`;
 const report = { label, chain, base, at: new Date().toISOString(), results: [] };

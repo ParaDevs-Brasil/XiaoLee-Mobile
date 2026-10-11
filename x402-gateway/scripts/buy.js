@@ -5,7 +5,7 @@ const svc = process.argv[2] ?? "clip-highlights";
 const base = process.argv[3] ?? "http://localhost:3100";
 const url = `${base}/v1/x402/${svc}`;
 const bodies = {
-  "clip-highlights": { language: "pt", max_clips: 2, transcript: Array.from({ length: 14 }, (_, i) => ({ start: i * 9, end: i * 9 + 9, text: i % 5 === 0 ? "Sabe qual o maior erro de quem começa? É ignorar a retenção." : `Parte ${i}: explicando como testar um gancho nos primeiros segundos do vídeo.` })) },
+  "clip-highlights": { language: "en", max_clips: 2, transcript: Array.from({ length: 14 }, (_, i) => ({ start: i * 9, end: i * 9 + 9, text: i % 5 === 0 ? "Know the biggest mistake beginners make? Ignoring retention." : `Part ${i}: explaining how to test a hook in the first seconds of the video.` })) },
   "campaign-plan": { goal: "lançar token X", budget_usdc: 500, platforms: ["tiktok", "x"], duration_days: 7 },
 };
 // SDK 3.5.0 usa rpc.testnet.arc.network por padrão (bloqueado em alguns IPs); domínio atual é arc.io
