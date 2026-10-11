@@ -55,21 +55,16 @@ test('interesse desconhecido não deixa buraco na frase', () => {
   assert.doesNotMatch(body, /undefined|\s{2}/);
 });
 
-const KEYS = ['campaign', 'dashboard', 'swap', 'balance'];
+const KEYS = ['create', 'browse', 'metrics'];
 
-test('prioritizeActions: quem opera token vê o swap primeiro', () => {
-  assert.deepEqual(prioritizeActions(KEYS, ['games', 'trader']), [
-    'swap',
-    'campaign',
-    'dashboard',
-    'balance',
-  ]);
-});
-
-test('prioritizeActions: outros interesses, campanha primeiro', () => {
-  assert.deepEqual(prioritizeActions(KEYS, ['memecoins']), KEYS);
+test('prioritizeActions: com interesses, campanhas para você primeiro', () => {
+  assert.deepEqual(prioritizeActions(KEYS, ['games', 'trader']), ['browse', 'create', 'metrics']);
 });
 
 test('prioritizeActions: sem interesse, ordem original', () => {
   assert.deepEqual(prioritizeActions(KEYS, []), KEYS);
+});
+
+test('prioritizeActions: sem o card de campanhas, não mexe', () => {
+  assert.deepEqual(prioritizeActions(['create', 'metrics'], ['defi']), ['create', 'metrics']);
 });
