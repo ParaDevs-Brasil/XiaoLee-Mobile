@@ -14,86 +14,34 @@
 export const SHARE_URL = 'https://xiaolee-landing-production.up.railway.app';
 
 /**
- * O que cada interesse muda no card e na legenda. Mesmos ids de `INTERESTS`
- * em `app/onboarding.tsx` (o backend recusa qualquer outro com 422).
- *
- * As frases descrevem o que a pessoa curte, nunca prometem ganho: o card vai
- * para post público, e "earning yield" leria como promessa financeira que o
- * produto ainda não faz. O ícone de cada um vive no componente, que é o lado
- * com React Native.
+ * O que cada interesse muda no card e na legenda: o rótulo do chip e a
+ * hashtag do X. Mesmos ids de `INTERESTS` em `app/onboarding.tsx` (o backend
+ * recusa qualquer outro com 422). O ícone de cada um vive no componente, que
+ * é o lado com React Native.
  */
 export interface InterestTheme {
   label: string;
-  /** Frase de quando este é o único interesse ("exploring DeFi with my AI agent"). */
-  phrase: string;
-  /** Nome curto para juntar dois interesses ("DeFi & Web3 games"). */
-  short: string;
   hashtag: string;
 }
 
 export const INTEREST_THEMES: Record<string, InterestTheme> = {
-  defi: {
-    label: 'DeFi',
-    phrase: 'exploring DeFi with my AI agent',
-    short: 'DeFi',
-    hashtag: '#DeFi',
-  },
-  games: {
-    label: 'Games',
-    phrase: 'into Web3 games',
-    short: 'Web3 games',
-    hashtag: '#Web3Gaming',
-  },
-  cards: {
-    label: 'Cards',
-    phrase: 'collecting cards on-chain',
-    short: 'on-chain cards',
-    hashtag: '#TCG',
-  },
-  trader: {
-    label: 'Trader',
-    phrase: 'following the markets with my AI agent',
-    short: 'trading',
-    hashtag: '#Trading',
-  },
-  memecoins: {
-    label: 'Memecoins',
-    phrase: 'hunting the next memecoin',
-    short: 'memecoins',
-    hashtag: '#Memecoins',
-  },
+  defi: { label: 'DeFi', hashtag: '#DeFi' },
+  games: { label: 'Games', hashtag: '#Web3Gaming' },
+  cards: { label: 'Cards', hashtag: '#TCG' },
+  trader: { label: 'Trader', hashtag: '#Trading' },
+  memecoins: { label: 'Memecoins', hashtag: '#Memecoins' },
 };
 
-/** Sem interesse marcado, ou com três ou mais (os chips já listam todos). */
-const GENERAL_PHRASE = 'exploring Web3 with my AI agent';
+/**
+ * Frase do perfil, igual para todo mundo — sob o nome no card e nas duas
+ * legendas. Fala do que o produto faz (creators ganham com campanhas) sem
+ * prometer rendimento, como "earning yield" fazia. A personalização fica
+ * com os chips e as hashtags dos interesses.
+ */
+export const PROFILE_TAGLINE = 'Earn with Xiaolee';
 
 export function interestLabel(id: string): string {
   return INTEREST_THEMES[id]?.label ?? id;
-}
-
-function knownThemes(interests: readonly string[]): InterestTheme[] {
-  return interests.map((id) => INTEREST_THEMES[id]).filter(Boolean);
-}
-
-/**
- * A frase do perfil, pelo número de interesses — card e legendas usam a
- * mesma, para não dizerem coisas diferentes:
- *  - 1: a frase do interesse ("exploring DeFi with my AI agent");
- *  - 2: os dois juntos ("into DeFi & Web3 games");
- *  - 0 ou 3+: a geral — com muitos, os chips abaixo já mostram cada um, e
- *    escolher só um pela ordem do toque parecia arbitrário.
- */
-export function interestPhrase(interests: readonly string[]): string {
-  const themes = knownThemes(interests);
-  if (themes.length === 1) return themes[0].phrase;
-  if (themes.length === 2) return `into ${themes[0].short} & ${themes[1].short}`;
-  return GENERAL_PHRASE;
-}
-
-/** Frase do card, sob o nome: a `interestPhrase` com maiúscula inicial. */
-export function profileTagline(interests: readonly string[]): string {
-  const phrase = interestPhrase(interests);
-  return phrase.charAt(0).toUpperCase() + phrase.slice(1);
 }
 
 /**
@@ -169,7 +117,7 @@ export type ShareChannel = 'whatsapp' | 'x';
 
 /**
  * Legenda que acompanha a imagem, com a mesma frase do card
- * (`interestPhrase`).
+ * (`PROFILE_TAGLINE`).
  *
  * - **whatsapp**: conversa com amigo — tom pessoal e o link no fim (o
  *   WhatsApp gera a prévia dele).
@@ -181,19 +129,19 @@ export function buildShareCaption(
   channel: ShareChannel,
   url: string = SHARE_URL,
 ): string {
-  const phrase = interestPhrase(interests);
   const first = name?.trim().split(/\s+/)[0];
 
   if (channel === 'whatsapp') {
     const hello = first ? `Hey! It's ${first} 👋` : 'Hey! 👋';
-    return `${hello}\nI'm on Xiaolee — ${phrase}.\nJoin me: ${url}`;
+    return `${hello}\n${PROFILE_TAGLINE} — join me: ${url}`;
   }
 
-  const hashtags = knownThemes(interests)
-    .slice(0, 3)
-    .map((t) => t.hashtag);
+  const hashtags = interests
+    .map((id) => INTEREST_THEMES[id]?.hashtag)
+    .filter(Boolean)
+    .slice(0, 3);
   const tags = ['#Xiaolee', ...(hashtags.length ? hashtags : ['#Web3'])];
-  return `I'm on Xiaolee — ${phrase} ✨\n${tags.join(' ')}\n${url}`;
+  return `${PROFILE_TAGLINE} ✨\n${tags.join(' ')}\n${url}`;
 }
 
 /**

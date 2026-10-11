@@ -11,9 +11,8 @@ import {
   cleanHandle,
   initials,
   instagramHandle,
-  interestPhrase,
+  PROFILE_TAGLINE,
   profilePhotoUrl,
-  profileTagline,
   SHARE_URL,
   xHandle,
   xIntentUrl,
@@ -78,55 +77,31 @@ test('initials usa primeiro e último nome', () => {
   assert.equal(initials(null), 'XL');
 });
 
-test('interestPhrase muda pelo número de interesses', () => {
-  assert.equal(interestPhrase(['defi']), 'exploring DeFi with my AI agent');
-  assert.equal(interestPhrase(['defi', 'games']), 'into DeFi & Web3 games');
-  // Três ou mais: a geral — os chips já listam cada um.
-  assert.equal(interestPhrase(['defi', 'games', 'cards']), 'exploring Web3 with my AI agent');
-  assert.equal(interestPhrase([]), 'exploring Web3 with my AI agent');
-});
-
-test('interestPhrase ignora ids desconhecidos ao contar', () => {
-  assert.equal(interestPhrase(['unknown', 'cards']), 'collecting cards on-chain');
-});
-
-test('profileTagline é a frase com maiúscula inicial', () => {
-  assert.equal(profileTagline(['games', 'memecoins']), 'Into Web3 games & memecoins');
-  assert.equal(profileTagline([]), 'Exploring Web3 with my AI agent');
-});
-
-test('nenhuma frase ou legenda promete ganho', () => {
-  const sets = [[], ['defi'], ['trader'], ['defi', 'trader'], ['defi', 'games', 'cards']];
-  for (const interests of sets) {
+test('a frase do perfil é "Earn with Xiaolee" e nunca promete rendimento', () => {
+  assert.equal(PROFILE_TAGLINE, 'Earn with Xiaolee');
+  for (const interests of [[], ['defi'], ['defi', 'trader', 'games']]) {
     for (const text of [
-      profileTagline(interests),
       buildShareCaption({ name: 'Ana', interests }, 'whatsapp'),
       buildShareCaption({ name: 'Ana', interests }, 'x'),
     ]) {
-      assert.doesNotMatch(text, /earn|yield|USDC|profit/i, text);
+      assert.doesNotMatch(text, /yield|USDC|profit|guarantee/i, text);
     }
   }
 });
 
 test('legenda do WhatsApp é pessoal, usa a frase do card e termina no link', () => {
-  const caption = buildShareCaption(
-    { name: 'Ana Souza', interests: ['defi', 'games'] },
-    'whatsapp',
-  );
   assert.equal(
-    caption,
-    `Hey! It's Ana 👋\nI'm on Xiaolee — into DeFi & Web3 games.\nJoin me: ${SHARE_URL}`,
+    buildShareCaption({ name: 'Ana Souza', interests: ['defi', 'games'] }, 'whatsapp'),
+    `Hey! It's Ana 👋\nEarn with Xiaolee — join me: ${SHARE_URL}`,
   );
 });
 
-test('legenda do X traz até três hashtags e cabe no limite', () => {
+test('legenda do X traz a frase e até três hashtags, dentro do limite', () => {
   const caption = buildShareCaption(
     { name: 'Ana', interests: ['memecoins', 'trader', 'defi', 'games'] },
     'x',
   );
-  assert.match(caption, /exploring Web3 with my AI agent/);
-  assert.match(caption, /#Xiaolee #Memecoins #Trading #DeFi\n/);
-  assert.doesNotMatch(caption, /#Web3Gaming/);
+  assert.equal(caption, `Earn with Xiaolee ✨\n#Xiaolee #Memecoins #Trading #DeFi\n${SHARE_URL}`);
   // O X conta a URL como 23 caracteres.
   assert.ok(caption.replace(SHARE_URL, 'x'.repeat(23)).length <= 280);
 });
@@ -134,9 +109,12 @@ test('legenda do X traz até três hashtags e cabe no limite', () => {
 test('legendas sem nome nem interesses continuam legíveis', () => {
   assert.equal(
     buildShareCaption({ name: null, interests: [] }, 'whatsapp'),
-    `Hey! 👋\nI'm on Xiaolee — exploring Web3 with my AI agent.\nJoin me: ${SHARE_URL}`,
+    `Hey! 👋\nEarn with Xiaolee — join me: ${SHARE_URL}`,
   );
-  assert.match(buildShareCaption({ name: null, interests: [] }, 'x'), /#Xiaolee #Web3\n/);
+  assert.equal(
+    buildShareCaption({ name: null, interests: ['unknown'] }, 'x'),
+    `Earn with Xiaolee ✨\n#Xiaolee #Web3\n${SHARE_URL}`,
+  );
 });
 
 test('xIntentUrl codifica o texto', () => {

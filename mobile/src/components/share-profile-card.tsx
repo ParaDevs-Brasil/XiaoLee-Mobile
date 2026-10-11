@@ -15,7 +15,7 @@ import {
   type IconProps,
 } from '@/components/icons';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
-import { initials, interestLabel, profileTagline, SHARE_URL } from '@/lib/share-profile';
+import { initials, interestLabel, PROFILE_TAGLINE, SHARE_URL } from '@/lib/share-profile';
 
 /**
  * O "post pronto" do compartilhar perfil (XIAOLEEACE-21).
@@ -78,9 +78,6 @@ export const ShareProfileCard = forwardRef<View, ShareProfileCardProps>(function
   const u = width / 320;
   const height = width * CARD_RATIOS[format];
   const isStory = format === 'story';
-  // A frase sob o nome muda com os interesses (`interestPhrase`): é o que
-  // personaliza o card.
-  const tagline = profileTagline(interests);
   const displayName = name?.trim() || 'Xiaolee creator';
 
   // Orçamentos verticais (em unidades de largura 320). Mexer em tamanho aqui
@@ -158,7 +155,7 @@ export const ShareProfileCard = forwardRef<View, ShareProfileCardProps>(function
           style={[styles.tagline, { fontSize: 12 * u, lineHeight: 16 * u, marginTop: 8 * u }]}
           numberOfLines={2}
         >
-          {tagline}
+          {PROFILE_TAGLINE}
         </Text>
         {chips}
       </>
@@ -180,7 +177,7 @@ export const ShareProfileCard = forwardRef<View, ShareProfileCardProps>(function
               ]}
               numberOfLines={2}
             >
-              {tagline}
+              {PROFILE_TAGLINE}
             </Text>
           </View>
         </View>
