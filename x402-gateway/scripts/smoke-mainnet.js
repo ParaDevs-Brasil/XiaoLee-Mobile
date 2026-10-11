@@ -18,5 +18,5 @@ const show = (b) => JSON.stringify(b, (_, v) => (typeof v === "bigint" ? v.toStr
 console.log("saldos antes:", show(await client.getBalances()));
 const r = await client.pay(url, { method, ...(rawBody ? { body: JSON.parse(rawBody) } : {}) });
 console.log("status:", r.status, "| pago:", r.formattedAmount ?? r.amount, "| tx:", r.transaction);
-console.log(String(typeof r.data === "string" ? r.data : show(r.data)).slice(0, 600));
+console.log(String(typeof r.data === "string" ? r.data : show(r.data)).slice(0, 3500));
 console.log("saldos depois:", show(await client.getBalances()));
