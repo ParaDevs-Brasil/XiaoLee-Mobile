@@ -64,3 +64,6 @@ backend/devtest.db
 
 # APK self-hosted na landing (binário grande, deploy é via `railway up`, não git)
 landing/assets/*.apk
+
+# Clipper: "R2" local de scripts/clipper_demo_seed.py
+backend/.demo-storage/

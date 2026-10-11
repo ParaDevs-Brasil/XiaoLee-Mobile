@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 import logging
 import os
 import re
@@ -21,7 +22,7 @@ import tempfile
 from dataclasses import dataclass
 from itertools import zip_longest
 
-from server.settings import settings
+from server.settings import GROQ_BASE_URL, settings
 
 log = logging.getLogger(__name__)
 
@@ -92,6 +93,29 @@ def _system(language: str | None, n: int = N_CLIPS) -> str:
     )
 
 
+class ProviderUnavailable(RuntimeError):
+    """O provedor de IA não atende por um motivo do NOSSO lado ou dele — conta sem crédito, chave inválida ou sem
+    permissão, limite de uso, provedor fora do ar —, nada a ver com o vídeo do creator. A rota responde 503
+    genérico ("temporarily unavailable") e o motivo real fica só no log: um 502 "try again" fazia o creator
+    insistir num erro que só a equipe resolve."""
+
+
+class ProviderNotConfigured(ProviderUnavailable):
+    """Falta a chave do provedor de IA."""
+
+
+def _is_provider_side(exc: Exception) -> bool:
+    """Erro de conta/infra do provedor, pelo status HTTP — vale para o SDK da Anthropic e para o da OpenAI (Groq),
+    que expõem `status_code` do mesmo jeito. 400 só conta quando é falta de crédito (os outros 400 são do pedido)."""
+    status = getattr(exc, "status_code", None)
+    if isinstance(status, int):
+        if status in (401, 402, 403, 429) or status >= 500:
+            return True
+        return status == 400 and "credit balance" in str(exc).lower()
+    # sem resposta HTTP: conexão recusada / timeout
+    return type(exc).__name__ in ("APIConnectionError", "APITimeoutError")
+
+
 @dataclass
 class Highlight:
     start: float
@@ -160,21 +184,60 @@ def validate_highlights(raw: list[dict], segments: list[dict], rejected: list | 
 
 
 async def _call_tool(system: str, tool: dict, content: str, max_tokens: int) -> dict:
+    """Chamada ao modelo com uma ferramenta forçada; devolve os argumentos CRUS dela (não validados).
+    `HIGHLIGHTS_PROVIDER=groq` troca o Claude pela Groq — só para testes locais sem custo (ver
+    `settings.highlights_provider`); mesmo prompt, mesma ferramenta, mesma validação depois."""
+    if settings.highlights_provider == "groq":
+        return await _call_tool_groq(system, tool, content, max_tokens)
     if not settings.anthropic_api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY não configurada")
+        raise ProviderNotConfigured("ANTHROPIC_API_KEY não configurada")
     import anthropic
 
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=60, max_retries=1)
-    msg = await client.messages.create(
-        model=settings.anthropic_model,
-        max_tokens=max_tokens,
-        system=system,
-        tools=[tool],
-        tool_choice={"type": "tool", "name": tool["name"]},
-        messages=[{"role": "user", "content": content}],
-    )
+    try:
+        msg = await client.messages.create(
+            model=settings.anthropic_model,
+            max_tokens=max_tokens,
+            system=system,
+            tools=[tool],
+            tool_choice={"type": "tool", "name": tool["name"]},
+            messages=[{"role": "user", "content": content}],
+        )
+    except Exception as exc:
+        if _is_provider_side(exc):
+            raise ProviderUnavailable(f"anthropic: {type(exc).__name__}: {exc}") from exc
+        raise
     block = next((b for b in msg.content if b.type == "tool_use"), None)
     return dict(block.input) if block else {}
+
+
+async def _call_tool_groq(system: str, tool: dict, content: str, max_tokens: int) -> dict:
+    """Mesmo contrato de `_call_tool` pela API OpenAI-compatível da Groq."""
+    if not settings.groq_api_key:
+        raise ProviderNotConfigured("GROQ_API_KEY não configurada")
+    from openai import AsyncOpenAI
+
+    client = AsyncOpenAI(api_key=settings.groq_api_key, base_url=GROQ_BASE_URL, timeout=60, max_retries=1)
+    try:
+        resp = await client.chat.completions.create(
+            model=settings.groq_highlights_model,
+            # folga para o raciocínio dos modelos gpt-oss, que conta como saída
+            max_tokens=max(max_tokens, 4000),
+            tools=[{"type": "function", "function": {
+                "name": tool["name"], "description": tool["description"], "parameters": tool["input_schema"],
+            }}],
+            tool_choice={"type": "function", "function": {"name": tool["name"]}},
+            messages=[{"role": "system", "content": system}, {"role": "user", "content": content}],
+        )
+    except Exception as exc:
+        if _is_provider_side(exc):
+            raise ProviderUnavailable(f"groq: {type(exc).__name__}: {exc}") from exc
+        raise
+    calls = resp.choices[0].message.tool_calls or []
+    try:
+        return json.loads(calls[0].function.arguments) if calls else {}
+    except json.JSONDecodeError:
+        return {}  # argumento malformado = nenhuma proposta; a rota responde "no usable highlights"
 
 
 async def ask_claude(segments: list[dict], language: str | None = None, n: int = N_CLIPS) -> list[dict]:
@@ -229,7 +292,7 @@ async def pick_highlights(segments: list[dict], language: str | None = None) -> 
     if len(chunks) == 1:
         raw, rejected = await ask_claude(segments, language), []
         picks = validate_highlights(raw, segments, rejected)
-        log.info("clipper: Claude propôs %d, %d válidos", len(raw), len(picks))
+        log.info("clipper: %s propôs %d, %d válidos", settings.highlights_provider, len(raw), len(picks))
         for h, why in rejected:
             log.info("clipper: proposta recusada (%s): %s", why, h)
         return picks
@@ -281,7 +344,7 @@ def _ass_time(t: float) -> str:
 
 def _ass_text(s: str) -> str:
     # chaves abrem override tags no ASS; barra invertida e quebras idem
-    return re.sub(r"[{}\\]", "", s).replace("\n", " ").strip()
+    return re.sub(r"[{}\\]", "", s).replace("\r", " ").replace("\n", " ").strip()
 
 
 def _words_of(seg: dict) -> list[tuple[str, float, float]]:
@@ -359,6 +422,18 @@ def _filter_path(p: str) -> str:
     return re.sub(r"([\\:'\[\],;])", r"\\\1", p)
 
 
+def redact_media_urls(text: str, source: str = "") -> str:
+    """Tira do stderr do ffmpeg a URL da mídia e qualquer credencial de URL pré-assinada.
+
+    Tem que rodar ANTES de cortar a mensagem: uma URL pré-assinada real passa de 300 caracteres, e cortar
+    primeiro deixava a cauda dela (X-Amz-Credential = Access Key ID do R2, assinatura) chegar ao log e ao app.
+    """
+    if source:
+        text = text.replace(source, "<media>")
+    text = re.sub(r"https?://\S+", "<media>", text)
+    return re.sub(r"X-Amz-[A-Za-z-]+=[^&\s]+", "<redacted>", text)
+
+
 async def run_ffmpeg(args: list[str], source: str, timeout: float) -> str:
     """ffmpeg numa thread (`subprocess.run`) em vez de `asyncio.create_subprocess_exec`: o child watcher
     do asyncio às vezes não percebe a saída do processo (zumbi, `communicate()` pendura para sempre — visto
@@ -375,7 +450,7 @@ async def run_ffmpeg(args: list[str], source: str, timeout: float) -> str:
         raise RuntimeError("ffmpeg timed out")
     if r.returncode != 0:
         # a URL pré-assinada vem na linha de erro do ffmpeg — não vazar para o banco/cliente
-        raise RuntimeError("ffmpeg failed: " + r.stderr.decode(errors="replace")[-300:].replace(source, "<media>"))
+        raise RuntimeError("ffmpeg failed: " + redact_media_urls(r.stderr.decode(errors="replace"), source)[-300:])
     return r.stderr.decode(errors="replace")
 
 
@@ -468,4 +543,17 @@ async def render_clip(source: str, ass_path: str, start: float, end: float, dest
          "-threads", str(FFMPEG_THREADS), "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
          "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", "-y", dest],
         source, FFMPEG_TIMEOUT_S,
+    )
+
+
+THUMB_QUALITY = "4"  # -q:v do mjpeg (2 = melhor, 31 = pior): ~20 KB a 270 px, o bastante para uma miniatura
+
+
+async def extract_thumbnail(source: str, dest: str, at_s: float, width: int) -> None:
+    """Um quadro de `source` (caminho local ou URL) em `at_s`, como JPEG de `width` px de largura.
+    -ss antes do -i: com URL pré-assinada o ffmpeg só baixa o trecho perto do ponto, não o vídeo inteiro."""
+    await run_ffmpeg(
+        ["-ss", f"{max(at_s, 0.0):.3f}", "-i", source, "-frames:v", "1", "-vf", f"scale={width}:-2",
+         "-q:v", THUMB_QUALITY, "-y", dest],
+        source, 120,
     )

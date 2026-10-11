@@ -43,6 +43,13 @@ class Settings:
     anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
     anthropic_model: str = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
 
+    # Quem escolhe os cortes do Clipper (`clipper.ask_model`): "anthropic" (padrão, o de produção) ou
+    # "groq" — SÓ para testes locais sem custo: plano grátis, escolha pior que a do Claude, e o limite de
+    # 8K tokens/min do plano grátis não comporta a transcrição de um vídeo de ~1 h.
+    highlights_provider: str = os.getenv("HIGHLIGHTS_PROVIDER", "anthropic")
+    groq_api_key: str = os.getenv("GROQ_API_KEY", "")
+    groq_highlights_model: str = os.getenv("GROQ_HIGHLIGHTS_MODEL", "openai/gpt-oss-120b")
+
     solana_rpc_url: str = os.getenv("SOLANA_RPC_URL", "https://api.devnet.solana.com")
     solana_cluster: str = os.getenv("SOLANA_CLUSTER", "devnet")
     jupiter_quote_url: str = os.getenv(
