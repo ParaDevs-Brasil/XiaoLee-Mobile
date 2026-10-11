@@ -10,6 +10,7 @@ import {
   IconClock,
   IconDownload,
   IconLogOut,
+  IconShare,
   IconUpload,
   IconUser,
   IconWallet,
@@ -31,6 +32,8 @@ interface ProfileMenuProps {
   /** Endereço da carteira conectada, quando há. */
   walletAddress?: string;
   onConnectWallet: () => void;
+  /** Abre o sheet de compartilhar perfil (`ShareProfileSheet`). */
+  onShareProfile: () => void;
 }
 
 /** Abrevia o endereço como no web: início e fim, meio elidido. */
@@ -74,7 +77,13 @@ const ACTIONS: (PanelItem & { href?: '/wallet' | '/transactions' | '/history' })
   { key: 'deposit', Icon: IconUpload, title: 'Deposit', subtitle: 'Add funds to account' },
 ];
 
-export function ProfileMenu({ visible, onDismiss, walletAddress, onConnectWallet }: ProfileMenuProps) {
+export function ProfileMenu({
+  visible,
+  onDismiss,
+  walletAddress,
+  onConnectWallet,
+  onShareProfile,
+}: ProfileMenuProps) {
   const router = useRouter();
   const { disconnect } = usePrivyWallet();
 
@@ -126,6 +135,22 @@ export function ProfileMenu({ visible, onDismiss, walletAddress, onConnectWallet
           }}
         />
       ))}
+
+      {walletAddress ? (
+        // Só com sessão: o card é montado do `GET /user/me/profile`.
+        <PanelRow
+          item={{
+            key: 'share-profile',
+            Icon: IconShare,
+            title: 'Share profile',
+            subtitle: 'Post your Xiaolee card',
+            onPress: () => {
+              onDismiss();
+              onShareProfile();
+            },
+          }}
+        />
+      ) : null}
 
       {walletAddress ? (
         <PanelRow
