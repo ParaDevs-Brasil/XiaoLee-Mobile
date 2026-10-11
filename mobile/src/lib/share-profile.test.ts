@@ -8,7 +8,9 @@ import assert from 'node:assert/strict';
 
 import {
   buildShareCaption,
+  cleanHandle,
   initials,
+  instagramHandle,
   profilePhotoUrl,
   profileTagline,
   SHARE_URL,
@@ -46,6 +48,26 @@ test('xHandle prefere o perfil do backend e tira o @', () => {
   assert.equal(xHandle('@josue', [{ type: 'twitter_oauth', username: 'other' }]), 'josue');
   assert.equal(xHandle(undefined, [{ type: 'twitter_oauth', username: 'other' }]), 'other');
   assert.equal(xHandle('', []), null);
+});
+
+test('cleanHandle aceita @, handle puro e link colado', () => {
+  assert.equal(cleanHandle('@josuekla'), 'josuekla');
+  assert.equal(cleanHandle('  josue.kla_ '), 'josue.kla_');
+  assert.equal(cleanHandle('https://x.com/josuekla'), 'josuekla');
+  assert.equal(cleanHandle('https://www.instagram.com/josue.kla/?igsh=abc'), 'josue.kla');
+  assert.equal(cleanHandle('twitter.com/josuekla'), 'josuekla');
+});
+
+test('cleanHandle recusa vazio e texto que não é handle', () => {
+  assert.equal(cleanHandle(''), null);
+  assert.equal(cleanHandle(undefined), null);
+  assert.equal(cleanHandle('@'), null);
+  assert.equal(cleanHandle('meu insta é josue'), null);
+});
+
+test('instagramHandle normaliza o campo do perfil', () => {
+  assert.equal(instagramHandle('@josue.kla'), 'josue.kla');
+  assert.equal(instagramHandle(undefined), null);
 });
 
 test('initials usa primeiro e último nome', () => {

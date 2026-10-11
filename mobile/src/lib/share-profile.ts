@@ -98,15 +98,33 @@ export function profilePhotoUrl(accounts: readonly LinkedAccountLike[] | undefin
   return null;
 }
 
+/**
+ * Normaliza o que o usuário digitou no campo de rede social: aceita
+ * `@handle`, `handle` ou o link do perfil colado (`https://x.com/handle`,
+ * `instagram.com/handle/?igsh=...`). Devolve só o handle, sem `@`.
+ */
+export function cleanHandle(raw: string | null | undefined): string | null {
+  let value = raw?.trim() ?? '';
+  const fromUrl = value.match(/(?:x|twitter|instagram)\.com\/([^/?#\s]+)/i);
+  if (fromUrl) value = fromUrl[1];
+  value = value.replace(/^@+/, '').trim();
+  return /^[A-Za-z0-9._]{1,30}$/.test(value) ? value : null;
+}
+
 /** `@handle` do X: o do perfil do backend tem prioridade sobre o do Privy. */
 export function xHandle(
   socialTwitter: string | undefined,
   accounts: readonly LinkedAccountLike[] | undefined,
 ): string | null {
-  const fromProfile = socialTwitter?.trim().replace(/^@/, '');
-  if (fromProfile) return fromProfile;
-  const linked = accounts?.find((a) => a.type === 'twitter_oauth')?.username?.trim();
-  return linked || null;
+  return (
+    cleanHandle(socialTwitter) ??
+    cleanHandle(accounts?.find((a) => a.type === 'twitter_oauth')?.username)
+  );
+}
+
+/** `@handle` do Instagram — só existe no perfil do backend. */
+export function instagramHandle(socialInstagram: string | undefined): string | null {
+  return cleanHandle(socialInstagram);
 }
 
 /** Até duas iniciais do nome; sem nome, a marca. */
