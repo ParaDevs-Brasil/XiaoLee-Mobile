@@ -8,8 +8,10 @@ import {
   IconBlocks,
   IconCards,
   IconGamepad,
+  IconInstagram,
   IconRocket,
   IconSpark,
+  IconXLogo,
   type IconProps,
 } from '@/components/icons';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
@@ -39,7 +41,8 @@ export interface ShareProfileCardProps {
   /** Largura em dp; a altura sai de `CARD_RATIO`. */
   width: number;
   name: string | null;
-  handle: string | null;
+  /** Handles sem `@`; cada um aparece com o logo da rede, para não haver dúvida. */
+  socials: { x: string | null; instagram: string | null };
   interests: readonly string[];
   photoUrl: string | null;
   /** Avisa quando a foto terminou (ou falhou) — só aí a captura é fiel. */
@@ -61,15 +64,16 @@ export const CARD_RATIO = 16 / 9;
 const mascot = require('../../assets/images/xiaolee-avatar.png');
 
 export const ShareProfileCard = forwardRef<View, ShareProfileCardProps>(function ShareProfileCard(
-  { width, name, handle, interests, photoUrl, onPhotoSettled },
+  { width, name, socials, interests, photoUrl, onPhotoSettled },
   ref,
 ) {
   // Tudo escala com a largura, para o preview do sheet e o PNG terem o mesmo
   // layout em qualquer tela.
   const u = width / 320;
   const height = width * CARD_RATIO;
-  // Orçamento vertical (em unidades de 320x569): topo 48 + corpo ~330 (com
-  // os cinco chips em duas linhas) + rodapé ~95 deixa ~45 de folga, que o
+  // Orçamento vertical (em unidades de 320x569): topo 48 + corpo ~345 (com
+  // os cinco chips em duas linhas e as duas redes) + rodapé ~95 deixa ~30
+  // de folga, que o
   // corpo centralizado divide entre cima e baixo. Mexer em tamanho aqui
   // exige refazer a conta, senão o rodapé sai cortado no PNG.
   const avatar = 116 * u;
@@ -122,13 +126,16 @@ export const ShareProfileCard = forwardRef<View, ShareProfileCardProps>(function
         >
           {name?.trim() || 'Xiaolee creator'}
         </Text>
-        {handle ? (
-          <Text style={[styles.handle, { fontSize: 12 * u }]} numberOfLines={1}>
-            @{handle}
-          </Text>
+        {socials.x || socials.instagram ? (
+          <View style={[styles.socials, { gap: 6 * u, marginTop: 6 * u }]}>
+            {socials.x ? <SocialPill Icon={IconXLogo} handle={socials.x} u={u} /> : null}
+            {socials.instagram ? (
+              <SocialPill Icon={IconInstagram} handle={socials.instagram} u={u} />
+            ) : null}
+          </View>
         ) : null}
         <Text
-          style={[styles.tagline, { fontSize: 12 * u, lineHeight: 16 * u, marginTop: 2 * u }]}
+          style={[styles.tagline, { fontSize: 12 * u, lineHeight: 16 * u, marginTop: 8 * u }]}
           numberOfLines={2}
         >
           {tagline}
@@ -188,6 +195,28 @@ export const ShareProfileCard = forwardRef<View, ShareProfileCardProps>(function
     </View>
   );
 });
+
+/** `@handle` com o logo da rede na frente — X ou Instagram. */
+function SocialPill({
+  Icon,
+  handle,
+  u,
+}: {
+  Icon: (p: IconProps) => React.ReactElement;
+  handle: string;
+  u: number;
+}) {
+  return (
+    <View
+      style={[styles.socialPill, { gap: 5 * u, paddingHorizontal: 9 * u, paddingVertical: 4 * u }]}
+    >
+      <Icon size={12 * u} sw={2} color={Colors.light.card} />
+      <Text style={[styles.socialText, { fontSize: 11.5 * u }]} numberOfLines={1}>
+        @{handle}
+      </Text>
+    </View>
+  );
+}
 
 /**
  * Gradiente diagonal do acento com luzes e ondas brancas translúcidas por
@@ -278,7 +307,17 @@ const styles = StyleSheet.create({
   },
   initials: { fontFamily: Fonts.bold, color: Colors.light.card },
   name: { fontFamily: Fonts.bold, color: Colors.light.card, textAlign: 'center' },
-  handle: { fontFamily: Fonts.semibold, color: Colors.light.accentSoft },
+  socials: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center' },
+  socialPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    maxWidth: '100%',
+    borderRadius: Radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
+  },
+  socialText: { fontFamily: Fonts.semibold, color: Colors.light.card, flexShrink: 1 },
   tagline: {
     fontFamily: Fonts.medium,
     color: Colors.light.card,

@@ -24,6 +24,7 @@ import { CardShadow, Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { useProfilePhoto } from '@/hooks/use-profile-photo';
 import {
   buildShareCaption,
+  instagramHandle,
   profilePhotoUrl,
   xHandle,
   xIntentUrl,
@@ -90,7 +91,10 @@ export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) 
   const accounts = (user?.linked_accounts ?? []) as readonly LinkedAccountLike[];
   // Ordem: a que o usuário escolheu aqui > a da conta social no Privy > iniciais.
   const photoUrl = localPhoto ?? profilePhotoUrl(accounts);
-  const handle = xHandle(profile?.social_links.twitter, accounts);
+  const socials = {
+    x: xHandle(profile?.social_links.twitter, accounts),
+    instagram: instagramHandle(profile?.social_links.instagram),
+  };
   const captionInput = {
     name: profile?.full_name ?? null,
     interests: profile?.interest_profile ?? [],
@@ -211,7 +215,7 @@ export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) 
                   ref={cardRef}
                   width={cardWidth}
                   name={profile.full_name}
-                  handle={handle}
+                  socials={socials}
                   interests={profile.interest_profile}
                   photoUrl={photoUrl}
                   onPhotoSettled={() => setSettledPhoto(photoUrl)}
