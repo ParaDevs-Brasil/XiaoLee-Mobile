@@ -10,6 +10,7 @@ import {
   buildShareCaption,
   initials,
   profilePhotoUrl,
+  profileTagline,
   SHARE_URL,
   xHandle,
   xIntentUrl,
@@ -54,26 +55,45 @@ test('initials usa primeiro e último nome', () => {
   assert.equal(initials(null), 'XL');
 });
 
-test('buildShareCaption monta o texto com nome e até 3 interesses', () => {
-  const caption = buildShareCaption({
-    name: 'Ana',
-    interests: ['defi', 'games', 'cards', 'trader'],
-  });
-  assert.match(caption, /^I'm Ana and I'm on Xiaolee/);
-  assert.match(caption, /Into DeFi, Games, Cards\./);
-  assert.doesNotMatch(caption, /Trader/);
+test('profileTagline usa o interesse principal', () => {
+  assert.equal(profileTagline(['games', 'defi']), 'Leveling up in Web3 games');
+  assert.equal(profileTagline(['unknown', 'cards']), 'Collecting cards on-chain');
+  assert.equal(profileTagline([]), 'Earning USDC with my AI agent');
 });
 
-test('buildShareCaption sem nome nem interesses continua legível', () => {
-  assert.equal(
-    buildShareCaption({ name: null, interests: [] }),
-    "I'm on Xiaolee — earning USDC with my AI agent. Join me:",
+test('legenda do WhatsApp é pessoal, com até dois interesses e o link', () => {
+  const caption = buildShareCaption(
+    { name: 'Ana Souza', interests: ['defi', 'games', 'cards'] },
+    'whatsapp',
   );
+  assert.match(caption, /^Hey! It's Ana 👋/);
+  assert.match(caption, /DeFi and I play Web3 games/);
+  assert.doesNotMatch(caption, /cards/);
+  assert.ok(caption.endsWith(`Join me: ${SHARE_URL}`));
 });
 
-test('xIntentUrl codifica texto e link', () => {
+test('legenda do X traz hashtags dos interesses e cabe no limite', () => {
+  const caption = buildShareCaption(
+    { name: 'Ana', interests: ['memecoins', 'trader', 'defi'] },
+    'x',
+  );
+  assert.match(caption, /hunting the next memecoin/);
+  assert.match(caption, /#Xiaolee #Memecoins #Trading #USDC/);
+  assert.doesNotMatch(caption, /#DeFi/);
+  // O X conta a URL como 23 caracteres.
+  assert.ok(caption.replace(SHARE_URL, 'x'.repeat(23)).length <= 280);
+});
+
+test('legendas sem nome nem interesses continuam legíveis', () => {
+  assert.equal(
+    buildShareCaption({ name: null, interests: [] }, 'whatsapp'),
+    `Hey! 👋\nI'm on Xiaolee — my AI agent that earns USDC.\nJoin me: ${SHARE_URL}`,
+  );
+  assert.match(buildShareCaption({ name: null, interests: [] }, 'x'), /#Xiaolee #USDC/);
+});
+
+test('xIntentUrl codifica o texto', () => {
   const url = new URL(xIntentUrl('a & b'));
   assert.equal(url.origin + url.pathname, 'https://x.com/intent/post');
   assert.equal(url.searchParams.get('text'), 'a & b');
-  assert.equal(url.searchParams.get('url'), SHARE_URL);
 });

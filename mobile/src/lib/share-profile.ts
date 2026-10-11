@@ -13,17 +13,64 @@
  */
 export const SHARE_URL = 'https://xiaolee-landing-production.up.railway.app';
 
-/** Rótulos dos interesses — mesmos ids de `INTERESTS` em `app/onboarding.tsx`. */
-const INTEREST_LABELS: Record<string, string> = {
-  defi: 'DeFi',
-  games: 'Games',
-  cards: 'Cards',
-  trader: 'Trader',
-  memecoins: 'Memecoins',
+/**
+ * O que cada interesse muda no card e na legenda. Mesmos ids de `INTERESTS`
+ * em `app/onboarding.tsx` (o backend recusa qualquer outro com 422).
+ *
+ * `tagline` vai embaixo do nome no card (do interesse principal, o primeiro
+ * marcado); `hook` entra na legenda. O ícone de cada um vive no componente,
+ * que é o lado com React Native.
+ */
+export interface InterestTheme {
+  label: string;
+  tagline: string;
+  hook: string;
+  hashtag: string;
+}
+
+export const INTEREST_THEMES: Record<string, InterestTheme> = {
+  defi: {
+    label: 'DeFi',
+    tagline: 'Earning yield with my AI agent',
+    hook: 'my AI agent puts my USDC to work in DeFi',
+    hashtag: '#DeFi',
+  },
+  games: {
+    label: 'Games',
+    tagline: 'Leveling up in Web3 games',
+    hook: 'I play Web3 games and get rewarded for it',
+    hashtag: '#Web3Gaming',
+  },
+  cards: {
+    label: 'Cards',
+    tagline: 'Collecting cards on-chain',
+    hook: 'I collect and trade cards on-chain',
+    hashtag: '#TCG',
+  },
+  trader: {
+    label: 'Trader',
+    tagline: 'Trading smarter with AI',
+    hook: 'my AI agent helps me trade smarter',
+    hashtag: '#Trading',
+  },
+  memecoins: {
+    label: 'Memecoins',
+    tagline: 'Hunting the next memecoin',
+    hook: "I'm hunting the next memecoin",
+    hashtag: '#Memecoins',
+  },
 };
 
+const FALLBACK_TAGLINE = 'Earning USDC with my AI agent';
+
 export function interestLabel(id: string): string {
-  return INTEREST_LABELS[id] ?? id;
+  return INTEREST_THEMES[id]?.label ?? id;
+}
+
+/** Frase do card: a do interesse principal, ou a genérica. */
+export function profileTagline(interests: readonly string[]): string {
+  const primary = interests.find((id) => INTEREST_THEMES[id]);
+  return primary ? INTEREST_THEMES[primary].tagline : FALLBACK_TAGLINE;
 }
 
 /**
@@ -76,19 +123,42 @@ export interface ShareCaptionInput {
   interests: readonly string[];
 }
 
+/** Para onde a legenda vai — cada canal tem um tom e um limite. */
+export type ShareChannel = 'whatsapp' | 'x';
+
 /**
- * Texto que acompanha a imagem. Curto o bastante para caber no X com o link
- * (o X conta qualquer URL como 23 caracteres).
+ * Legenda que acompanha a imagem, montada a partir dos interesses.
+ *
+ * - **whatsapp**: conversa com amigo — tom pessoal, até dois interesses e o
+ *   link no fim (o WhatsApp gera a prévia dele).
+ * - **x**: curta, com hashtags dos interesses. O X conta qualquer URL como
+ *   23 caracteres; o texto fica bem abaixo dos 280.
  */
-export function buildShareCaption({ name, interests }: ShareCaptionInput): string {
-  const who = name?.trim() ? `I'm ${name.trim()} and I'm` : "I'm";
-  const tags = interests.slice(0, 3).map(interestLabel);
-  const into = tags.length ? ` Into ${tags.join(', ')}.` : '';
-  return `${who} on Xiaolee — earning USDC with my AI agent.${into} Join me:`;
+export function buildShareCaption(
+  { name, interests }: ShareCaptionInput,
+  channel: ShareChannel,
+  url: string = SHARE_URL,
+): string {
+  const themes = interests.map((id) => INTEREST_THEMES[id]).filter(Boolean);
+  const first = name?.trim().split(/\s+/)[0];
+
+  if (channel === 'whatsapp') {
+    const hooks = themes.slice(0, 2).map((t) => t.hook);
+    const why = hooks.length ? ` — ${hooks.join(' and ')}` : ' — my AI agent that earns USDC';
+    const hello = first ? `Hey! It's ${first} 👋` : 'Hey! 👋';
+    return `${hello}\nI'm on Xiaolee${why}.\nJoin me: ${url}`;
+  }
+
+  const tags = ['#Xiaolee', ...themes.slice(0, 2).map((t) => t.hashtag), '#USDC'];
+  const what = themes[0]?.hook ?? 'my AI agent earns USDC for me';
+  return `I'm on Xiaolee — ${what} ✨\n${tags.join(' ')}\n${url}`;
 }
 
-/** Intent web do X: abre o app do X se instalado, senão o navegador. */
-export function xIntentUrl(text: string, url: string = SHARE_URL): string {
-  const params = new URLSearchParams({ text, url });
+/**
+ * Intent web do X — fallback de quando o app do X não está instalado. Não
+ * aceita imagem, por isso é só o caminho de reserva; o link já vem no texto.
+ */
+export function xIntentUrl(text: string): string {
+  const params = new URLSearchParams({ text });
   return `https://x.com/intent/post?${params.toString()}`;
 }
