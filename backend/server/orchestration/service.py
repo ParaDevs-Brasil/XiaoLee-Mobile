@@ -203,9 +203,11 @@ _PLATFORM_CONTEXT = (
     "works, comparing two options) — even then, flowing paragraphs, never a list of bullet points. "
     "NEVER use markdown headers, '---' dividers, tables, or a bulleted/numbered catalog with a bold or "
     "*italic* title per line — this applies to EVERYTHING, including tool results with multiple items "
-    "like list_campaigns: weave them into 1-2 flowing sentences, like telling a friend, e.g. 'Rolando "
-    "agora: a <nome> (<o que fazer>, <n> USDC), a <nome> (<n> USDC por <ação>) e a <nome> (<n> USDC "
-    "por <ação>). Qual te chama mais atenção?' — every <placeholder> there is a SHAPE, never data: "
+    "like list_campaigns: weave them into 1-2 flowing sentences, like telling a friend, e.g. in English "
+    "'Live right now: <name> (<what to do>, <n> USDC), <name> (<n> USDC per <action>) and <name> (<n> "
+    "USDC per <action>). Which one catches your eye?' or in Portuguese 'Rolando agora: a <nome> (<o que "
+    "fazer>, <n> USDC), a <nome> (<n> USDC por <ação>) e a <nome> (<n> USDC por <ação>). Qual te chama "
+    "mais atenção?' — always in the user's language; every <placeholder> there is a SHAPE, never data: "
     "names, rewards and participant counts come only from a list_campaigns result in THIS turn. If you "
     "have not called the tool this turn you do NOT know the catalog — call it instead of answering from "
     "memory, and never invent a failure to excuse not calling it. — plain text, no "
@@ -264,7 +266,7 @@ _STELLAR_CONTEXT = (
     "depositar via âncora SEP-24 (testanchor.stellar.org), micropagamentos AI via x402, "
     "participar de campanhas com recompensa em USDC. "
     "Apresente sempre o quote antes de executar qualquer swap. "
-    "Responda em PT-BR."
+    "Responda no idioma do usuário (PT-BR ou EN)."
 )
 
 
@@ -981,6 +983,16 @@ class OrchestrationService:
         return IntentResponse(action="help", confidence=0.7, entities={})
 
     @staticmethod
+    def _with_language(system_prompt: str, message: str, history: list | None) -> str:
+        """Fecha o prompt com o idioma da conversa — ver `server/language.py`.
+
+        No fim de propósito: o prompt é quase todo em PT, e a regra de espelhar o
+        idioma no meio dele perdia para os exemplos em português.
+        """
+        from server.language import conversation_language, language_directive
+        return f"{system_prompt}\n\n{language_directive(conversation_language(message, history))}"
+
+    @staticmethod
     def _history_to_anthropic(history: list | None) -> list[dict]:
         """DB history (`role: user/bot`, from `DatabaseRepository.get_user_history`) to
         Anthropic's `messages` shape (`role: user/assistant`).
@@ -1027,7 +1039,10 @@ class OrchestrationService:
         if self.claude_engine is not None and "error" not in data:
             try:
                 result = await self.claude_engine.run(
-                    system_prompt=self._build_agentic_system_prompt(stellar_wallet, platform, evm_wallet=evm_wallet),
+                    system_prompt=self._with_language(
+                        self._build_agentic_system_prompt(stellar_wallet, platform, evm_wallet=evm_wallet),
+                        self._clean_text(text), history,
+                    ),
                     message=(
                         f"{self._clean_text(text)}\n\n[System Note: dados já consultados para esta resposta — "
                         f"responda só com base neles, sem inventar nada: {raw}]"
@@ -1056,7 +1071,10 @@ class OrchestrationService:
         clean_text = self._clean_text(text)
         captured: Dict[str, Any] = {"actions": [], "execution": None, "last_swap_args": {}, "animation_name": None}
 
-        system_prompt = self._build_agentic_system_prompt(stellar_wallet, platform, evm_wallet=evm_wallet)
+        system_prompt = self._with_language(
+            self._build_agentic_system_prompt(stellar_wallet, platform, evm_wallet=evm_wallet),
+            clean_text, history,
+        )
         executor = self._make_stellar_executor(
             stellar_wallet, captured, evm_wallet=evm_wallet, user_id=user_id,
         )
