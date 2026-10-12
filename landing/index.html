@@ -27,6 +27,8 @@
   <meta name="twitter:description" content="Xiaolee turns your social media into a revenue engine. Invest, receive, and earn with your socials.">
   <meta name="twitter:image" content="https://www.xiaolee.app/assets/og-image.png">
   <meta name="twitter:image:alt" content="Xiaolee — Monetize your digital presence, with the Xiaolee mascot waving">
+  <link rel="preconnect" href="https://script.google.com">
+  <link rel="preconnect" href="https://script.googleusercontent.com">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
@@ -795,27 +797,52 @@
       };
     };
 
-    var busy = false;
-    var send = function (onOk) {
-      if (!/^https:\/\/script\.google\.com\/macros\/s\//.test(WAITLIST_URL)) return showError('The waitlist is not available yet. Please try again later.');
-      busy = true;
-      form.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
+    // Um POST para a planilha. Nunca rejeita. hard = o servidor respondeu e recusou (inválido,
+    // fechada, limite): reenviar os mesmos dados não adianta. Senão foi falha de rede/servidor.
+    var post = function () {
+      if (!/^https:\/\/script\.google\.com\/macros\/s\//.test(WAITLIST_URL)) return Promise.resolve({ ok: false, msg: 'The waitlist is not available yet. Please try again later.', hard: true });
       // Sem header Content-Type (vai como text/plain): requisição "simples", sem preflight CORS —
-      // o Apps Script não responde OPTIONS.
-      fetch(WAITLIST_URL, { method: 'POST', body: JSON.stringify(payload()) })
+      // o Apps Script não responde OPTIONS. keepalive: o envio sobrevive ao fechar a aba.
+      return fetch(WAITLIST_URL, { method: 'POST', body: JSON.stringify(payload()), keepalive: true })
         .then(function (r) {
           if (!r.ok) throw {};
           return r.json();
         }).then(function (res) {
-          if (!res || res.status !== 'ok') throw { ui: MESSAGES[res && res.status] || 'Something went wrong. Please try again.' };
-          onOk();
-        }).catch(function (ex) {
-          showError((ex && ex.ui) || 'Could not reach our server. Please try again.');
-        }).then(function () {
-          busy = false;
-          form.querySelectorAll('button').forEach(function (b) { b.disabled = false; });
+          if (res && res.status === 'ok') return { ok: true };
+          var known = res && MESSAGES[res.status];
+          return { ok: false, msg: known || 'Something went wrong. Please try again.', hard: !!known };
+        }).catch(function () {
+          return { ok: false, msg: 'Could not reach our server. Please try again.', hard: false };
         });
     };
+
+    var busy = false;
+    var setBusy = function (on) {
+      busy = on;
+      form.querySelectorAll('button').forEach(function (b) { b.disabled = on; });
+    };
+
+    // Salvamento da etapa 1 em segundo plano (otimista): a etapa 2 abre na hora, sem esperar o
+    // Apps Script. A etapa 2 e o "Skip" esperam este envio terminar, para ele não chegar depois
+    // e sobrescrever o perfil completo.
+    var pending = null;
+    var step1Failed = false;
+
+    // Envio que bloqueia a tela (etapa 2). Se a etapa 1 foi recusada, já voltamos para ela: não faz nada.
+    var send = function (onOk) {
+      setBusy(true);
+      (pending || Promise.resolve(null)).then(function (prior) {
+        if (prior && !prior.ok && prior.hard) { setBusy(false); return; }
+        return post().then(function (r) {
+          setBusy(false);
+          if (r.ok) { step1Failed = false; onOk(); }
+          else showError(r.msg);
+        });
+      });
+    };
+
+    var resetPending = function () { pending = null; step1Failed = false; };
+    var showDoneAndReset = function (complete) { resetPending(); showDone(complete); };
 
     form.addEventListener('submit', function (e) {
       e.preventDefault();
@@ -826,7 +853,21 @@
         if (!val('name')) return showError('Please tell us your name.');
         if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(val('email'))) return showError('Please enter a valid email.');
         if (!val('role')) return showError('Please tell us who you are.');
-        return send(function () { setStep(2); });
+        // Otimista: vai para a etapa 2 agora e grava em segundo plano. Se o servidor recusar os
+        // dados, volta para a etapa 1 com o motivo; falha de rede é reenviada pela etapa 2 (que
+        // leva tudo junto).
+        var p = post();
+        pending = p;
+        step1Failed = false;
+        setStep(2);
+        p.then(function (r) {
+          if (pending !== p) return; // o formulário foi concluído/reiniciado enquanto isso
+          pending = null;
+          if (r.ok) return;
+          if (r.hard) { setStep(1); showError(r.msg); }
+          else step1Failed = true;
+        });
+        return;
       }
 
       if (!hasHandle() && !nudged) {
@@ -835,15 +876,24 @@
         nudge.scrollIntoView({ block: 'nearest' });
         return;
       }
-      send(function () { showDone(true); });
+      send(function () { showDoneAndReset(true); });
     });
 
     // "Skip for now": a pessoa já está na lista. Se preencheu algo na etapa 2, salva antes.
     document.getElementById('xl-wl-skip').addEventListener('click', function () {
       if (busy) return;
       clearError();
-      if (extrasFilled() > 0) send(function () { showDone(false); });
-      else showDone(false);
+      if (extrasFilled() > 0 || step1Failed) return send(function () { showDoneAndReset(false); });
+      if (!pending) return showDoneAndReset(false);
+      // envio da etapa 1 ainda em andamento: confirma que chegou antes de dizer que a pessoa está na lista
+      var p = pending;
+      setBusy(true);
+      p.then(function (r) {
+        setBusy(false);
+        if (r.ok) showDoneAndReset(false);
+        else if (!r.hard) send(function () { showDoneAndReset(false); });
+        // hard: já voltou para a etapa 1 com o motivo
+      });
     });
   })();
 </script>
