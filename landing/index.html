@@ -27,6 +27,8 @@
   <meta name="twitter:description" content="Xiaolee turns your social media into a revenue engine. Invest, receive, and earn with your socials.">
   <meta name="twitter:image" content="https://www.xiaolee.app/assets/og-image.png">
   <meta name="twitter:image:alt" content="Xiaolee — Monetize your digital presence, with the Xiaolee mascot waving">
+  <link rel="preconnect" href="https://script.google.com">
+  <link rel="preconnect" href="https://script.googleusercontent.com">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
@@ -189,6 +191,25 @@
     .xl-wl__done img { width: 96px; height: 96px; border-radius: 999px; object-fit: cover; border: 4px solid #fff; box-shadow: 0 16px 32px -16px rgba(26, 25, 23, .4); }
     .xl-wl__done h3 { margin: 18px 0 6px; font-size: 26px; font-weight: 700; }
     .xl-wl__done p { margin: 0 auto 22px; max-width: 380px; color: #6b6862; font-size: 15px; line-height: 1.6; }
+    /* Confirmação: mascote "pula", selo de check se desenha e confete sai do centro. Roda sozinha
+       cada vez que a tela deixa de estar hidden. */
+    .xl-wl__hero { position: relative; display: inline-block; }
+    .xl-wl__hero img { animation: wl-pop .55s cubic-bezier(.34, 1.56, .64, 1) both; }
+    .xl-wl__check { position: absolute; right: -8px; bottom: -4px; width: 40px; height: 40px; filter: drop-shadow(0 6px 10px rgba(216, 27, 120, .35)); animation: wl-pop .45s .28s cubic-bezier(.34, 1.56, .64, 1) both; }
+    .xl-wl__check circle { fill: #d81b78; stroke: #fff; stroke-width: 2.5; }
+    .xl-wl__check path { fill: none; stroke: #fff; stroke-width: 3.4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 26; stroke-dashoffset: 26; animation: wl-draw .4s .55s ease-out forwards; }
+    .xl-wl__spark { position: absolute; left: 50%; top: 50%; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 999px; background: var(--c, #d81b78); opacity: 0; animation: wl-spark .8s calc(.2s + var(--d, 0s)) cubic-bezier(.16, 1, .3, 1) both; }
+    .xl-wl__done h3, .xl-wl__done p, .xl-wl__done .xl-btn { animation: wl-up .5s cubic-bezier(.22, 1, .36, 1) both; }
+    .xl-wl__done h3 { animation-delay: .35s; }
+    .xl-wl__done p { animation-delay: .45s; }
+    .xl-wl__done .xl-btn { animation-delay: .55s; }
+    @keyframes wl-pop { 0% { transform: scale(.4); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+    @keyframes wl-draw { to { stroke-dashoffset: 0; } }
+    @keyframes wl-up { from { transform: translateY(10px); opacity: 0; } to { transform: none; opacity: 1; } }
+    @keyframes wl-spark {
+      0% { transform: rotate(var(--a)) translateY(-36px) scale(.3); opacity: 1; }
+      100% { transform: rotate(var(--a)) translateY(-84px) scale(1); opacity: 0; }
+    }
 
     /* ── Etapa 2: "Boost your spot" ── */
     .xl-wl__boost { margin: 0 0 20px; padding: 16px 18px; border-radius: 16px; background: #fff; border: 1.5px solid #f3d3e3; }
@@ -217,6 +238,9 @@
     @media (prefers-reduced-motion: reduce) {
       .xl-wl[open] { animation: none; }
       .xl-wl__meter-fill { transition: none; }
+      .xl-wl__hero img, .xl-wl__check, .xl-wl__done h3, .xl-wl__done p, .xl-wl__done .xl-btn { animation: none; }
+      .xl-wl__check path { animation: none; stroke-dashoffset: 0; }
+      .xl-wl__spark { display: none; }
       .xl-btn, .xl-card, .xl-chip, .xl-btn__arr, .xl-nav a::after { transition: none; }
       .xl-mascot { animation: none; }
       .xl-word { animation: none; opacity: 1; }
@@ -647,7 +671,11 @@
   </form>
 
   <div class="xl-wl__done" id="xl-wl-done" hidden>
-    <img src="assets/xiaolee-icon-512.png" alt="" />
+    <div class="xl-wl__hero">
+      <img src="assets/xiaolee-icon-512.png" alt="" />
+      <svg class="xl-wl__check" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="17.5"/><path d="M12 20.5l5.5 5.5L28.5 14.5"/></svg>
+      <span aria-hidden="true"><i class="xl-wl__spark" style="--a:0deg;--d:0s;--c:#d81b78"></i><i class="xl-wl__spark" style="--a:60deg;--d:0.04s;--c:#f6c453"></i><i class="xl-wl__spark" style="--a:120deg;--d:0.02s;--c:#d81b78"></i><i class="xl-wl__spark" style="--a:180deg;--d:0.06s;--c:#f28ab9"></i><i class="xl-wl__spark" style="--a:240deg;--d:0.03s;--c:#f6c453"></i><i class="xl-wl__spark" style="--a:300deg;--d:0.05s;--c:#f28ab9"></i></span>
+    </div>
     <h3 id="xl-wl-done-title">You're on the list!</h3>
     <p id="xl-wl-done-text">Thanks for joining. We'll reach out by email as soon as your spot opens up.</p>
     <button type="button" class="xl-btn xl-wl__submit" data-waitlist-close style="width:auto;">Done</button>
@@ -795,38 +823,101 @@
       };
     };
 
-    var busy = false;
-    var send = function (onOk) {
-      if (!/^https:\/\/script\.google\.com\/macros\/s\//.test(WAITLIST_URL)) return showError('The waitlist is not available yet. Please try again later.');
-      busy = true;
-      form.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
+    // Um POST para a planilha. Nunca rejeita. hard = o servidor respondeu e recusou (inválido,
+    // fechada, limite): reenviar os mesmos dados não adianta. Senão foi falha de rede/servidor.
+    var post = function (body) {
+      if (!/^https:\/\/script\.google\.com\/macros\/s\//.test(WAITLIST_URL)) return Promise.resolve({ ok: false, msg: 'The waitlist is not available yet. Please try again later.', hard: true });
       // Sem header Content-Type (vai como text/plain): requisição "simples", sem preflight CORS —
-      // o Apps Script não responde OPTIONS.
-      fetch(WAITLIST_URL, { method: 'POST', body: JSON.stringify(payload()) })
+      // o Apps Script não responde OPTIONS. keepalive: o envio sobrevive ao fechar a aba.
+      return fetch(WAITLIST_URL, { method: 'POST', body: JSON.stringify(body || payload()), keepalive: true })
         .then(function (r) {
           if (!r.ok) throw {};
           return r.json();
         }).then(function (res) {
-          if (!res || res.status !== 'ok') throw { ui: MESSAGES[res && res.status] || 'Something went wrong. Please try again.' };
-          onOk();
-        }).catch(function (ex) {
-          showError((ex && ex.ui) || 'Could not reach our server. Please try again.');
-        }).then(function () {
-          busy = false;
-          form.querySelectorAll('button').forEach(function (b) { b.disabled = false; });
+          if (res && res.status === 'ok') return { ok: true };
+          var known = res && MESSAGES[res.status];
+          return { ok: false, msg: known || 'Something went wrong. Please try again.', hard: !!known };
+        }).catch(function () {
+          return { ok: false, msg: 'Could not reach our server. Please try again.', hard: false };
         });
+    };
+
+    // Salvamento otimista, nas duas etapas: a tela avança na hora e o envio roda em segundo plano.
+    // A etapa 2 e o "Skip" esperam o envio da etapa 1 terminar (senão ele chegaria depois e
+    // sobrescreveria o perfil completo).
+    var pending = null; // envio da etapa 1 em andamento
+    var step1Failed = false; // etapa 1 falhou por rede: o próximo envio precisa levar tudo
+
+    // Falha de rede no envio final: tenta de novo (1,5s / 3s / 6s) e, se ainda assim não der,
+    // guarda no navegador e reenvia na próxima visita ou quando a conexão voltar. O nome, o
+    // e-mail e o perfil já foram salvos pela etapa 1, então só os campos extras estão em jogo.
+    var OUTBOX = 'xl-wl-outbox';
+    var stash = function (body) { try { localStorage.setItem(OUTBOX, JSON.stringify(body)); } catch (_) {} };
+    var flush = function () {
+      var body;
+      try { body = JSON.parse(localStorage.getItem(OUTBOX) || 'null'); } catch (_) { return; }
+      if (!body) return;
+      post(body).then(function (r) { if (r.ok || r.hard) { try { localStorage.removeItem(OUTBOX); } catch (_) {} } });
+    };
+    window.addEventListener('online', flush);
+    setTimeout(flush, 4000);
+    var retry = function (body, n) {
+      post(body).then(function (r) {
+        if (r.ok || r.hard) return;
+        if (n < 3) setTimeout(function () { retry(body, n + 1); }, 1500 * Math.pow(2, n));
+        else stash(body);
+      });
+    };
+
+    // O servidor recusou os dados da etapa 1 quando a pessoa já estava na tela final: volta para
+    // a etapa 1 com o motivo e os campos preenchidos de novo.
+    var bounce = function (body, msg) {
+      form.hidden = false; done.hidden = true;
+      f.name.value = body.name; f.email.value = body.email;
+      var r = form.querySelector('input[name="role"][value="' + body.role + '"]');
+      if (r) r.checked = true;
+      setStep(1); showError(msg);
+    };
+
+    var deliver = function (prior, body, needPost) {
+      (prior || Promise.resolve({ ok: true })).then(function (pr) {
+        if (!pr.ok && pr.hard) return bounce(body, pr.msg);
+        if (pr.ok && !needPost) return;
+        retry(body, 0);
+      });
+    };
+
+    // Conclui: lê tudo do formulário ANTES de mostrar a tela final (showDone limpa os campos).
+    var finish = function (complete, needPost) {
+      var body = payload(), prior = pending;
+      needPost = needPost || step1Failed;
+      pending = null; step1Failed = false;
+      showDone(complete);
+      if (prior || needPost) deliver(prior, body, needPost);
     };
 
     form.addEventListener('submit', function (e) {
       e.preventDefault();
-      if (busy) return;
       clearError();
 
       if (step === 1) {
         if (!val('name')) return showError('Please tell us your name.');
         if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(val('email'))) return showError('Please enter a valid email.');
         if (!val('role')) return showError('Please tell us who you are.');
-        return send(function () { setStep(2); });
+        // Vai para a etapa 2 agora e grava em segundo plano. Se o servidor recusar os dados, volta
+        // para a etapa 1 com o motivo; falha de rede é reenviada pela etapa 2 (que leva tudo).
+        var p = post();
+        pending = p;
+        step1Failed = false;
+        setStep(2);
+        p.then(function (r) {
+          if (pending !== p) return; // a pessoa já concluiu: o deliver() cuida do resultado
+          pending = null;
+          if (r.ok) return;
+          if (r.hard) { setStep(1); showError(r.msg); }
+          else step1Failed = true;
+        });
+        return;
       }
 
       if (!hasHandle() && !nudged) {
@@ -835,15 +926,13 @@
         nudge.scrollIntoView({ block: 'nearest' });
         return;
       }
-      send(function () { showDone(true); });
+      finish(true, true);
     });
 
-    // "Skip for now": a pessoa já está na lista. Se preencheu algo na etapa 2, salva antes.
+    // "Skip for now": a pessoa já está na lista. Se preencheu algo na etapa 2, salva também.
     document.getElementById('xl-wl-skip').addEventListener('click', function () {
-      if (busy) return;
       clearError();
-      if (extrasFilled() > 0) send(function () { showDone(false); });
-      else showDone(false);
+      finish(false, extrasFilled() > 0);
     });
   })();
 </script>
