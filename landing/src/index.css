@@ -1,0 +1,327 @@
+@import "tailwindcss";
+
+/* The page has one theme (light). Library components still carry `dark:` classes, which Tailwind applies on a dark OS
+   by default and which turned their text white on white. `dark:` now only applies under a `.dark` class, which never exists. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@font-face {
+  font-family: "Candice";
+  src: url("/assets/candice-web.ttf") format("truetype");
+  font-weight: 400;
+  font-display: swap;
+}
+
+/* Xiaolee tokens — same palette as docs/DESIGN_SYSTEM.md (warm neutrals + one
+   magenta accent). The bow blue is lifted from the mascot and used sparingly. */
+@theme {
+  --color-cream: #f6f4f1;
+  --color-paper: #fbfaf8;
+  --color-ink: #1a1917;
+  /* ink-2/ink-3/accent/success are tuned so small text clears WCAG AA (4.5:1) on cream, paper, white and the soft panels */
+  --color-ink-2: #5a5751;
+  --color-ink-3: #6f6b64;
+  --color-line: #ece9e4;
+  --color-accent: #c8186f;
+  --color-accent-hover: #b0135f;
+  --color-accent-soft: #fdf0f6;
+  --color-rose: #f7c9e0;
+  --color-bow: #2f5d8f;
+  --color-night: #120f12;
+  --color-success: #187048;
+
+  --font-sans: "Quicksand", ui-sans-serif, system-ui, sans-serif;
+  --font-script: "Oleo Script", "Candice", cursive;
+  --font-brand: "Candice", "Quicksand", sans-serif;
+
+  --ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* inline: these reference per-element vars (--duration, --speed, --i), so they must resolve at the use site */
+@theme inline {
+  /* Magic UI / Aceternity animation hooks */
+  --animate-shimmer-slide: shimmer-slide var(--speed) ease-in-out infinite alternate;
+  --animate-spin-around: spin-around calc(var(--speed) * 2) infinite linear;
+  --animate-marquee: marquee var(--duration) infinite linear;
+  --animate-marquee-vertical: marquee-vertical var(--duration) linear infinite;
+  --animate-orbit: orbit calc(var(--duration) * 1s) linear infinite;
+  --animate-ripple: ripple var(--duration, 2s) ease calc(var(--i, 0) * 0.2s) infinite;
+  --animate-meteor: meteor 5s linear infinite;
+  --animate-aurora: aurora 8s ease-in-out infinite alternate;
+  --animate-spotlight: spotlight 2s ease 0.75s 1 forwards;
+  --animate-float: float 7s var(--ease-spring) infinite;
+  --animate-float-slow: float 11s var(--ease-spring) infinite;
+  --animate-pulse-ring: pulse-ring 2.4s var(--ease-out-expo) infinite;
+}
+
+@keyframes shimmer-slide { to { transform: translate(calc(100cqw - 100%), 0); } }
+@keyframes spin-around {
+  0% { transform: translateZ(0) rotate(0); }
+  15%, 35% { transform: translateZ(0) rotate(90deg); }
+  65%, 85% { transform: translateZ(0) rotate(270deg); }
+  100% { transform: translateZ(0) rotate(360deg); }
+}
+@keyframes marquee { from { transform: translateX(0); } to { transform: translateX(calc(-100% - var(--gap))); } }
+@keyframes marquee-vertical { from { transform: translateY(0); } to { transform: translateY(calc(-100% - var(--gap))); } }
+@keyframes orbit {
+  0% { transform: rotate(calc(var(--angle) * 1deg)) translateY(calc(var(--radius) * 1px)) rotate(calc(var(--angle) * -1deg)); }
+  100% { transform: rotate(calc(var(--angle) * 1deg + 360deg)) translateY(calc(var(--radius) * 1px)) rotate(calc((var(--angle) * -1deg) - 360deg)); }
+}
+@keyframes ripple {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); }
+  50% { transform: translate(-50%, -50%) scale(0.9); }
+}
+@keyframes meteor {
+  0% { transform: rotate(var(--angle)) translateX(0); opacity: 1; }
+  70% { opacity: 1; }
+  100% { transform: rotate(var(--angle)) translateX(-500px); opacity: 0; }
+}
+@keyframes aurora {
+  0% { background-position: 0% 50%; transform: rotate(-5deg) scale(0.9); }
+  25% { background-position: 50% 100%; transform: rotate(5deg) scale(1.1); }
+  50% { background-position: 100% 50%; transform: rotate(-3deg) scale(0.95); }
+  75% { background-position: 50% 0%; transform: rotate(3deg) scale(1.05); }
+  100% { background-position: 0% 50%; transform: rotate(-5deg) scale(0.9); }
+}
+@keyframes spotlight {
+  0% { opacity: 0; transform: translate(-72%, -62%) scale(0.5); }
+  100% { opacity: 1; transform: translate(-50%, -40%) scale(1); }
+}
+@keyframes float {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(0, -12px, 0); }
+}
+@keyframes pulse-ring {
+  0% { transform: scale(0.6); opacity: 0.7; }
+  80%, 100% { transform: scale(2.2); opacity: 0; }
+}
+
+html { scroll-behavior: smooth; scroll-padding-top: 96px; overflow-x: clip; }
+/* Scroll lock lives in CSS, driven by state that already exists (an open <dialog>, or the mobile menu's
+   data-scroll-lock). With JS setting body.style.overflow, the menu closing could undo the dialog's lock. */
+html:has(dialog[open]),
+html:has([data-scroll-lock="true"]) { overflow: hidden; }
+body {
+  margin: 0;
+  background: var(--color-cream);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: clip;
+}
+::selection { background: var(--color-rose); color: #4a0f2e; }
+
+/* Headline voice: Quicksand bold + Oleo Script (closest web match to the Candice logo) for the one word that matters */
+.display { font-weight: 700; letter-spacing: -0.035em; line-height: 0.98; text-wrap: balance; }
+.serif-em { font-family: var(--font-script); font-style: normal; font-weight: 700; letter-spacing: -0.01em; font-size: 0.92em; }
+
+/* Fixed film grain — one fixed, pointer-events-none layer; never on a scroller */
+.grain::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+/* Double-bezel: outer tray + inner core */
+.bezel { background: rgba(26, 25, 23, 0.04); box-shadow: 0 0 0 1px rgba(26, 25, 23, 0.06); }
+.bezel-dark { background: rgba(255, 255, 255, 0.04); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.09); }
+.core { box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.9), 0 30px 60px -30px rgba(80, 30, 60, 0.18); }
+.core-dark { box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.08); }
+
+.hairline-fade {
+  mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+}
+
+/* Loops hang off [data-live]: the host sets it from an IntersectionObserver, so nothing animates unseen. */
+[data-live="false"] .loop,
+[data-live="false"] .loop::before,
+[data-live="false"] .loop::after { animation-play-state: paused; }
+
+/* Hero headline as a clip caption: a rose marker sweeps under each word in turn and rests under the last.
+   --d is the word's start delay. Only transform animates. */
+.cap { position: relative; display: inline-block; isolation: isolate; }
+.cap::before {
+  content: "";
+  position: absolute;
+  inset: 54% -0.07em 0.03em;
+  z-index: -1;
+  border-radius: 0.12em;
+  background: var(--color-rose);
+  transform: scaleX(0);
+  transform-origin: left center;
+  animation:
+    cap-on 0.5s var(--ease-out-expo) var(--d, 0s) both,
+    cap-off 0.4s var(--ease-out-expo) calc(var(--d, 0s) + 0.6s) forwards;
+}
+.cap-last::before { animation: cap-on 0.65s var(--ease-out-expo) var(--d, 0s) both; }
+@keyframes cap-on { from { transform: scaleX(0); transform-origin: left center; } to { transform: scaleX(1); transform-origin: left center; } }
+@keyframes cap-off { from { transform: scaleX(1); transform-origin: right center; } to { transform: scaleX(0); transform-origin: right center; } }
+
+/* Pointer glow on bezels (Bezel `glow`). Bezel writes --mx/--my on mouse move. The ring is the 1px tray edge lit
+   by a radial gradient masked down to the ring; the wash is a soft tint inside the core, under the content. */
+.glow { position: relative; --glow: var(--color-accent); --glow-ring: 60%; --glow-wash: 8%; --mx: 50%; --my: 50%; }
+.bezel-dark.glow { --glow: var(--color-rose); --glow-ring: 80%; --glow-wash: 13%; }
+.glow::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  padding: 1px;
+  pointer-events: none;
+  background: radial-gradient(240px circle at var(--mx) var(--my), color-mix(in srgb, var(--glow) var(--glow-ring), transparent), transparent 70%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  opacity: 0;
+  transition: opacity 0.5s var(--ease-spring);
+}
+.glow-wash {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(420px circle at var(--mx) var(--my), color-mix(in srgb, var(--glow) var(--glow-wash), transparent), transparent 62%);
+  opacity: 0;
+  transition: opacity 0.5s var(--ease-spring);
+}
+@media (hover: hover) {
+  .glow:hover::before, .glow:hover .glow-wash { opacity: 1; }
+}
+
+/* Clipper demo: one playhead sweeps the source while each cut lifts as it passes under it.
+   All three share --cycle, and each card starts its lift at its cut's position on the track (--start). */
+.clip-stage { --cycle: 9s; }
+.playhead { animation: playhead var(--cycle, 4.8s) linear infinite; transform: translateX(-100%); }
+@keyframes playhead {
+  0% { transform: translateX(-100%); opacity: 0; }
+  4%, 96% { opacity: 1; }
+  100% { transform: translateX(0); opacity: 0; }
+}
+.clip-lift { position: relative; animation: clip-lift var(--cycle) var(--ease-out-expo) calc(var(--start) * var(--cycle)) infinite; }
+.clip-lift::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 1rem;
+  box-shadow: 0 0 0 2px var(--color-accent);
+  opacity: 0;
+  pointer-events: none;
+  animation: clip-ring var(--cycle) var(--ease-out-expo) calc(var(--start) * var(--cycle)) infinite;
+}
+@keyframes clip-lift { 0% { transform: none; } 2.5%, 13% { transform: translateY(-10px) scale(1.05); } 16%, 100% { transform: none; } }
+@keyframes clip-ring { 0% { opacity: 0; } 2.5%, 13% { opacity: 1; } 16%, 100% { opacity: 0; } }
+/* the cut on the track thickens while the playhead is inside it; the clip's own bar fills as it "plays"; the check pulses when the last cut ends */
+.clip-seg { animation: clip-seg var(--cycle) var(--ease-out-expo) calc(var(--start) * var(--cycle)) infinite; }
+@keyframes clip-seg { 0% { transform: none; } 2.5%, 13% { transform: scaleY(2.4); } 16%, 100% { transform: none; } }
+.clip-progress { transform: scaleX(0); transform-origin: left center; animation: clip-progress var(--cycle) linear calc(var(--start) * var(--cycle)) infinite; }
+@keyframes clip-progress { 0%, 2.5% { transform: scaleX(0); } 13%, 100% { transform: scaleX(1); } }
+.clip-check { animation: clip-check var(--cycle) var(--ease-out-expo) infinite; }
+@keyframes clip-check { 0%, 85% { transform: scale(1); } 89% { transform: scale(1.45); } 95%, 100% { transform: scale(1); } }
+
+/* Chains demo: three transfers share one 6s loop, 2s apart. A coin slides out from under its chain card along a dotted
+   rail (offset-path, set from the measured geometry), a magenta trail lights the rail behind it with the same easing, and
+   each arrival (27% of the loop) makes the hub ring once. All of it is CSS on one clock, so it never drifts and it pauses
+   with the rest of the loops. Base styles are the reduced-motion end state: dotted rails, nothing moving. */
+.rail-stage { --cycle: 6s; --gap: 2s; }
+.rail-coin {
+  position: absolute; left: 0; top: 0; z-index: 1;
+  width: 24px; height: 24px; font-size: 13px;
+  box-shadow: 0 0 0 2px #fff, 0 8px 14px -6px rgba(200, 24, 111, 0.6);
+  offset-rotate: 0deg; offset-anchor: 50% 50%; offset-distance: 0%;
+  opacity: 0;
+  animation: rail-coin var(--cycle) infinite calc(var(--i) * var(--gap));
+}
+@keyframes rail-coin {
+  0% { offset-distance: 0%; opacity: 0; scale: 0.6; animation-timing-function: cubic-bezier(0.5, 0, 0.2, 1); }
+  3% { opacity: 1; scale: 1; }
+  25% { scale: 1; }
+  27% { offset-distance: 100%; opacity: 1; scale: 0.9; }
+  30%, 100% { offset-distance: 100%; opacity: 0; scale: 0.6; }
+}
+.rail-trail { stroke-dasharray: 1 2; stroke-dashoffset: 1; opacity: 0; animation: rail-trail var(--cycle) infinite calc(var(--i) * var(--gap)); }
+@keyframes rail-trail {
+  0% { stroke-dashoffset: 1; opacity: 0; animation-timing-function: cubic-bezier(0.5, 0, 0.2, 1); }
+  3% { opacity: 1; }
+  27% { stroke-dashoffset: 0; opacity: 1; }
+  44%, 100% { stroke-dashoffset: 0; opacity: 0; }
+}
+.rail-ring { opacity: 0; animation: rail-ring var(--gap) cubic-bezier(0.16, 1, 0.3, 1) infinite calc(var(--cycle) * 0.27); }
+@keyframes rail-ring {
+  0% { scale: 1; opacity: 0.55; }
+  75%, 100% { scale: 1.9; opacity: 0; }
+}
+
+/* Hero objects: the stamp's impact ring, and the payout ticket's perforated bottom edge. */
+.stamp-ring { border: 2px solid color-mix(in srgb, var(--color-success) 55%, transparent); opacity: 0; animation: stamp-ring 0.9s var(--ease-out-expo) forwards; }
+@keyframes stamp-ring { from { transform: scale(0.96); opacity: 0.6; } to { transform: scale(1.75); opacity: 0; } }
+.ticket-edge {
+  -webkit-mask: radial-gradient(circle at 50% 100%, transparent 5px, #000 5.5px) 0 0 / 18px 100% repeat-x;
+  mask: radial-gradient(circle at 50% 100%, transparent 5px, #000 5.5px) 0 0 / 18px 100% repeat-x;
+}
+
+/* Footer wordmark: a ghost of the word in the logo face; a rose-to-magenta spotlight shows through the letters.
+   Registered so touch screens (no hover) can animate the spotlight's position on their own. */
+@property --wm-x { syntax: "<length-percentage>"; inherits: true; initial-value: 50%; }
+@property --wm-y { syntax: "<length-percentage>"; inherits: true; initial-value: 50%; }
+.wm { position: relative; font-family: var(--font-brand); font-size: clamp(88px, 25.5vw, 372px); line-height: 0.8; letter-spacing: -0.01em; white-space: nowrap; user-select: none; }
+.wm-ghost { color: rgba(26, 25, 23, 0.06); }
+/* Two solid-colour copies of the word, each revealed by a radial mask: a wide rose one and a tighter magenta one on top. */
+.wm-glow, .wm-lit { position: absolute; inset: 0; opacity: 0; transition: opacity 0.7s var(--ease-spring); pointer-events: none; }
+.wm-glow {
+  color: var(--color-rose);
+  -webkit-mask-image: radial-gradient(circle 1.05em at var(--wm-x) var(--wm-y), #000 22%, transparent 74%);
+  mask-image: radial-gradient(circle 1.05em at var(--wm-x) var(--wm-y), #000 22%, transparent 74%);
+}
+.wm-lit {
+  color: var(--color-accent);
+  -webkit-mask-image: radial-gradient(circle 0.6em at var(--wm-x) var(--wm-y), #000 14%, transparent 80%);
+  mask-image: radial-gradient(circle 0.6em at var(--wm-x) var(--wm-y), #000 14%, transparent 80%);
+}
+.wm[data-on] .wm-glow, .wm[data-on] .wm-lit { opacity: 1; }
+@keyframes wm-sweep { from { --wm-x: 6%; --wm-y: 38%; } to { --wm-x: 94%; --wm-y: 62%; } }
+@media (hover: none) {
+  .wm-glow, .wm-lit { opacity: 1; animation: wm-sweep 9s var(--ease-out-expo) infinite alternate; }
+}
+
+/* Waitlist confirmation: mascot pop, check badge drawing in, confetti burst. Replays every time the
+   confirmation mounts; the reduced-motion rule below collapses it to the final frame. */
+.wl-hero img { animation: wl-pop 0.55s var(--ease-out-expo) both; }
+.wl-check { position: absolute; right: -8px; bottom: -4px; width: 36px; height: 36px; filter: drop-shadow(0 6px 10px rgba(216, 27, 120, 0.35)); animation: wl-pop 0.45s 0.28s var(--ease-out-expo) both; }
+.wl-check circle { fill: var(--color-accent); stroke: #fff; stroke-width: 2.5; }
+.wl-check path { fill: none; stroke: #fff; stroke-width: 3.4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 26; stroke-dashoffset: 26; animation: wl-draw 0.4s 0.55s ease-out forwards; }
+.wl-spark { position: absolute; left: 50%; top: 50%; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 999px; background: var(--c); opacity: 0; animation: wl-spark 0.8s calc(0.2s + var(--d)) cubic-bezier(0.16, 1, 0.3, 1) both; }
+.wl-up { animation: wl-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+@keyframes wl-pop { from { transform: scale(0.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes wl-draw { to { stroke-dashoffset: 0; } }
+@keyframes wl-up { from { transform: translateY(10px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes wl-spark {
+  from { transform: rotate(var(--a)) translateY(-34px) scale(0.3); opacity: 1; }
+  to { transform: rotate(var(--a)) translateY(-80px) scale(1); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  /* final frames only: no word-by-word sweep, no moving playhead */
+  .cap::before { animation: none; }
+  .cap-last::before { transform: scaleX(1); }
+  .playhead { display: none; }
+  .clip-progress { transform: scaleX(0.66); }
+}
+
+/* Language switch: the new copy wipes in left to right over the old one, which stays put underneath.
+   No opacity change anywhere, so the page never flashes the background. */
+@keyframes lang-wipe { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+::view-transition-old(root) { animation: none; mix-blend-mode: normal; }
+::view-transition-new(root) { animation: lang-wipe 0.5s var(--ease-out-expo) both; mix-blend-mode: normal; }
