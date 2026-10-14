@@ -26,6 +26,7 @@ import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { useBackendData } from '@/hooks/use-backend-data';
 import { useSession } from '@/hooks/use-session';
 import { useWallet } from '@/hooks/use-wallet';
+import { ARC_NETWORK } from '@/lib/arc-network';
 import { formatTokenAmount, formatUSDC } from '@/lib/format';
 import { getSession } from '@/lib/session';
 import { usePrivyWallet } from '@/lib/wallet';
@@ -302,7 +303,7 @@ function WalletConnection() {
               Remontar é o jeito barato de refazer sem duplicar o hook. */}
           <WalletBalance key={address} address={address} />
 
-          <FaucetButton address={address} />
+          {!ARC_NETWORK.isMainnet && <FaucetButton address={address} />}
 
           {/* Desconectar é a única saída dentro do app: sem isto uma sessão
               presa só sai limpando os dados do aplicativo. */}

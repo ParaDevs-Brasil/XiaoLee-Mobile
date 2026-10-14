@@ -29,7 +29,7 @@ import { IntroVideo } from '@/components/intro-video';
 import { LoadingScreen } from '@/components/loading-screen';
 import { Colors, DARK_MODE } from '@/constants/theme';
 import { useAuthState } from '@/hooks/use-auth-state';
-import { arcTestnetChain, PRIVY_CONFIG, WalletProvider } from '@/lib/wallet';
+import { arcChain, PRIVY_CONFIG, WalletProvider } from '@/lib/wallet';
 
 // Necessário para fechar o navegador e completar o fluxo OAuth de volta no app (Android/Web)
 WebBrowser.maybeCompleteAuthSession();
@@ -175,7 +175,7 @@ export default function RootLayout() {
       <PrivyProvider
         appId={PRIVY_APP_ID}
         clientId={PRIVY_CLIENT_ID}
-        supportedChains={[arcTestnetChain]}
+        supportedChains={[arcChain]}
         config={PRIVY_CONFIG}
       >
         <WalletProvider>
