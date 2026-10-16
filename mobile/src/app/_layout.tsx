@@ -29,7 +29,7 @@ import { IntroVideo } from '@/components/intro-video';
 import { LoadingScreen } from '@/components/loading-screen';
 import { Colors, DARK_MODE } from '@/constants/theme';
 import { useAuthState } from '@/hooks/use-auth-state';
-import { arcTestnetChain, PRIVY_CONFIG, WalletProvider } from '@/lib/wallet';
+import { arcChain, PRIVY_CONFIG, WalletProvider } from '@/lib/wallet';
 
 // Necessário para fechar o navegador e completar o fluxo OAuth de volta no app (Android/Web)
 WebBrowser.maybeCompleteAuthSession();
@@ -54,7 +54,7 @@ SplashScreen.preventAutoHideAsync();
  * - Enquanto carrega o SecureStore (`authState === 'loading'`), devolve `null`
  *   para evitar flash da tela de login para quem já possui sessão.
  *
- * Cuidado crítico: todas as 14 rotas do `src/app` precisam estar mapeadas
+ * Cuidado crítico: todas as 16 rotas do `src/app` precisam estar mapeadas
  * dentro de um dos blocos protegidos. No Expo Router, rotas não declaradas
  * são injetadas sem guarda e ficariam abertas.
  */
@@ -91,7 +91,9 @@ function RootNavigator() {
         <Stack.Screen name="notifications" options={{ headerShown: false }} />
         <Stack.Screen name="dashboard" options={{ headerShown: false }} />
         <Stack.Screen name="campaigns/index" options={{ headerShown: false }} />
-        <Stack.Screen name="wallet" options={{ headerShown: false }} />
+        <Stack.Screen name="wallet/index" options={{ headerShown: false }} />
+        <Stack.Screen name="wallet/receipts" options={{ headerShown: false }} />
+        <Stack.Screen name="wallet/breakdown" options={{ headerShown: false }} />
         <Stack.Screen name="transactions" options={{ headerShown: false }} />
         <Stack.Screen name="history" options={{ headerShown: false }} />
         <Stack.Screen name="clips/index" options={{ headerShown: false }} />
@@ -175,7 +177,7 @@ export default function RootLayout() {
       <PrivyProvider
         appId={PRIVY_APP_ID}
         clientId={PRIVY_CLIENT_ID}
-        supportedChains={[arcTestnetChain]}
+        supportedChains={[arcChain]}
         config={PRIVY_CONFIG}
       >
         <WalletProvider>

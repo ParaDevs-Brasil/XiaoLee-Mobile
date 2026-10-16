@@ -25,6 +25,7 @@ import {
 } from '@/api/backend';
 import { useSession } from '@/hooks/use-session';
 import { isRealSession } from '@/lib/auth-state';
+import { ARC_NETWORK } from '@/lib/arc-network';
 import { shortHash } from '@/lib/format';
 import { clearSession, clearWallet, saveSession, saveWallet } from '@/lib/session';
 
@@ -41,28 +42,25 @@ import { clearSession, clearWallet, saveSession, saveWallet } from '@/lib/sessio
  */
 
 /**
- * Chain do Arc Testnet, espelho de `ARC_CHAIN_ID` no backend
- * (`server/settings.py:97`, exposto em `GET /v1/arc/chain-config`).
+ * Chain do Arc usada pelo app (mainnet ou testnet, ver `lib/arc-network.ts`),
+ * espelho de `ARC_CHAIN_ID` no backend (`server/settings.py`, exposto em
+ * `GET /v1/arc/chain-config`).
  *
- * Duplicado aqui de propósito, em vez de buscado: o `PrivyProvider` precisa
+ * Duplicada aqui de propósito, em vez de buscada: o `PrivyProvider` precisa
  * desta config no primeiro render, antes de qualquer chamada async poder
- * resolver. Se o id do testnet mudar, atualizar aqui e em
- * `components/arc-network-sheet.tsx`... — não, aquele arquivo saiu: a
- * carteira embutida nasce direto nesta chain, então o problema que ele
- * existia para resolver (nenhuma carteira externa aceita cadastrar o Arc)
- * não existe mais.
+ * resolver. A carteira embutida nasce direto nesta chain.
  */
-export const ARC_CHAIN_ID = 5042002;
+export const ARC_CHAIN_ID = ARC_NETWORK.chainId;
 
-export const arcTestnetChain = defineChain({
+export const arcChain = defineChain({
   id: ARC_CHAIN_ID,
-  name: 'Arc Testnet',
+  name: ARC_NETWORK.name,
   nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 6 },
   rpcUrls: {
-    default: { http: ['https://rpc.testnet.arc.network'] },
+    default: { http: [ARC_NETWORK.rpcUrl] },
   },
   blockExplorers: {
-    default: { name: 'Arcscan', url: 'https://testnet.arcscan.app' },
+    default: { name: ARC_NETWORK.explorerName, url: ARC_NETWORK.explorerUrl },
   },
 });
 

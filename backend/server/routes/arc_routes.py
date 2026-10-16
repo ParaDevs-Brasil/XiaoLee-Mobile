@@ -139,9 +139,11 @@ async def get_chain_config(request: Request):
     return {
         "chainIdHex": hex(settings.arc_chain_id),
         "chainId": settings.arc_chain_id,
-        "chainName": "Arc Testnet",
+        "chainName": "Arc" if settings.arc_chain_id == 5042 else "Arc Testnet",
         "rpcUrls": [proxy_url],
-        "blockExplorerUrls": ["https://testnet.arcscan.app"],
+        "blockExplorerUrls": [
+            "https://explorer.arc.io" if settings.arc_chain_id == 5042 else "https://testnet.arcscan.app"
+        ],
         "nativeCurrency": {"name": "USDC", "symbol": "USDC", "decimals": 18},
     }
 

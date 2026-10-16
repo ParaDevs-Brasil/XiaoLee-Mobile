@@ -51,6 +51,21 @@ const palette = {
   warn: '#b45309',
   warnSoft: '#fffbeb',
   warnBorder: '#fde68a',
+
+  /**
+   * Cores por origem de dinheiro nos gráficos da carteira (faixa, donut,
+   * ícones dos recebimentos) — a cor segue a origem em todo lugar.
+   *
+   * Campanha é o acento da marca; compra e transferência vêm da paleta
+   * categórica de referência (azul, dourado). Validadas com o
+   * `validate_palette.js` da skill de dataviz, todos os pares (`--pairs all`,
+   * porque no donut toda fatia encosta nas outras), contra `card`: passam
+   * luminosidade, croma, daltonismo (pior ΔE 15.3) e contraste ≥ 3:1. Os
+   * cinzas que estavam aqui antes reprovavam no croma.
+   */
+  chartCampaign: '#d81b78',
+  chartPurchase: '#2a78d6',
+  chartTransfer: '#c98500',
 } as const;
 
 /**
@@ -88,6 +103,14 @@ const paletteDark = {
   warn: '#e0a840',
   warnSoft: '#2e2210',
   warnBorder: '#4a3a16',
+
+  // Mesmos papéis da paleta clara, re-escalonados para o fundo escuro e
+  // validados contra o `card` escuro (pior ΔE de daltonismo 11.6). O rosa é
+  // mais escuro que o `accent` daqui: o `accent` escuro sai da faixa de
+  // luminosidade de fatia e se confunde com o dourado.
+  chartCampaign: '#e5418d',
+  chartPurchase: '#3987e5',
+  chartTransfer: '#c98500',
 } as const;
 
 /**

@@ -411,3 +411,47 @@ export const IconInstagram = (p: IconProps) => (
     <Line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
   </Svg>
 );
+
+// ── Carteira do creator ─────────────────────────────────────────────────────
+
+export const IconCopy = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Rect x="9" y="9" width="12" height="12" rx="2" />
+    <Path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" />
+  </Svg>
+);
+
+/** QR estilizado — três marcadores de canto e um ponto de dado. */
+export const IconQr = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Rect x="3" y="3" width="7" height="7" rx="1" />
+    <Rect x="14" y="3" width="7" height="7" rx="1" />
+    <Rect x="3" y="14" width="7" height="7" rx="1" />
+    <Path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3" />
+  </Svg>
+);
+
+/** Abre fora do app (explorer). */
+export const IconExternal = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Path d="M14 4h6v6" />
+    <Path d="M20 4l-9 9" />
+    <Path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4" />
+  </Svg>
+);
+
+/** Dinheiro que entrou. */
+export const IconArrowDownLeft = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Path d="M17 7 7 17" />
+    <Path d="M17 17H7V7" />
+  </Svg>
+);
+
+/** Compra de conteúdo (x402). */
+export const IconBag = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Path d="M5 8h14l-1 12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1L5 8z" />
+    <Path d="M9 8V6a3 3 0 0 1 6 0v2" />
+  </Svg>
+);
