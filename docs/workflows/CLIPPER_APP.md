@@ -13,7 +13,7 @@ transcrição em janelas, escolha dos cortes, renderização com ffmpeg, retenç
 
 | Rota | O que mostra |
 |---|---|
-| `/clips` (menu ☰ → Clips) | Botão **Choose a video**, com barra de envio, % e tempo restante. Glossário "Words to get right". Lista **Your videos**, com miniatura, status e filtros (All, Processing, Ready, Needs attention). |
+| `/clips` (menu ☰ → Clips) | Botão **Choose a video**, com barra de envio, % e tempo restante. Glossário "Words to get right". Card **Format ideas** (seção 3.1). Lista **Your videos**, com miniatura, status e filtros (All, Processing, Ready, Needs attention). |
 | `/clips/[id]` | Passos do processamento, escolha de enquadramento, **Generate 3 clips**, cards dos cortes (miniatura, trecho, citação, motivo) com **Play**, **Save** e **Share**, e ações de renomear e apagar. |
 | Player | Tela cheia, com controles próprios. A URL do vídeo é pedida de novo ao tocar, porque as URLs do R2 valem 1 h. |
 
@@ -21,12 +21,13 @@ Arquivos principais:
 
 | Arquivo | Responsabilidade |
 |---|---|
-| `mobile/src/api/backend.ts` | Chamadas `/v1/media*` e `/v1/media/glossary*` |
+| `mobile/src/api/backend.ts` | Chamadas `/v1/media*`, `/v1/media/glossary*` e `/v1/media/format-suggestions` |
+| `mobile/src/lib/format-ideas.ts` | Regras puras do card Format ideas, testadas em `format-ideas.test.ts` |
 | `mobile/src/lib/clips.ts` | Regras puras, testadas em `clips.test.ts`: passo da tela (`clipFlow`), status da lista (`mediaListStatus`), detecção de travamento (`isStale`), nomes de arquivo, formatação |
 | `mobile/src/lib/clip-share.ts` | Destinos do corte: `downloadClip`, `saveClipToDevice`, `shareClip` |
 | `mobile/src/lib/media-upload.ts`, `hooks/use-media-upload.ts` | Seletor de arquivo e envio pelo `PUT` pré-assinado, até o `/complete` |
 | `mobile/src/hooks/use-backend-data.ts` | Busca com recarga ao focar a tela. A consulta repetida (`pollMs`) pode depender dos dados já recebidos. |
-| `mobile/src/app/clips/*`, `components/{clip-card,clip-player,video-row,glossary-card,…}.tsx` | Telas e componentes |
+| `mobile/src/app/clips/*`, `components/{clip-card,clip-player,video-row,glossary-card,format-ideas-card,…}.tsx` | Telas e componentes |
 
 ## 2. Como a tela sabe em que passo está
 
@@ -76,9 +77,27 @@ longa legítima (até 4 h de áudio, mais a fila).
 | `GET /v1/media/{id}/clips` | Cortes, com `download_url` e `thumbnail_url` (válidas por 1 h) |
 | `PATCH` / `DELETE /v1/media/{id}/clips/{clip_id}` | Renomear e apagar um corte |
 | `GET` / `PUT /v1/media/glossary`, `GET /v1/media/glossary/suggestions` | Glossário do creator. O `PUT` substitui a lista inteira. |
+| `GET /v1/media/format-suggestions?lang=en\|pt` | 2-3 formatos de conteúdo sugeridos pela IA (seção 3.1) |
 
 Enquadramento: **Automatic** é o padrão (o Claude olha quadros do vídeo e escolhe). Se falhar, o backend usa
 "Screen recording", que nunca corta conteúdo.
+
+### 3.1 Format ideas (XIAOLEEACE-32)
+
+A IA sugere 2-3 formatos para o creator publicar (nome, por quê, frase de abertura, rede e duração). O contexto é o
+perfil do onboarding (interesses, bio, redes) mais os 5 vídeos transcritos mais recentes: título, começo da fala e
+títulos dos cortes escolhidos. Sem vídeos, a sugestão sai só do perfil.
+
+- **Mesmo worker dos cortes.** `server/format_advisor.py` chama `clipper._call_tool`: Claude por padrão, Groq com
+  `HIGHLIGHTS_PROVIDER=groq`, e o mesmo 503 genérico quando o provedor falha. Nenhuma chave ou cliente novo.
+- **O modelo só sugere.** O código descarta item incompleto ou repetido, limita os textos e prende a duração entre
+  10 e 180 s. Menos de 2 válidas responde 502.
+- **Regras do prompt, vindas de teste com vídeos reais.** Pelo menos 2 formatos partem do assunto dos vídeos (sem
+  isso o modelo só repetia os interesses). A frase de abertura não promete ganho ("earn $X", "X% yield") nem afirma
+  fato que não está nos vídeos.
+- **Custo.** O app só pede quando o creator abre o card. O backend guarda a resposta por contexto (perfil + vídeos +
+  idioma) em memória, então pedir de novo sem vídeo novo nem perfil editado não chama o modelo.
+- **Idioma.** O app pede `lang=en`, como o resto das telas, até o mobile ter i18n. O backend já aceita `pt`.
 
 ### Erros que o app mostra
 
@@ -87,6 +106,7 @@ Enquadramento: **Automatic** é o padrão (o Claude olha quadros do vídeo e esc
 | Provedor de IA indisponível: sem chave, **sem crédito**, chave inválida, limite de uso, fora do ar | 503 "Clip service is temporarily unavailable. Try again later." | A mensagem genérica. O motivo real (ex.: `credit balance is too low`) fica **só no log**. |
 | Storage não configurado | 503 com a mesma mensagem | Idem |
 | Falha inesperada na escolha dos cortes | 502 "highlight detection failed, try again" | Tentar de novo faz sentido |
+| Format ideas: provedor indisponível / resposta inútil | 503 / 502 | "unavailable right now" sem botão / "Couldn’t get format ideas." com **Try again** |
 | Nenhum trecho aproveitável | 422 "no usable highlights found in this video" | — |
 | Render de um corte falhou | corte `failed`, com "render failed, generate the clips again" | O stderr do ffmpeg fica no log |
 | Arquivo ilegível na transcrição | `failed`, com "could not read this file as video or audio…" | — |

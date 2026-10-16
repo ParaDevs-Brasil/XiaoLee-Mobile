@@ -398,6 +398,41 @@ export async function getGlossarySuggestions(): Promise<GlossarySuggestion[]> {
   return res.suggestions ?? [];
 }
 
+export type FormatPlatform = 'tiktok' | 'reels' | 'shorts' | 'x';
+
+/** Formato de conteúdo sugerido pela IA (XIAOLEEACE-32). */
+export interface FormatSuggestion {
+  /** Nome curto do formato, ex.: "Mito ou verdade". */
+  format: string;
+  /** Por que combina com este creator. */
+  why: string;
+  /** Exemplo de frase para os primeiros segundos. */
+  hook: string;
+  platform: FormatPlatform;
+  /** Duração ideal, em segundos (10-180). */
+  duration_s: number;
+}
+
+export interface FormatSuggestions {
+  suggestions: FormatSuggestion[];
+  /** Quantos vídeos do creator entraram no contexto; 0 = só o perfil do onboarding. */
+  based_on_videos: number;
+}
+
+/**
+ * 2-3 formatos para publicar, do perfil do onboarding + vídeos do creator —
+ * `GET /v1/media/format-suggestions` (`format_advisor.py`, mesmo worker de IA
+ * dos cortes). O backend guarda a resposta por contexto: pedir de novo sem
+ * vídeo novo nem perfil editado não chama o modelo. `lang` fica em `en`, como
+ * o resto do app, até o mobile ter i18n.
+ */
+export async function getFormatSuggestions(lang: 'en' | 'pt' = 'en'): Promise<FormatSuggestions> {
+  const res = await apiFetch<Partial<FormatSuggestions>>(`/v1/media/format-suggestions?lang=${lang}`, {
+    timeoutMs: 60_000,
+  });
+  return { suggestions: res.suggestions ?? [], based_on_videos: res.based_on_videos ?? 0 };
+}
+
 /** `POST /auth/wallet` — `backend/server/campaigns_routes.py::link_wallet` */
 export interface WalletLinkResponse {
   address: string;

@@ -7,6 +7,8 @@ Fluxo (o arquivo nunca passa pelo backend):
     POST /v1/media/{id}/complete  → confere o objeto no bucket e dispara a transcrição
     GET  /v1/media[/{id}]         → lista / detalhe (com transcrição quando pronta)
 
+    GET  /v1/media/format-suggestions → 2-3 formatos de conteúdo do perfil + vídeos (format_advisor)
+
     POST /v1/media/{id}/clips     → Claude escolhe 3 highlights; renderiza em background (9:16 legendado; ?layout=crop|fit)
     GET  /v1/media/{id}/clips     → cortes + URL de download dos prontos
 
@@ -42,7 +44,7 @@ from database import database as _dbmod
 from database.database import get_db_session
 from database.models import MediaAsset, MediaClip, MediaGlossary, MediaTranscript, User
 from database.repository import to_utc_iso
-from server import clipper, media_storage
+from server import clipper, format_advisor, media_storage
 from server.campaigns_routes import _resolve_user
 from server.settings import settings
 
@@ -395,6 +397,59 @@ async def glossary_suggestions(
     )).scalars().all()
     known = await _glossary_terms(db, user.id)
     return {"suggestions": suggest_glossary([json.loads(r) for r in rows], known)}
+
+
+FORMAT_SCAN_ASSETS = 5
+
+
+async def _format_samples(db: AsyncSession, user_id: int) -> list[dict]:
+    """Últimos vídeos transcritos do creator: título, começo da fala e títulos dos cortes já escolhidos."""
+    rows = (await db.execute(
+        select(MediaAsset, MediaTranscript.segments_json)
+        .join(MediaTranscript, MediaTranscript.media_id == MediaAsset.id)
+        .where(MediaAsset.user_id == user_id)
+        .order_by(MediaAsset.id.desc()).limit(FORMAT_SCAN_ASSETS)
+    )).all()
+    clips: dict[int, list[str]] = {}
+    if rows:
+        for media_id, title in (await db.execute(
+            select(MediaClip.media_id, MediaClip.title)
+            .where(MediaClip.media_id.in_([a.id for a, _ in rows])).order_by(MediaClip.rank)
+        )).all():
+            clips.setdefault(media_id, []).append(title)
+    return [
+        {"title": a.title or a.filename,
+         "excerpt": " ".join(s["text"] for s in json.loads(seg))[:format_advisor.SAMPLE_CHARS],
+         "clips": clips.get(a.id, [])}
+        for a, seg in rows
+    ]
+
+
+@router.get("/format-suggestions")
+async def format_suggestions(
+    lang: str = "en",
+    authorization: Optional[str] = Header(default=None),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """2-3 formatos de conteúdo para o creator publicar, do perfil do onboarding + vídeos dele (XIAOLEEACE-32).
+    `lang` é o idioma do app (pt|en), não o dos vídeos: o texto é para o creator ler na tela."""
+    user = await _resolve_user(db, authorization, strict=True)
+    profile = {
+        "interest_profile": json.loads(user.interest_profile) if user.interest_profile else [],
+        "bio": user.bio,
+        "social_links": json.loads(user.social_links) if user.social_links else {},
+    }
+    samples = await _format_samples(db, user.id)
+    # Fecha a transação antes da IA (até 60 s): a conexão volta ao pool em vez de ficar presa esperando o modelo.
+    await db.commit()
+    try:
+        picks = await format_advisor.suggest_formats(profile, samples, lang)
+    except clipper.ProviderUnavailable as exc:
+        raise _unavailable(exc)
+    except Exception:
+        logger.exception("format suggestions failed for user %s", user.id)
+        raise HTTPException(502, "format suggestions failed, try again")
+    return {"suggestions": [p.to_dict() for p in picks], "based_on_videos": len(samples)}
 
 
 @router.get("", response_model=list[MediaOut])
