@@ -34,11 +34,10 @@ const palette = {
   ink: '#1a1917',
   ink2: '#6b6862',
   /**
-   * Diverge de propósito do `#9a968f` do design system: aquele dava 2.94:1
-   * sobre `card` e 2.68:1 sobre `bg`, ilegível nos horários, contagens e
-   * dicas que usam este token. `#736f68` dá 5.0:1 / 4.55:1 (AA) e continua
-   * mais claro que `ink2`. Pendência: levar para `docs/DESIGN_SYSTEM.md` e
-   * para o Figma, junto com o `warn` abaixo.
+   * Era `#9a968f` até a revisão v4 do design system: dava 2.94:1 sobre
+   * `card` e 2.68:1 sobre `bg`, ilegível nos horários, contagens e dicas que
+   * usam este token. `#736f68` dá 5.0:1 / 4.55:1 (AA) e continua mais claro
+   * que `ink2`. Já em `docs/DESIGN_SYSTEM.md` (v5); falta o Figma.
    */
   ink3: '#736f68',
 
@@ -84,8 +83,7 @@ const palette = {
    * quando o pagamento liquidou, só que devagar. Conferido para AA — `warn`
    * sobre `warnSoft` dá 4.8:1 e sobre `card` 5.0:1.
    *
-   * Pendência: levar de volta para `docs/DESIGN_SYSTEM.md` e para o arquivo
-   * Figma, senão o web e o mobile divergem na próxima revisão da paleta.
+   * Documentado em `docs/DESIGN_SYSTEM.md` (v5, seção 3.6); falta o Figma.
    */
   warn: '#b45309',
   warnSoft: '#fffbeb',
@@ -136,8 +134,9 @@ const palette = {
  * token, luminância invertida), não portados de um Figma.
  *
  * Contraste conferido com a fórmula WCAG, token a token, contra `card` e
- * `bg` escuros: `ink` 15.1:1, `ink2` 8.0:1, `ink3` 4.7:1, `accent` 5.1:1, `success`/`danger`/`warn` sobre o próprio
- * `*Soft` 7.1 / 5.1 / 7.3:1. Pendência: levar para `docs/DESIGN_SYSTEM.md`.
+ * `bg` escuros: `ink` 15.1:1, `ink2` 8.0:1, `ink3` 4.7:1,
+ * `accent` 5.1:1, `success`/`danger`/`warn` sobre o próprio `*Soft`
+ * 7.1 / 5.1 / 7.3:1. Documentada em `docs/DESIGN_SYSTEM.md` (v5, seção 3.6).
  */
 const paletteDark = {
   bg: '#141316',
