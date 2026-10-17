@@ -1233,6 +1233,42 @@ class OrchestrationService:
                     "execution": {"status": "evm_transfer_unconfigured", "animation": "Ouch"},
                 }
 
+            # Aviso antes do botão: sem saldo, a falha só viria na assinatura. É um aviso — se o saldo
+            # não puder ser lido, segue (a rede recusa de qualquer forma); sem carteira, nada a conferir.
+            if evm_wallet:
+                try:
+                    from server.routes.arc_routes import read_arc_usdc_balance
+                    balance = await read_arc_usdc_balance(evm_wallet)
+                except Exception:
+                    logger.warning("transfer pre-check: Arc balance read failed", exc_info=True)
+                else:
+                    if amount > balance:
+                        instruction = (
+                            f"{_PLATFORM_CONTEXT} "
+                            f"O usuário pediu para enviar {amount:g} USDC no Arc, mas a wallet dele tem só "
+                            f"{balance:g} USDC. Diga isso de forma gentil (os dois valores) e pergunte se ele "
+                            "quer enviar um valor menor. Não prepare nem prometa a transação. Máximo 2 frases."
+                        )
+                        try:
+                            reply = await self.gemini.generate_reply(
+                                instruction=instruction, user_text=clean_text, history=history
+                            )
+                        except Exception:
+                            reply = (
+                                f"Saldo insuficiente 😔 você tem {balance:g} USDC e o envio pede {amount:g}. "
+                                "Quer tentar um valor menor?"
+                            )
+                        return {
+                            "intent": intent,
+                            "reply_text": reply,
+                            "execution": {
+                                "status": "evm_transfer_insufficient_balance",
+                                "chain": "arc",
+                                "balance_usdc": balance,
+                                "animation": "Ouch",
+                            },
+                        }
+
             # calldata ERC-20 transfer(address,uint256) — USDC tem 6 decimais
             amount_units = int(round(amount * 1_000_000))
             calldata = (
