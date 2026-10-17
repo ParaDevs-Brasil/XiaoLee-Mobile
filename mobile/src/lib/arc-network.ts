@@ -21,7 +21,7 @@ export const ARC_NETWORK = isMainnet
       isMainnet: false,
       chainId: 5042002,
       name: 'Arc Testnet',
-      rpcUrl: 'https://rpc.testnet.arc.network',
+      rpcUrl: 'https://rpc.testnet.arc.io',
       explorerName: 'Arcscan',
       explorerUrl: 'https://testnet.arcscan.app',
     };
