@@ -48,8 +48,9 @@ from server.routes.arc_x402_routes import router as arc_x402_router
 from server.routes.trust_routes import router as trust_router
 from server.routes.cctp_routes import router as cctp_router
 from server.routes.chat_sessions_routes import router as chat_sessions_router
-from server import media_maintenance
+from server import creator_report, media_maintenance
 from server.media_routes import router as media_router
+from server.creator_report_routes import router as creator_report_router
 from server.traction_routes import router as traction_router
 
 
@@ -83,6 +84,7 @@ async def lifespan(app: FastAPI):
     logger.info("X poller scheduled")
 
     media_task = asyncio.create_task(media_maintenance.run_forever())
+    report_task = asyncio.create_task(creator_report.run_forever())
 
     # Restart resilience: mark any payment_intents that were left as 'pending'
     # (i.e. the process crashed before Arc could confirm) as 'failed' so they
@@ -132,7 +134,7 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    for task in (telegram_task, x_task, media_task):
+    for task in (telegram_task, x_task, media_task, report_task):
         if task and not task.done():
             task.cancel()
             try:
@@ -198,6 +200,7 @@ app.include_router(trust_router)
 app.include_router(cctp_router)
 app.include_router(chat_sessions_router)
 app.include_router(media_router)
+app.include_router(creator_report_router)
 app.include_router(traction_router)
 
 request_hits: Dict[str, Deque[datetime]] = defaultdict(deque)

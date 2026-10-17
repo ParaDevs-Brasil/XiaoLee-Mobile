@@ -94,6 +94,12 @@ class Settings:
     media_max_bytes:      int = int(os.getenv("MEDIA_MAX_BYTES", str(2 * 1024**3)))
     # Dias até apagar o vídeo original e os cortes do bucket (0 = nunca). Uploads que nunca foram concluídos: 2 dias.
     media_retention_days: int = int(os.getenv("MEDIA_RETENTION_DAYS", "30"))
+    # Relatório de 30 dias por creator (server/creator_report.py). false = o job não roda (nem chama a IA).
+    creator_report_enabled: bool = os.getenv("CREATOR_REPORT_ENABLED", "true").lower() != "false"
+    # De quantas em quantas horas o job procura creators que completaram 30 dias. A procura em si é uma consulta
+    # barata; o custo (uma chamada à IA) só existe para quem está devido, então isto muda o atraso máximo da
+    # entrega, não o gasto.
+    creator_report_check_hours: int = max(1, int(os.getenv("CREATOR_REPORT_CHECK_HOURS", "24")))
     # Transcrição: endpoint OpenAI-compatível. GROQ_API_KEY sozinha já configura o Groq (ver _transcription_config).
     transcription_api_key:  str = _transcription_config(os.environ)[0]
     transcription_base_url: str = _transcription_config(os.environ)[1]
