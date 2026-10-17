@@ -831,6 +831,8 @@ function SwapButton({
   message: Message;
   onSwapped: (id: string, hash: string, amountOut?: string) => void;
 }) {
+  const colors = useTheme();
+  const styles = useStyles();
   const { isConnected, estimateSwap, swap: runSwap } = usePrivyWallet();
   // Um estado só, indexado pela cotação pedida: a "atual" é derivada (só vale se a chave bate),
   // então trocar de pedido ou tentar de novo volta a "carregando" sem setState dentro do efeito.
@@ -871,7 +873,7 @@ function SwapButton({
     const linkable = isOnChainTx(message.swapTxHash);
     const badge = (
       <View style={styles.txDone}>
-        <IconCheck size={14} color={Colors.light.success} />
+        <IconCheck size={14} color={colors.success} />
         <Text style={styles.txDoneText}>
           Swapped · {shortHash(message.swapTxHash)}
           {message.swapAmountOut ? ` · +${fmtAmount(message.swapAmountOut)} ${request.tokenOut}` : ''}
@@ -930,10 +932,10 @@ function SwapButton({
         accessibilityRole="button"
       >
         {swapping ? (
-          <ActivityIndicator size="small" color={Colors.light.card} />
+          <ActivityIndicator size="small" color={colors.onAccent} />
         ) : (
           <>
-            <IconWallet size={15} color={Colors.light.card} />
+            <IconWallet size={15} color={colors.onAccent} />
             <Text style={styles.signButtonText}>
               Swap {request.tokenIn} → {request.tokenOut}
             </Text>
