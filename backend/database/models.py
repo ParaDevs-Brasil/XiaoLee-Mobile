@@ -357,3 +357,21 @@ class MediaClip(Base):
     size_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     # JPEG de um quadro do corte já renderizado (com a legenda queimada).
     thumb_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class CreatorReport(Base):
+    """Relatório de 30 dias do creator (server/creator_report.py): métricas do período + sugestões da IA.
+
+    Um por (usuário, início do período) — o job pode rodar de novo sem duplicar. `metrics_json` guarda o
+    período e o anterior ({"current": {...}, "previous": {...}}); `suggestions_json` é [{title, action, why}].
+    """
+    __tablename__ = 'creator_reports'
+    __table_args__ = (UniqueConstraint('user_id', 'period_start', name='uq_creator_report_period'),)
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    period_start: Mapped[datetime] = mapped_column(DateTime)
+    period_end: Mapped[datetime] = mapped_column(DateTime)
+    metrics_json: Mapped[str] = mapped_column(Text)
+    summary: Mapped[str] = mapped_column(Text)
+    suggestions_json: Mapped[str] = mapped_column(Text)
+    lang: Mapped[str] = mapped_column(String(8), default='en')

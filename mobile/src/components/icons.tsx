@@ -388,6 +388,13 @@ export const IconTrendingUp = (p: IconProps) => (
   </Svg>
 );
 
+export const IconTrendingDown = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Polyline points="22 17 13.5 8.5 8.5 13.5 2 7" />
+    <Polyline points="16 17 22 17 22 11" />
+  </Svg>
+);
+
 export const IconSmile = (p: IconProps) => (
   <Svg {...base(p)}>
     <Circle cx="12" cy="12" r="10" />

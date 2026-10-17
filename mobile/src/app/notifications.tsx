@@ -1,3 +1,4 @@
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,6 +9,7 @@ import {
   IconAlert,
   IconBell,
   IconCheck,
+  IconChevronRight,
   IconClock,
   IconInbox,
   IconRefresh,
@@ -20,6 +22,7 @@ import { SectionCard } from '@/components/section-card';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { useBackendData } from '@/hooks/use-backend-data';
 import { useSession } from '@/hooks/use-session';
+import { reportIdOf } from '@/lib/creator-report';
 import { formatTokenAmount, shortHash } from '@/lib/format';
 import { getSession } from '@/lib/session';
 
@@ -286,11 +289,21 @@ function NotificationRow({
   onAck: () => void;
 }) {
   const tone = toneOf(item.status);
+  const router = useRouter();
   const channel = CHANNEL[item.channel] ?? { Icon: IconBell, label: item.channel };
-  const meta = metadataRows(item.metadata);
+  // Relatório de 30 dias: o metadata é só o ponteiro (`kind`, `report_id`) —
+  // em vez de linhas rotuladas, o card inteiro abre a tela do relatório.
+  const reportId = reportIdOf(item.metadata);
+  const meta = reportId ? [] : metadataRows(item.metadata);
 
-  return (
-    <View style={styles.row}>
+  // Abrir o relatório é ler a notificação: conta como ack, e o badge do sino some.
+  const openReport = () => {
+    if (tone === 'pending') onAck();
+    router.push({ pathname: '/reports/[id]', params: { id: String(reportId) } });
+  };
+
+  const content = (
+    <>
       <View style={styles.rowTop}>
         <View style={[styles.dot, DOT[tone]]} />
 
@@ -309,6 +322,13 @@ function NotificationRow({
         <View style={styles.receipt}>
           <Text style={styles.receiptLabel}>Receipt</Text>
           <Text style={styles.receiptValue}>{item.related_signature}</Text>
+        </View>
+      ) : null}
+
+      {reportId ? (
+        <View style={styles.openReport}>
+          <Text style={styles.openReportText}>Open report</Text>
+          <IconChevronRight size={13} sw={2.2} color={Colors.light.accent} />
         </View>
       ) : null}
 
@@ -357,7 +377,20 @@ function NotificationRow({
           </View>
         )}
       </View>
-    </View>
+    </>
+  );
+
+  if (!reportId) return <View style={styles.row}>{content}</View>;
+
+  return (
+    <Pressable
+      onPress={openReport}
+      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+      accessibilityRole="button"
+      accessibilityLabel={`${item.title}. Open report`}
+    >
+      {content}
+    </Pressable>
   );
 }
 
@@ -505,6 +538,18 @@ const styles = StyleSheet.create({
     color: Colors.light.accent,
   },
   receiptValue: { fontFamily: Fonts.mono, fontSize: 10, color: Colors.light.ink2 },
+
+  openReport: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 2,
+    paddingHorizontal: Spacing.three - 2,
+    paddingVertical: Spacing.two - 2,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.light.accentSoft,
+  },
+  openReportText: { fontFamily: Fonts.bold, fontSize: 11, color: Colors.light.accent },
 
   meta: {
     gap: 2,

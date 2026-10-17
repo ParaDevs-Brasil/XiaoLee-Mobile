@@ -98,6 +98,8 @@ function RootNavigator() {
         <Stack.Screen name="history" options={{ headerShown: false }} />
         <Stack.Screen name="clips/index" options={{ headerShown: false }} />
         <Stack.Screen name="clips/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="reports/index" options={{ headerShown: false }} />
+        <Stack.Screen name="reports/[id]" options={{ headerShown: false }} />
         {/* O formulário é a exceção: entra como modal e mantém a barra
             nativa. Num formulário longo o usuário precisa de uma saída
             sempre visível, e o wordmark do ScreenShell não é uma. */}
