@@ -1,7 +1,8 @@
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { IconBell, IconMenu, IconSpark, IconUser } from '@/components/icons';
+import { IconBell, IconSpark, IconUser } from '@/components/icons';
+import { MenuToggleIcon } from '@/components/menu-toggle-icon';
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useProfilePhoto } from '@/hooks/use-profile-photo';
@@ -21,6 +22,8 @@ interface HeaderBarProps {
   onPressProfile?: () => void;
   /** Volta para o chat. Sem handler o wordmark fica inerte, como era antes. */
   onPressLogo?: () => void;
+  /** Menu aberto: o hambúrguer vira X. */
+  menuOpen?: boolean;
   /** Contagem para o badge sobre o sino — 0/undefined não desenha nada. */
   unreadCount?: number;
 }
@@ -30,6 +33,7 @@ export function HeaderBar({
   onPressMenu,
   onPressProfile,
   onPressLogo,
+  menuOpen = false,
   unreadCount,
 }: HeaderBarProps) {
   const colors = useTheme();
@@ -86,9 +90,15 @@ export function HeaderBar({
           onPress={onPressMenu}
           hitSlop={Spacing.two}
           accessibilityRole="button"
-          accessibilityLabel="Menu"
+          accessibilityLabel={menuOpen ? 'Fechar menu' : 'Menu'}
+          accessibilityState={{ expanded: menuOpen }}
+          style={({ pressed }) => pressed && styles.menuPressed}
         >
-          <IconMenu size={26} sw={2.2} color={colors.accent} />
+          <MenuToggleIcon
+            open={menuOpen}
+            color={colors.accent}
+            activeFill={colors.accentSoft}
+          />
         </Pressable>
 
         {/* Avatar: a foto de perfil quando há (a mesma do card de share e do
@@ -140,6 +150,7 @@ const useStyles = makeStyles((colors) => ({
     alignItems: 'center',
     gap: Spacing.three,
   },
+  menuPressed: { transform: [{ scale: 0.88 }] },
   avatar: {
     width: 30,
     height: 30,
