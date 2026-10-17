@@ -5,6 +5,7 @@ import logging
 import re
 from typing import Any, Dict, Optional
 
+from server.caller_trust import unverified_caller
 from server.integrations.gemini_client import GeminiClient
 from server.integrations.solana_client import SolanaClient
 from server.integrations.stellar_adapter import StellarAdapter
@@ -724,7 +725,9 @@ class OrchestrationService:
             if tool_name in {
                 "create_campaign", "join_campaign", "verify_campaign_tasks", "prepare_campaign_claim",
             }:
-                if user_id == "web_anonymous":
+                # `unverified_caller`: entrou pelo HTTP aberto sem um token que o
+                # backend emitiu — o `user_id` veio do corpo e não prova quem é.
+                if user_id == "web_anonymous" or unverified_caller.get():
                     return json.dumps({
                         "error": "no_session",
                         "message": "Usuário precisa estar logado para isso — peça para conectar/entrar antes.",
@@ -734,7 +737,9 @@ class OrchestrationService:
             if tool_name == "create_campaign":
                 try:
                     from server.campaigns_routes import (
-                        create_campaign as _create_campaign_route,
+                        create_campaign_for_user,
+                        _resolve_user,
+                        _seed_default_campaigns,
                         CreateCampaignRequest,
                     )
                     payload = CreateCampaignRequest(
@@ -748,10 +753,15 @@ class OrchestrationService:
                         tweet_id_to_engage=tool_input.get("tweet_id_to_engage"),
                     )
                     async with _campaigns_db() as db:
-                        resp = await _create_campaign_route(payload, db, authorization=authorization)
+                        # Mesma validação/guardas da rota HTTP (`create_campaign_for_user`);
+                        # a identidade já foi verificada pelo gate acima.
+                        await _seed_default_campaigns(db)
+                        creator = await _resolve_user(db, authorization)
+                        resp = await create_campaign_for_user(db, creator, payload)
                 except Exception as exc:
                     logger.warning("[chat-tool] create_campaign failed input=%r", tool_input, exc_info=True)
-                    return json.dumps({"error": "create_campaign_failed", "message": str(exc)})
+                    # HTTPException traz a frase pronta para o usuário em `detail`.
+                    return json.dumps({"error": "create_campaign_failed", "message": getattr(exc, "detail", None) or str(exc)})
                 captured["actions"].append("create_campaign")
                 return json.dumps(resp)
 
