@@ -69,6 +69,15 @@ class Settings:
     x_bearer_token: str = os.getenv("X_BEARER_TOKEN", "")
     x_dm_api_base_url: str = os.getenv("X_DM_API_BASE_URL", "https://api.x.com")
     inbound_rate_limit_per_minute: int = int(os.getenv("INBOUND_RATE_LIMIT_PER_MINUTE", "60"))
+
+    # ── Guardas de criação de campanha ───────────────────────────────────────
+    # Tetos por campanha (USDC) e participantes; o criador precisa ter o pool em
+    # carteira (Arc) quando `campaign_require_funds`. Ajustáveis por env sem deploy de código.
+    campaign_max_pool_usdc: float = float(os.getenv("CAMPAIGN_MAX_POOL_USDC", "1000"))
+    campaign_max_reward_usdc: float = float(os.getenv("CAMPAIGN_MAX_REWARD_USDC", "100"))
+    campaign_max_participants: int = int(os.getenv("CAMPAIGN_MAX_PARTICIPANTS", "10000"))
+    campaign_allowed_tokens: str = os.getenv("CAMPAIGN_ALLOWED_TOKENS", "USDC")
+    campaign_require_funds: bool = os.getenv("CAMPAIGN_REQUIRE_FUNDS", "true").lower() == "true"
     cors_allowed_origins: list[str] = None
     cors_allowed_origin_regex: str = ""
     

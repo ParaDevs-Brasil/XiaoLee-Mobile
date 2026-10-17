@@ -356,6 +356,23 @@ async def resolve_optional_identity(db: AsyncSession, authorization: Optional[st
     return (await resolve_twitter_identity(db, authorization))[0]
 
 
+async def resolve_verified_identity(db: AsyncSession, authorization: Optional[str]) -> Optional[str]:
+    """``twitter_user_id`` só se o Bearer é um token que o backend emitiu; senão None.
+
+    Diferente de `resolve_optional_identity`, o modo legado (o próprio id/endereço
+    usado como token) NÃO conta: esse valor é público, então não prova quem
+    chama. Token expirado continua dando 401.
+    """
+    if not authorization or not authorization.removeprefix("Bearer ").strip():
+        return None
+    try:
+        return (await resolve_twitter_identity(db, authorization, strict=True))[0]
+    except HTTPException as exc:
+        if exc.detail == "Invalid session":
+            return None
+        raise
+
+
 async def _resolve_user(db: AsyncSession, authorization: Optional[str], *, strict: bool = False) -> User:
     twitter_user_id, twitter_handle = await resolve_twitter_identity(db, authorization, strict=strict)
 
@@ -1022,14 +1039,66 @@ async def get_user_campaigns(
     return await _list_user_campaigns(db, authorization)
 
 
-@router.post("/campaigns/create")
-async def create_campaign(
-    payload: CreateCampaignRequest,
-    db: AsyncSession = Depends(get_db_session),
-    authorization: Optional[str] = Header(default=None),
-):
-    await _seed_default_campaigns(db)
-    user = await _resolve_user(db, authorization)
+def _validate_campaign_limits(payload: CreateCampaignRequest) -> float:
+    """Valida valores e tetos; devolve o pool. Levanta 400 com mensagem legível (o chat repassa)."""
+    import math
+
+    reward, people = payload.reward_per_participant, payload.max_participants
+    if not (isinstance(reward, (int, float)) and math.isfinite(reward) and reward > 0):
+        raise HTTPException(status_code=400, detail="A recompensa por participante precisa ser maior que zero.")
+    if people < 1:
+        raise HTTPException(status_code=400, detail="O máximo de participantes precisa ser pelo menos 1.")
+    allowed = {t.strip().upper() for t in settings.campaign_allowed_tokens.split(",") if t.strip()}
+    if payload.reward_token.strip().upper() not in allowed:
+        raise HTTPException(
+            status_code=400, detail=f"Token de recompensa não suportado. Use: {', '.join(sorted(allowed))}."
+        )
+    if reward > settings.campaign_max_reward_usdc:
+        raise HTTPException(
+            status_code=400, detail=f"A recompensa por participante pode ser no máximo {settings.campaign_max_reward_usdc:g} USDC."
+        )
+    if people > settings.campaign_max_participants:
+        raise HTTPException(
+            status_code=400, detail=f"O máximo de participantes pode ser {settings.campaign_max_participants}."
+        )
+    pool = reward * people
+    if pool > settings.campaign_max_pool_usdc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"O pool total ({pool:g} USDC) passa do limite de {settings.campaign_max_pool_usdc:g} USDC por campanha.",
+        )
+    return pool
+
+
+async def _require_creator_funds(db: AsyncSession, user: User, pool: float) -> None:
+    """O criador precisa ter o pool na carteira (Arc) vinculada à sessão dele.
+
+    Usa a carteira gravada no servidor (`/auth/wallet`), não um endereço enviado
+    pelo cliente — esse seria trivial de trocar pelo de uma carteira cheia.
+    Falha fechada: se não dá para ler o saldo, não cria.
+    """
+    wallet = (await db.execute(select(Wallet).where(Wallet.user_id == user.id))).scalars().first()
+    if not wallet:
+        raise HTTPException(status_code=400, detail="Conecte uma carteira Arc para criar uma campanha.")
+    from server.routes.arc_routes import read_arc_usdc_balance
+
+    try:
+        balance = await read_arc_usdc_balance(wallet.address)
+    except Exception:
+        logger.warning("campaign funds check: Arc balance read failed", exc_info=True)
+        raise HTTPException(status_code=503, detail="Não consegui verificar seu saldo agora. Tente de novo em instantes.")
+    if balance < pool:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Saldo insuficiente: o pool é {pool:g} USDC e sua carteira tem {balance:g} USDC.",
+        )
+
+
+async def create_campaign_for_user(db: AsyncSession, user: User, payload: CreateCampaignRequest) -> dict:
+    """Cria a campanha para um usuário já resolvido — caminho único do HTTP e do chat."""
+    pool = _validate_campaign_limits(payload)
+    if settings.campaign_require_funds:
+        await _require_creator_funds(db, user, pool)
 
     new_campaign = CampaignModel(
         creator_twitter_user_id=user.twitter_user_id,
@@ -1039,7 +1108,7 @@ async def create_campaign(
         reward_token=payload.reward_token,
         reward_per_participant=payload.reward_per_participant,
         max_participants=payload.max_participants,
-        reward_pool=payload.reward_per_participant * payload.max_participants,
+        reward_pool=pool,
         status="active",
         profile_to_follow=payload.profile_to_follow,
         tweet_id_to_engage=payload.tweet_id_to_engage,
@@ -1055,6 +1124,20 @@ async def create_campaign(
     await db.refresh(new_campaign)
 
     return {"success": True, "message": "Campaign created successfully!", "campaign": _campaign_to_dict(new_campaign)}
+
+
+@router.post("/campaigns/create")
+async def create_campaign(
+    payload: CreateCampaignRequest,
+    db: AsyncSession = Depends(get_db_session),
+    authorization: Optional[str] = Header(default=None),
+):
+    # strict: criar campanha mexe em dinheiro, então só vale token emitido pelo
+    # backend — o id/endereço público usado como token (legado) não prova quem é.
+    # Autentica antes de semear: chamada sem login não escreve nada no banco.
+    user = await _resolve_user(db, authorization, strict=True)
+    await _seed_default_campaigns(db)
+    return await create_campaign_for_user(db, user, payload)
 
 
 @router.post("/campaigns/join")

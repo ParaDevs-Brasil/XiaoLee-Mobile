@@ -37,7 +37,12 @@ from server.schemas import InboundMessage, OrchestrationResponse, SwapPrepareReq
 from server.settings import settings
 from server.rate_limiter import get_rate_limiter, reset_rate_limiter
 from server.webhooks.helius_routes import router as helius_router
-from server.campaigns_routes import resolve_optional_identity, router as campaigns_router
+from server.caller_trust import unverified_caller
+from server.campaigns_routes import (
+    resolve_optional_identity,
+    resolve_verified_identity,
+    router as campaigns_router,
+)
 from server.notifications_routes import router as notifications_router
 from server.routes.stellar_auth_routes import router as stellar_auth_router
 from server.routes.stellar_routes import router as stellar_router
@@ -446,6 +451,8 @@ async def _process_inbound(
 @app.post("/v1/messages/inbound", response_model=OrchestrationResponse)
 async def inbound_message(payload: InboundMessage, db: AsyncSession = Depends(get_db_session)):
     _enforce_rate_limit(f"inbound:{payload.platform}:{payload.user_id}")
+    # Endpoint aberto: `platform`/`user_id` vêm do corpo, não provam identidade.
+    unverified_caller.set(True)
 
     return await _process_inbound(
         platform=payload.platform,
@@ -481,6 +488,9 @@ async def chat_compat(
     if stellar_wallet:
         text = f"[System Note: Stellar wallet {stellar_wallet}] {text}"
 
+    # Só um token que o backend emitiu libera as tools de dinheiro; o Bearer
+    # legado (id/endereço como token) segue valendo para histórico, não para isso.
+    unverified_caller.set(await resolve_verified_identity(db, authorization) is None)
     user_id = await resolve_optional_identity(db, authorization) or str(payload.get("user_id", "web_anonymous"))
     platform = str(payload.get("platform", "web"))
 
