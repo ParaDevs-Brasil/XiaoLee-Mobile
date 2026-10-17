@@ -57,6 +57,7 @@ export function ScreenShell({ children }: { children: ReactNode }) {
         }}
         onPressMenu={() => toggle('menu')}
         menuOpen={panel === 'menu'}
+        profileOpen={panel === 'profile'}
         onPressProfile={() => toggle('profile')}
         // `navigate` e não `push`: o chat é a raiz da pilha, então empilhar
         // uma segunda cópia dele deixaria o voltar do Android preso num
