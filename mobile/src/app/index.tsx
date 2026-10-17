@@ -28,7 +28,8 @@ import {
   avatarAnimation,
   type AnimationKey,
 } from '@/lib/avatar-animation';
-import { appendChatMessage } from '@/lib/chat-history';
+import { matchCards, type ChatCards } from '@/lib/chat-cards';
+import { appendChatMessage, loadChatHistory, updateChatMessage } from '@/lib/chat-history';
 import { refreshChatSessions, setActiveChatSessionId } from '@/lib/chat-session';
 import { isOnChainTx, txExplorerUrl } from '@/lib/explorer';
 import { shortHash } from '@/lib/format';
@@ -142,6 +143,8 @@ interface Message {
   claim?: PendingClaim;
   /** Recibo devolvido pelo backend, quando já resgatou. */
   claimReceiptId?: string;
+  /** `at` da entrada correspondente no histórico local — é por ele que o comprovante é gravado depois de assinar. */
+  storedAt?: string;
 }
 
 /** O que o usuário vai autorizar: destino e valor, como o backend os preparou. */
@@ -193,12 +196,19 @@ function now(): string {
  * web (`ChatPanel.tsx`, que agrupa um par user+bot numa única bolha), aqui
  * `Message` já é por bolha — então não há pareamento a fazer, só mapear.
  */
-function messageFromChatSession(entry: ChatSessionMessage, index: number): Message {
+function messageFromChatSession(
+  entry: ChatSessionMessage,
+  index: number,
+  cards?: ({ at: string } & ChatCards) | undefined,
+): Message {
   return {
     id: `s${index}`,
     author: entry.role === 'user' ? 'user' : 'xiaolee',
     text: entry.content,
     time: new Date(entry.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    // O backend só guarda o texto; botões e comprovante vêm do histórico local
+    // (`lib/chat-cards.ts`).
+    ...(cards && { storedAt: cards.at, transfer: cards.transfer, txHash: cards.txHash, claim: cards.claim, claimReceiptId: cards.claimReceiptId }),
   };
 }
 
@@ -296,9 +306,10 @@ export default function ChatScreen() {
       return;
     }
     let active = true;
-    getChatSessionMessages(activeChatSessionId)
-      .then((history) => {
-        if (active) setMessages(history.map(messageFromChatSession));
+    Promise.all([getChatSessionMessages(activeChatSessionId), loadChatHistory()])
+      .then(([history, stored]) => {
+        const cards = matchCards(history, stored);
+        if (active) setMessages(history.map((entry, i) => messageFromChatSession(entry, i, cards[i])));
       })
       .catch((error) => {
         // 404: a sessão não é desta conta (troca de conta, ou o token sendo
@@ -358,6 +369,8 @@ export default function ChatScreen() {
    * endereço de destino clicável no lugar do botão.
    */
   function markSigned(id: string, hash: string) {
+    const storedAt = messages.find((m) => m.id === id)?.storedAt;
+    if (storedAt) void updateChatMessage(storedAt, { txHash: hash });
     setMessages((current) =>
       current.map((m) => (m.id === id ? { ...m, txHash: hash } : m)),
     );
@@ -365,6 +378,8 @@ export default function ChatScreen() {
 
   /** Mesmo acordo de `markSigned`, para o botão de claim. */
   function markClaimed(id: string, receiptId: string) {
+    const storedAt = messages.find((m) => m.id === id)?.storedAt;
+    if (storedAt) void updateChatMessage(storedAt, { claimReceiptId: receiptId });
     setMessages((current) =>
       current.map((m) => (m.id === id ? { ...m, claimReceiptId: receiptId } : m)),
     );
@@ -418,20 +433,17 @@ export default function ChatScreen() {
       }
       void refreshChatSessions();
 
+      const transfer = transferFrom(result.execution);
+      const claim = claimFrom(result.execution);
+      const storedAt = new Date().toISOString();
       setMessages((current) => [
         ...current,
-        {
-          id: `x${Date.now()}`,
-          author: 'xiaolee',
-          text: reply,
-          time: now(),
-          transfer: transferFrom(result.execution),
-          claim: claimFrom(result.execution),
-        },
+        { id: `x${Date.now()}`, author: 'xiaolee', text: reply, time: now(), transfer, claim, storedAt },
       ]);
       // O texto gravado é o mesmo que foi para a bolha, fallback incluído —
-      // o histórico não deve divergir do que a tela mostrou.
-      appendChatMessage('assistant', reply);
+      // o histórico não deve divergir do que a tela mostrou. Os cards vão junto:
+      // é o que os traz de volta quando a conversa é reaberta.
+      appendChatMessage('assistant', reply, { at: storedAt, cards: { transfer, claim } });
 
       // O agente escolhe a emoção; nome desconhecido volta para o idle.
       const animation = animationFromBackend(result.animations);
