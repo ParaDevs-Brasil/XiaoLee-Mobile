@@ -7,7 +7,11 @@ import { ThemeTransition, type ThemeTransitionPhase } from '@/components/theme-t
 import { Colors } from '@/constants/theme';
 // A versão `.web` espera a hidratação antes de ler o tema (saída estática).
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { ThemeContext, type ThemeTransitionOrigin } from '@/hooks/use-theme';
+import {
+  ThemeContext,
+  ThemePreferenceContext,
+  type ThemeTransitionOrigin,
+} from '@/hooks/use-theme';
 import { useReduceMotion } from '@/hooks/use-reduce-motion';
 import { parsePreference, resolveScheme, type ThemePreference } from '@/lib/theme-preference';
 
@@ -104,31 +108,33 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <ThemeContext.Provider value={{ scheme, preference, ready, setPreference }}>
-      <View
-        style={[styles.root, { backgroundColor: colors.bg }]}
-        onLayout={(e) => setSize(e.nativeEvent.layout)}
-      >
-        {children}
-      </View>
-      {transition ? (
-        <ThemeTransition
-          origin={transition.origin}
-          color={Colors[resolveScheme(transition.next, system)].bg}
-          phase={transition.phase}
-          reduceMotion={reduceMotion}
-          width={size.width}
-          height={size.height}
-          onCovered={() => {
-            // Mesmo lote: o commit que troca o tema é o mesmo que passa o véu
-            // para `revealing`, então ele só esmaece com o app já trocado.
-            commit(transition.next);
-            setTransition({ ...transition, phase: 'revealing' });
-          }}
-          onDone={() => setTransition(null)}
-        />
-      ) : null}
-    </ThemeContext.Provider>
+    <ThemePreferenceContext.Provider value={{ preference, ready, setPreference }}>
+      <ThemeContext.Provider value={scheme}>
+        <View
+          style={[styles.root, { backgroundColor: colors.bg }]}
+          onLayout={(e) => setSize(e.nativeEvent.layout)}
+        >
+          {children}
+        </View>
+        {transition ? (
+          <ThemeTransition
+            origin={transition.origin}
+            color={Colors[resolveScheme(transition.next, system)].bg}
+            phase={transition.phase}
+            reduceMotion={reduceMotion}
+            width={size.width}
+            height={size.height}
+            onCovered={() => {
+              // Mesmo lote: o commit que troca o tema é o mesmo que passa o véu
+              // para `revealing`, então ele só esmaece com o app já trocado.
+              commit(transition.next);
+              setTransition({ ...transition, phase: 'revealing' });
+            }}
+            onDone={() => setTransition(null)}
+          />
+        ) : null}
+      </ThemeContext.Provider>
+    </ThemePreferenceContext.Provider>
   );
 }
 

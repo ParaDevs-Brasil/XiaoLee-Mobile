@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useLayoutEffect } from 'react';
 import { StyleSheet } from 'react-native';
 import Animated, {
   Easing,
@@ -45,8 +45,8 @@ interface ThemeTransitionProps {
   onDone: () => void;
 }
 
-const EXPAND_MS = 420;
-const REVEAL_MS = 260;
+const EXPAND_MS = 300;
+const REVEAL_MS = 180;
 const REDUCED_MS = 140;
 
 export function ThemeTransition({
@@ -69,7 +69,9 @@ export function ThemeTransition({
     Math.max(origin.y, height - origin.y),
   );
 
-  useEffect(() => {
+  // Layout effect: no `revealing` o véu precisa começar a sumir logo após o
+  // commit que trocou o tema, sem esperar os efeitos de todas as telas.
+  useLayoutEffect(() => {
     const done = (callback: () => void) => (finished?: boolean) => {
       'worklet';
       if (finished) scheduleOnRN(callback);
@@ -89,16 +91,13 @@ export function ThemeTransition({
     }
 
     // `revealing` chega no commit em que o app já re-renderizou no tema novo.
-    // Um frame de folga para o nativo montar o que o React entregou — sem ele
-    // o véu pode sumir um instante antes das cores novas aparecerem.
-    const frame = requestAnimationFrame(() => {
-      opacity.value = withTiming(
-        0,
-        { duration: reduceMotion ? REDUCED_MS : REVEAL_MS, easing: Easing.out(Easing.quad) },
-        done(onDone),
-      );
-    });
-    return () => cancelAnimationFrame(frame);
+    // Sem esperar frame: a curva começa devagar, então se a montagem nativa
+    // atrasar um frame o véu ainda está opaco por cima dela.
+    opacity.value = withTiming(
+      0,
+      { duration: reduceMotion ? REDUCED_MS : REVEAL_MS, easing: Easing.in(Easing.quad) },
+      done(onDone),
+    );
     // Cada fase dispara uma vez; os callbacks mudam a cada render do provider
     // e reiniciar a animação por causa deles a faria pular.
     // eslint-disable-next-line react-hooks/exhaustive-deps

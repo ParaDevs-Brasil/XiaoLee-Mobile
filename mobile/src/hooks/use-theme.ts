@@ -28,9 +28,7 @@ export interface ThemeTransitionOrigin {
   y: number;
 }
 
-export interface ThemeContextValue {
-  /** Tema que está sendo desenhado agora. */
-  scheme: ColorScheme;
+export interface ThemePreferenceValue {
   preference: ThemePreference;
   /** `false` até ler a preferência salva — o Stack espera por isto. */
   ready: boolean;
@@ -38,23 +36,30 @@ export interface ThemeContextValue {
 }
 
 /**
+ * Dois contextos de propósito. O do tema é lido por quase todo componente do
+ * app e só muda quando o tema troca de fato. A preferência e o setter mudam
+ * em outras horas (durante a animação, ao medir a tela) e só o seletor e a
+ * raiz precisam deles — num contexto só, cada uma dessas mudanças
+ * re-renderizava o app inteiro no meio da animação de troca.
+ *
  * Sem provider (testes, telas montadas fora da raiz) o app fica no claro e o
  * seletor não faz nada — mesmo comportamento de antes desta feature.
  */
-export const ThemeContext = createContext<ThemeContextValue>({
-  scheme: 'light',
+export const ThemeContext = createContext<ColorScheme>('light');
+
+export const ThemePreferenceContext = createContext<ThemePreferenceValue>({
   preference: 'system',
   ready: true,
   setPreference: () => {},
 });
 
 export function useColorSchemeName(): ColorScheme {
-  return useContext(ThemeContext).scheme;
+  return useContext(ThemeContext);
 }
 
 /** Preferência e setter, para o seletor de tema. */
 export function useThemePreference() {
-  return useContext(ThemeContext);
+  return useContext(ThemePreferenceContext);
 }
 
 export function useTheme(): ThemeColors {
