@@ -6,6 +6,7 @@ import re
 from typing import Any, Dict, Optional
 
 from server.caller_trust import unverified_caller
+from server.campaign_match import rank_for_interests
 from server.integrations.gemini_client import GeminiClient
 from server.integrations.solana_client import SolanaClient
 from server.integrations.stellar_adapter import StellarAdapter
@@ -57,7 +58,9 @@ STELLAR_AGENT_TOOLS = [
             "Lista as campanhas de creators ativas (nome, descrição, tipo, reward por participante, "
             "token de recompensa, participantes já pagos). Use quando o usuário perguntar quais "
             "campanhas existem, rewards disponíveis ou quiser saber o que pode participar — não peça "
-            "para ele ir no dashboard, responda direto com os dados desta tool."
+            "para ele ir no dashboard, responda direto com os dados desta tool. Se vier `your_interests`, "
+            "as campanhas com `matches_your_interests` já vêm primeiro: recomende essas e diga numa frase "
+            "por que combinam com o interesse dele; as demais ficam depois."
         ),
         "parameters": {"type": "object", "properties": {}},
     }},
@@ -256,6 +259,20 @@ _STELLAR_CONTEXT = (
     "Apresente sempre o quote antes de executar qualquer swap. "
     "Responda em PT-BR."
 )
+
+
+async def _user_interests(db, user_id: str) -> list[str]:
+    """Interesses do onboarding (`User.interest_profile`, JSON em texto), ou [] se não há/está inválido."""
+    from sqlalchemy import select
+
+    from database.models import User
+
+    raw = (await db.execute(select(User.interest_profile).where(User.twitter_user_id == user_id))).scalar()
+    try:
+        data = json.loads(raw) if raw else []
+    except ValueError:
+        return []
+    return [i for i in data if isinstance(i, str)] if isinstance(data, list) else []
 
 
 _AUTO_DETECT_CLAUDE_ENGINE = object()  # sentinel: distingue "não passado" de "explicitamente None"
@@ -710,10 +727,20 @@ class OrchestrationService:
                     from server.campaigns_routes import list_campaigns as _list_campaigns_route
                     async with _campaigns_db() as db:
                         resp = await _list_campaigns_route(db)
+                        # Perfil só de chamador verificado: o `user_id` do corpo não prova quem é, e os
+                        # interesses de outra pessoa não devem sair pelo chat.
+                        interests = (
+                            []
+                            if user_id == "web_anonymous" or unverified_caller.get()
+                            else await _user_interests(db, user_id)
+                        )
                 except Exception as exc:
                     return json.dumps({"error": "campaigns_read_failed", "message": str(exc)})
                 captured["actions"].append("list_campaigns")
-                return json.dumps({"campaigns": [c.model_dump() for c in resp.campaigns]})
+                campaigns = [c.model_dump() for c in resp.campaigns]
+                if not interests:
+                    return json.dumps({"campaigns": campaigns})
+                return json.dumps({"your_interests": interests, "campaigns": rank_for_interests(campaigns, interests)})
 
             # As quatro tools abaixo escrevem no mesmo caminho que a UI usa
             # (POST /campaigns/*) — importam e chamam a função de rota direto,
