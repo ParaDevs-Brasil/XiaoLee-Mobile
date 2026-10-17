@@ -1,7 +1,9 @@
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { IconBell, IconMenu, IconSpark, IconUser } from '@/components/icons';
+import { IconBell, IconSpark } from '@/components/icons';
+import { MenuToggleIcon } from '@/components/menu-toggle-icon';
+import { ProfileAvatarButton } from '@/components/profile-avatar-button';
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useProfilePhoto } from '@/hooks/use-profile-photo';
@@ -21,6 +23,10 @@ interface HeaderBarProps {
   onPressProfile?: () => void;
   /** Volta para o chat. Sem handler o wordmark fica inerte, como era antes. */
   onPressLogo?: () => void;
+  /** Menu aberto: o hambúrguer vira X. */
+  menuOpen?: boolean;
+  /** Perfil aberto: o anel se desenha em volta do avatar. */
+  profileOpen?: boolean;
   /** Contagem para o badge sobre o sino — 0/undefined não desenha nada. */
   unreadCount?: number;
 }
@@ -30,6 +36,8 @@ export function HeaderBar({
   onPressMenu,
   onPressProfile,
   onPressLogo,
+  menuOpen = false,
+  profileOpen = false,
   unreadCount,
 }: HeaderBarProps) {
   const colors = useTheme();
@@ -86,27 +94,18 @@ export function HeaderBar({
           onPress={onPressMenu}
           hitSlop={Spacing.two}
           accessibilityRole="button"
-          accessibilityLabel="Menu"
+          accessibilityLabel={menuOpen ? 'Fechar menu' : 'Menu'}
+          accessibilityState={{ expanded: menuOpen }}
+          style={({ pressed }) => pressed && styles.menuPressed}
         >
-          <IconMenu size={26} sw={2.2} color={colors.accent} />
+          <MenuToggleIcon
+            open={menuOpen}
+            color={colors.accent}
+            activeFill={colors.accentSoft}
+          />
         </Pressable>
 
-        {/* Avatar: a foto de perfil quando há (a mesma do card de share e do
-            menu), senão o círculo cheio no acento — um dos poucos usos
-            permitidos. */}
-        <Pressable
-          onPress={onPressProfile}
-          hitSlop={Spacing.two}
-          accessibilityRole="button"
-          accessibilityLabel="Perfil"
-          style={styles.avatar}
-        >
-          {photo ? (
-            <Image source={{ uri: photo }} style={StyleSheet.absoluteFill} />
-          ) : (
-            <IconUser size={18} sw={2} color={colors.onAccent} />
-          )}
-        </Pressable>
+        <ProfileAvatarButton open={profileOpen} onPress={onPressProfile} photo={photo} />
       </View>
     </View>
   );
@@ -140,15 +139,7 @@ const useStyles = makeStyles((colors) => ({
     alignItems: 'center',
     gap: Spacing.three,
   },
-  avatar: {
-    width: 30,
-    height: 30,
-    borderRadius: Radius.pill,
-    backgroundColor: colors.accentFill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
+  menuPressed: { transform: [{ scale: 0.88 }] },
   badge: {
     position: 'absolute',
     top: -4,
