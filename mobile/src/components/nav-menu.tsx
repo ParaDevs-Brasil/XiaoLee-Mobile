@@ -2,15 +2,21 @@ import { useRouter } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { DropdownPanel } from '@/components/dropdown-panel';
-import { IconBarChart, IconDollar, IconRocket, IconScissors } from '@/components/icons';
+import {
+  IconBarChart,
+  IconClipboard,
+  IconDollar,
+  IconRocket,
+  IconScissors,
+} from '@/components/icons';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 
 /**
  * Menu de navegação — frame "Xiaolee - menu" (grupo `Group 9`, 191x264).
  *
  * Título maior (16 w700) e sem descrição — é a diferença visual em relação
- * ao painel de perfil. O Figma tem três destinos; Clips é o quarto, ainda
- * fora do frame.
+ * ao painel de perfil. O Figma tem três destinos; Clips e Reports vêm depois,
+ * ainda fora do frame.
  *
  * A linha inteira é o alvo do toque, como no `PanelRow` do perfil: antes só o
  * texto respondia, e tocar no ícone ou ao lado do nome não fazia nada.
@@ -29,6 +35,7 @@ export function NavMenu({ visible, onDismiss }: NavMenuProps) {
     { key: 'traction', Icon: IconDollar, label: 'Traction', href: '/traction' as const },
     { key: 'campaigns', Icon: IconRocket, label: 'Campaigns', href: '/campaigns' as const },
     { key: 'clips', Icon: IconScissors, label: 'Clips', href: '/clips' as const },
+    { key: 'reports', Icon: IconClipboard, label: 'Reports', href: '/reports' as const },
   ];
 
   return (
