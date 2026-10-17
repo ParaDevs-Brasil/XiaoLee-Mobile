@@ -1,8 +1,9 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import Svg, { Circle, G } from 'react-native-svg';
 
 import { SOURCE_META } from '@/components/receipt-row';
-import { Colors, Fonts } from '@/constants/theme';
+import { Fonts } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useReduceMotion } from '@/hooks/use-reduce-motion';
 import { useTweenedValues } from '@/hooks/use-tweened-values';
 import { SOURCE_ORDER, type ReceiptSource, type SourceBreakdown } from '@/lib/creator-wallet';
@@ -37,6 +38,8 @@ export function InflowDonut({
   size?: number;
   stroke?: number;
 }) {
+  const colors = useTheme();
+  const styles = useStyles();
   const reduceMotion = useReduceMotion();
   const target = SOURCE_ORDER.map((source) => sources.find((entry) => entry.source === source)?.total ?? 0);
   // Fatias e total andam do mesmo valor, no mesmo quadro: o centro é a soma
@@ -76,7 +79,7 @@ export function InflowDonut({
     >
       <Svg width={size} height={size}>
         {/* Trilho: aparece só nos vãos e quando não há nada a desenhar. */}
-        <Circle cx={center} cy={center} r={radius} stroke={Colors.light.bg} strokeWidth={stroke} fill="none" />
+        <Circle cx={center} cy={center} r={radius} stroke={colors.bg} strokeWidth={stroke} fill="none" />
         {/* -90° para a primeira fatia começar às 12h, como um relógio. */}
         <G rotation={-90} origin={`${center}, ${center}`}>
           {arcs.map(({ source, dash, offset }) =>
@@ -86,7 +89,7 @@ export function InflowDonut({
                 cx={center}
                 cy={center}
                 r={radius}
-                stroke={SOURCE_META[source].color}
+                stroke={colors[SOURCE_META[source].colorKey]}
                 strokeWidth={stroke}
                 strokeDasharray={`${dash} ${circumference - dash}`}
                 strokeDashoffset={-offset}
@@ -110,7 +113,7 @@ export function InflowDonut({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   center: {
     position: 'absolute',
     top: 0,
@@ -124,8 +127,8 @@ const styles = StyleSheet.create({
   centerValue: {
     fontFamily: Fonts.bold,
     fontSize: 24,
-    color: Colors.light.ink,
+    color: colors.ink,
     fontVariant: ['tabular-nums'],
   },
-  centerLabel: { fontFamily: Fonts.semibold, fontSize: 11, color: Colors.light.ink3, marginTop: 2 },
-});
+  centerLabel: { fontFamily: Fonts.semibold, fontSize: 11, color: colors.ink3, marginTop: 2 },
+}));

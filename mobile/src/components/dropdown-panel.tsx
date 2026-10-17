@@ -4,7 +4,8 @@ import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-nativ
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { IconProps } from '@/components/icons';
-import { CardShadow, Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 
 /**
  * Painel ancorado no header — a base dos frames "Xiaolee - menu" e
@@ -57,6 +58,7 @@ interface DropdownPanelProps {
 }
 
 export function DropdownPanel({ visible, onDismiss, children, anchor }: DropdownPanelProps) {
+  const styles = useStyles();
   const insets = useSafeAreaInsets();
   // Mesmo idioma do avatar: a `Animated.Value` nasce uma vez e sobrevive aos
   // renders. Começa no estado atual para o primeiro frame não piscar aberto.
@@ -192,6 +194,8 @@ export interface PanelItem {
 
 /** Linha do painel: ícone em quadrado suave + título e descrição opcional. */
 export function PanelRow({ item: { Icon, title, subtitle, onPress } }: { item: PanelItem }) {
+  const colors = useTheme();
+  const styles = useStyles();
   return (
     <Pressable
       onPress={onPress}
@@ -200,7 +204,7 @@ export function PanelRow({ item: { Icon, title, subtitle, onPress } }: { item: P
       accessibilityLabel={subtitle ? `${title}. ${subtitle}` : title}
     >
       <View style={styles.rowIcon}>
-        <Icon size={18} color={Colors.light.accent} />
+        <Icon size={18} color={colors.accent} />
       </View>
       <View style={styles.rowText}>
         <Text style={styles.rowTitle}>{title}</Text>
@@ -210,7 +214,7 @@ export function PanelRow({ item: { Icon, title, subtitle, onPress } }: { item: P
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   backdropWrap: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 10 },
   backdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
   panel: {
@@ -223,9 +227,9 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two + 2,
     paddingHorizontal: Spacing.two + 2,
     borderRadius: Radius.lg,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.popover,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.popoverBorder,
     gap: Spacing.two + 2,
     ...CardShadow,
   },
@@ -236,16 +240,16 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.light.accentSoft,
+    backgroundColor: colors.accentSoft,
   },
   rowText: { flex: 1 },
-  rowTitle: { fontFamily: Fonts.bold, fontSize: 14, color: Colors.light.ink },
+  rowTitle: { fontFamily: Fonts.bold, fontSize: 14, color: colors.ink },
   rowSubtitle: {
     fontFamily: Fonts.sans,
     fontSize: 9,
     lineHeight: 12,
-    color: Colors.light.ink2,
+    color: colors.ink2,
     marginTop: 1,
   },
   pressed: { opacity: 0.6 },
-});
+}));

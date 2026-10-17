@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, Text, TextInput, View } from 'react-native';
 
 import { Fonts } from '@/constants/theme';
+import { makeStyles } from '@/hooks/use-theme';
 
 interface OtpInputProps {
   value: string;
@@ -20,6 +21,7 @@ export function OtpInput({
   hasError = false,
   autoFocus = true,
 }: OtpInputProps) {
+  const styles = useStyles();
   const inputRef = useRef<TextInput>(null);
   const [isInputFocused, setIsInputFocused] = useState(autoFocus);
 
@@ -88,7 +90,7 @@ export function OtpInput({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   container: {
     width: '100%',
     alignItems: 'center',
@@ -113,31 +115,31 @@ const styles = StyleSheet.create({
     height: 56,
     borderRadius: 14,
     borderWidth: 1.2,
-    borderColor: '#E4E4E7',
-    backgroundColor: '#FFFFFF',
+    borderColor: colors.border,
+    backgroundColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
   },
   boxFilled: {
-    borderColor: '#D4D4D8',
-    backgroundColor: '#FFFFFF',
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.card,
   },
   boxFocused: {
-    borderColor: '#D81B78',
+    borderColor: colors.accent,
     borderWidth: 1.8,
-    backgroundColor: '#FFFBFD',
+    backgroundColor: colors.accentSoft,
   },
   boxError: {
-    borderColor: '#F43F5E',
-    backgroundColor: '#FFF5F6',
+    borderColor: colors.danger,
+    backgroundColor: colors.dangerSoft,
   },
   digit: {
     fontFamily: Fonts.bold,
     fontSize: 22,
-    color: '#18181B',
+    color: colors.ink,
     textAlign: 'center',
   },
   digitError: {
-    color: '#F43F5E',
+    color: colors.danger,
   },
-});
+}));

@@ -53,7 +53,8 @@ import {
 } from '@/components/icons';
 import { ScreenShell } from '@/components/screen-shell';
 import { SessionsPanel } from '@/components/sessions-panel';
-import { CardShadow, Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useChatSession } from '@/hooks/use-chat-session';
 import { useKeyboard } from '@/hooks/use-keyboard';
 import { useSession } from '@/hooks/use-session';
@@ -242,6 +243,7 @@ const REACTIONS: { emoji: string; key: AnimationKey; label: string }[] = [
 ];
 
 export default function ChatScreen() {
+  const styles = useStyles();
   const router = useRouter();
   const [draft, setDraft] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
@@ -640,6 +642,8 @@ function SignTxButton({
   message: Message;
   onSigned: (id: string, hash: string) => void;
 }) {
+  const colors = useTheme();
+  const styles = useStyles();
   const { isConnected, signAndRelay } = usePrivyWallet();
   const [signing, setSigning] = useState(false);
   const [error, setError] = useState<string>();
@@ -652,7 +656,7 @@ function SignTxButton({
     const linkable = isOnChainTx(message.txHash);
     const badge = (
       <View style={styles.txDone}>
-        <IconCheck size={14} color={Colors.light.success} />
+        <IconCheck size={14} color={colors.success} />
         <Text style={styles.txDoneText}>Sent · {shortHash(message.txHash)}</Text>
       </View>
     );
@@ -707,10 +711,10 @@ function SignTxButton({
         accessibilityRole="button"
       >
         {signing ? (
-          <ActivityIndicator size="small" color={Colors.light.card} />
+          <ActivityIndicator size="small" color={colors.onAccent} />
         ) : (
           <>
-            <IconWallet size={15} color={Colors.light.card} />
+            <IconWallet size={15} color={colors.onAccent} />
             <Text style={styles.signButtonText}>Sign in wallet</Text>
           </>
         )}
@@ -734,6 +738,8 @@ function ClaimButton({
   message: Message;
   onClaimed: (id: string, receiptId: string) => void;
 }) {
+  const colors = useTheme();
+  const styles = useStyles();
   const { address, signMessage } = usePrivyWallet();
   const [claiming, setClaiming] = useState(false);
   const [error, setError] = useState<string>();
@@ -741,7 +747,7 @@ function ClaimButton({
   if (message.claimReceiptId) {
     return (
       <View style={styles.txDone}>
-        <IconCheck size={14} color={Colors.light.success} />
+        <IconCheck size={14} color={colors.success} />
         <Text style={styles.txDoneText}>
           Claimed{message.claim ? ` · ${message.claim.amount} ${message.claim.token}` : ''}
         </Text>
@@ -792,10 +798,10 @@ function ClaimButton({
         accessibilityRole="button"
       >
         {claiming ? (
-          <ActivityIndicator size="small" color={Colors.light.card} />
+          <ActivityIndicator size="small" color={colors.onAccent} />
         ) : (
           <>
-            <IconGift size={15} color={Colors.light.card} />
+            <IconGift size={15} color={colors.onAccent} />
             <Text style={styles.signButtonText}>
               Claim {message.claim?.amount} {message.claim?.token}
             </Text>
@@ -957,6 +963,7 @@ function Bubble({
   onClaimed: (id: string, receiptId: string) => void;
   onSwapped: (id: string, hash: string, amountOut?: string) => void;
 }) {
+  const styles = useStyles();
   const mine = message.author === 'user';
 
   if (mine) {
@@ -1015,6 +1022,7 @@ function Bubble({
 
 /** Três pontos enquanto o agente responde, como no web (sem rodapé). */
 function Typing() {
+  const styles = useStyles();
   return (
     <View style={styles.rowXiaolee}>
       {/* Sem o deslocamento das mensagens normais: aqui não há rodapé de
@@ -1043,6 +1051,8 @@ function AssistantHeader({
   onPressChatMenu: () => void;
   chatMenuRef: RefObject<View | null>;
 }) {
+  const colors = useTheme();
+  const styles = useStyles();
   return (
     <View style={styles.assistant}>
       <View>
@@ -1079,7 +1089,7 @@ function AssistantHeader({
         accessibilityRole="button"
         accessibilityLabel="New chat"
       >
-        <IconEdit size={13} sw={2.2} color={Colors.light.ink} />
+        <IconEdit size={13} sw={2.2} color={colors.ink} />
         <Text style={styles.newChatText}>New chat</Text>
       </Pressable>
     </View>
@@ -1093,6 +1103,8 @@ function ActionCard({
   action: Action;
   onPress: () => void;
 }) {
+  const colors = useTheme();
+  const styles = useStyles();
   return (
     <Pressable
       onPress={onPress}
@@ -1101,7 +1113,7 @@ function ActionCard({
       accessibilityLabel={`${title}. ${subtitle}`}
     >
       <View style={styles.actionIcon}>
-        <Icon size={20} color={Colors.light.accent} />
+        <Icon size={20} color={colors.accent} />
       </View>
       <View style={styles.flex}>
         <Text style={styles.actionTitle}>{title}</Text>
@@ -1112,13 +1124,15 @@ function ActionCard({
 }
 
 function Suggestion({ text, onPress }: { text: string; onPress: () => void }) {
+  const colors = useTheme();
+  const styles = useStyles();
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [styles.chip, pressed && styles.pressed]}
       accessibilityRole="button"
     >
-      <IconChat size={12} color={Colors.light.ink2} />
+      <IconChat size={12} color={colors.ink2} />
       <Text style={styles.chipText}>{text}</Text>
     </Pressable>
   );
@@ -1136,6 +1150,8 @@ function Composer({
   /** O agente está respondendo — diferente de "não há o que enviar". */
   sending: boolean;
 }) {
+  const colors = useTheme();
+  const styles = useStyles();
   const canSend = value.trim().length > 0 && !sending;
 
   return (
@@ -1144,7 +1160,7 @@ function Composer({
         value={value}
         onChangeText={onChange}
         placeholder="Ask Xiaolee anything…"
-        placeholderTextColor={Colors.light.ink3}
+        placeholderTextColor={colors.ink3}
         style={styles.input}
         multiline
         maxLength={2000}
@@ -1184,25 +1200,25 @@ function Composer({
             (`api/backend.ts`). Um botão parado nesse intervalo não distingue
             "mandei" de "não pegou". */}
         {sending ? (
-          <ActivityIndicator size="small" color={Colors.light.card} />
+          <ActivityIndicator size="small" color={colors.onAccent} />
         ) : (
-          <IconSend size={18} color={Colors.light.card} />
+          <IconSend size={18} color={colors.onAccent} />
         )}
       </Pressable>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   flex: { flex: 1 },
 
   card: {
     flex: 1,
     margin: Spacing.three - 4,
     borderRadius: Radius.lg,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
     overflow: 'hidden',
     ...CardShadow,
   },
@@ -1215,13 +1231,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three - 3,
     paddingVertical: Spacing.two + 2,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Colors.light.border,
+    borderBottomColor: colors.border,
   },
   assistantAvatar: {
     width: 40,
     height: 40,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.bg,
+    backgroundColor: colors.bg,
   },
   onlineDot: {
     position: 'absolute',
@@ -1230,25 +1246,25 @@ const styles = StyleSheet.create({
     width: 12,
     height: 12,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.success,
+    backgroundColor: colors.success,
     borderWidth: 2,
-    borderColor: Colors.light.card,
+    borderColor: colors.card,
   },
   assistantNameRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one + 2 },
-  assistantName: { fontFamily: Fonts.bold, fontSize: 14, color: Colors.light.ink },
+  assistantName: { fontFamily: Fonts.bold, fontSize: 14, color: colors.ink },
   onlineDotSmall: {
     width: 6,
     height: 6,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.success,
+    backgroundColor: colors.success,
   },
   onlineLabel: {
     fontFamily: Fonts.bold,
     fontSize: 10,
     letterSpacing: 0.8,
-    color: Colors.light.success,
+    color: colors.success,
   },
-  assistantRole: { fontFamily: Fonts.sans, fontSize: 12, color: Colors.light.ink2, marginTop: 1 },
+  assistantRole: { fontFamily: Fonts.sans, fontSize: 12, color: colors.ink2, marginTop: 1 },
   // Alvo visual menor que o primeiro rascunho, mas o `hitSlop` no Pressable
   // (ver abaixo) mantém a área de toque real confortável — o desenho anterior
   // (chevron de 20dp isolado, sem hitSlop) era pequeno demais e criava sessão
@@ -1265,12 +1281,12 @@ const styles = StyleSheet.create({
     height: 32,
     paddingHorizontal: 11,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
   newChatPressed: { opacity: 0.6 },
-  newChatText: { fontFamily: Fonts.bold, fontSize: 12, color: Colors.light.ink },
+  newChatText: { fontFamily: Fonts.bold, fontSize: 12, color: colors.ink },
 
   // ── Corpo ──────────────────────────────────────────────────────────────
   body: {
@@ -1283,19 +1299,19 @@ const styles = StyleSheet.create({
     width: 104,
     height: 104,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.bg,
+    backgroundColor: colors.bg,
   },
   greeting: {
     fontFamily: Fonts.bold,
     fontSize: 16,
-    color: Colors.light.ink,
+    color: colors.ink,
     marginTop: Spacing.three,
   },
   pitch: {
     fontFamily: Fonts.sans,
     fontSize: 14,
     lineHeight: 23,
-    color: Colors.light.ink2,
+    color: colors.ink2,
     textAlign: 'center',
     marginTop: Spacing.two,
   },
@@ -1306,7 +1322,7 @@ const styles = StyleSheet.create({
     gap: Spacing.one,
     borderBottomLeftRadius: Radius.lg,
   },
-  welcomeTitle: { fontFamily: Fonts.bold, fontSize: 15, color: Colors.light.ink },
+  welcomeTitle: { fontFamily: Fonts.bold, fontSize: 15, color: colors.ink },
 
   // ── Conversa ───────────────────────────────────────────────────────────
   thread: {
@@ -1321,7 +1337,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.bg,
+    backgroundColor: colors.bg,
     // Sobe o avatar a altura do rodapé (10px + marginTop 4) para o alinhamento
     // ser com a base da bolha, não com a base da linha inteira.
     marginBottom: 18,
@@ -1336,16 +1352,16 @@ const styles = StyleSheet.create({
   },
   // Canto da "cauda" reduzido do lado de quem fala, como no web.
   bubbleUser: {
-    backgroundColor: Colors.light.accent,
+    backgroundColor: colors.accentFill,
     borderBottomRightRadius: Radius.sm - 2,
   },
   bubbleXiaolee: {
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
     borderBottomLeftRadius: Radius.sm - 2,
   },
-  bubbleText: { fontFamily: Fonts.sans, fontSize: 14, lineHeight: 21, color: Colors.light.ink2 },
+  bubbleText: { fontFamily: Fonts.sans, fontSize: 14, lineHeight: 21, color: colors.ink2 },
 
   // Assinatura de transação dentro da bolha.
   signButton: {
@@ -1355,12 +1371,12 @@ const styles = StyleSheet.create({
     gap: Spacing.two - 2,
     height: 38,
     borderRadius: Radius.md,
-    backgroundColor: Colors.light.accent,
+    backgroundColor: colors.accentFill,
     marginTop: Spacing.two,
   },
   signButtonPressed: { opacity: 0.7 },
   signButtonDisabled: { opacity: 0.5 },
-  signButtonText: { fontFamily: Fonts.bold, fontSize: 13, color: Colors.light.card },
+  signButtonText: { fontFamily: Fonts.bold, fontSize: 13, color: colors.onAccent },
   txDone: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1368,27 +1384,27 @@ const styles = StyleSheet.create({
     gap: Spacing.one,
     paddingVertical: Spacing.two - 2,
     borderRadius: Radius.md,
-    backgroundColor: Colors.light.successSoft,
+    backgroundColor: colors.successSoft,
     marginTop: Spacing.two,
   },
-  txDoneText: { fontFamily: Fonts.medium, fontSize: 12, color: Colors.light.ink },
+  txDoneText: { fontFamily: Fonts.medium, fontSize: 12, color: colors.ink },
   txHint: {
     fontFamily: Fonts.sans,
     fontSize: 12,
-    color: Colors.light.ink3,
+    color: colors.ink3,
     marginTop: Spacing.two - 2,
   },
   txError: {
     fontFamily: Fonts.sans,
     fontSize: 11,
-    color: Colors.light.danger,
+    color: colors.danger,
     marginTop: Spacing.one,
   },
   bubbleTextUser: {
     fontFamily: Fonts.medium,
     fontSize: 14,
     lineHeight: 21,
-    color: Colors.light.card,
+    color: colors.onAccent,
   },
   meta: {
     flexDirection: 'row',
@@ -1397,11 +1413,11 @@ const styles = StyleSheet.create({
     marginTop: Spacing.one,
     paddingHorizontal: Spacing.one,
   },
-  metaText: { fontFamily: Fonts.sans, fontSize: 10, color: Colors.light.ink3 },
+  metaText: { fontFamily: Fonts.sans, fontSize: 10, color: colors.ink3 },
   metaRight: {
     fontFamily: Fonts.sans,
     fontSize: 10,
-    color: Colors.light.ink3,
+    color: colors.ink3,
     textAlign: 'right',
     marginTop: Spacing.one,
     paddingRight: Spacing.one,
@@ -1414,7 +1430,7 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.accent,
+    backgroundColor: colors.accentFill,
     opacity: 0.6,
   },
 
@@ -1428,8 +1444,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.two + 2,
     borderRadius: Radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
-    backgroundColor: Colors.light.card,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
   },
   actionIcon: {
     width: 40,
@@ -1437,10 +1453,10 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.light.accentSoft,
+    backgroundColor: colors.accentSoft,
   },
-  actionTitle: { fontFamily: Fonts.semibold, fontSize: 14, color: Colors.light.ink },
-  actionSubtitle: { fontFamily: Fonts.sans, fontSize: 12, color: Colors.light.ink2, marginTop: 1 },
+  actionTitle: { fontFamily: Fonts.semibold, fontSize: 14, color: colors.ink },
+  actionSubtitle: { fontFamily: Fonts.sans, fontSize: 12, color: colors.ink2, marginTop: 1 },
 
   // ── Chips de sugestão ──────────────────────────────────────────────────
   suggestions: { gap: Spacing.two, marginTop: Spacing.four, alignItems: 'center' },
@@ -1452,10 +1468,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three - 2,
     borderRadius: Radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
-    backgroundColor: Colors.light.card,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
   },
-  chipText: { fontFamily: Fonts.medium, fontSize: 12, color: Colors.light.ink2 },
+  chipText: { fontFamily: Fonts.medium, fontSize: 12, color: colors.ink2 },
 
   // ── Composer ───────────────────────────────────────────────────────────
   composer: {
@@ -1465,7 +1481,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three - 3,
     paddingVertical: Spacing.two + 2,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Colors.light.border,
+    borderTopColor: colors.border,
   },
   input: {
     flex: 1,
@@ -1476,10 +1492,10 @@ const styles = StyleSheet.create({
     paddingBottom: 13,
     borderRadius: Radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
     fontFamily: Fonts.medium,
     fontSize: 14,
-    color: Colors.light.ink,
+    color: colors.ink,
     // Android centraliza o texto de um campo multiline na altura disponível, e
     // aí a segunda linha empurra a primeira para cima em vez de o texto crescer
     // para baixo. Mesmo ajuste do formulário de campanha (`campaigns/new.tsx`).
@@ -1491,8 +1507,8 @@ const styles = StyleSheet.create({
     borderRadius: Radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.light.accent,
+    backgroundColor: colors.accentFill,
   },
   sendButtonIdle: { opacity: 0.45 },
   pressed: { opacity: 0.65 },
-});
+}));

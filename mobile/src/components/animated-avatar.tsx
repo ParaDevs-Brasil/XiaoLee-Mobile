@@ -1,8 +1,8 @@
 import { useVideoPlayer, VideoView, type VideoPlayer } from 'expo-video';
 import { useEffect, useRef, useState } from 'react';
-import { Animated, AppState, StyleSheet, View, type ViewStyle } from 'react-native';
+import { Animated, AppState, View, type ViewStyle } from 'react-native';
 
-import { Colors } from '@/constants/theme';
+import { makeStyles } from '@/hooks/use-theme';
 import { avatarAnimation, type AnimationKey, type AnimationState } from '@/lib/avatar-animation';
 
 /**
@@ -47,6 +47,7 @@ interface AnimatedAvatarProps {
 }
 
 export function AnimatedAvatar({ size, style }: AnimatedAvatarProps) {
+  const styles = useStyles();
   // Instância compartilhada: o chat também dispara animações, reagindo ao
   // campo `animations` da resposta do agente.
   const controller = avatarAnimation;
@@ -137,6 +138,7 @@ function usePlayer(clip: AnimationState | null) {
 }
 
 function Surface({ player }: { player: VideoPlayer }) {
+  const styles = useStyles();
   return (
     <VideoView
       player={player}
@@ -149,8 +151,8 @@ function Surface({ player }: { player: VideoPlayer }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { overflow: 'hidden', backgroundColor: Colors.light.bg },
+const useStyles = makeStyles((colors) => ({
+  container: { overflow: 'hidden', backgroundColor: colors.bg },
   layer: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
   video: { width: '100%', height: '100%' },
-});
+}));

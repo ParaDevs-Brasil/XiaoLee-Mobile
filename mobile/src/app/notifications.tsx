@@ -1,3 +1,4 @@
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,6 +9,7 @@ import {
   IconAlert,
   IconBell,
   IconCheck,
+  IconChevronRight,
   IconClock,
   IconInbox,
   IconRefresh,
@@ -17,9 +19,11 @@ import {
 } from '@/components/icons';
 import { PageHeading, ScreenShell } from '@/components/screen-shell';
 import { SectionCard } from '@/components/section-card';
-import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { Fonts, Radius, Spacing, type ThemeColor } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useBackendData } from '@/hooks/use-backend-data';
 import { useSession } from '@/hooks/use-session';
+import { reportIdOf } from '@/lib/creator-report';
 import { formatTokenAmount, shortHash } from '@/lib/format';
 import { getSession } from '@/lib/session';
 
@@ -78,6 +82,8 @@ async function fetchNotifications(): Promise<NotificationItem[]> {
 }
 
 export default function NotificationsScreen() {
+  const colors = useTheme();
+  const styles = useStyles();
   // Barra de gestos do Android come o fim da lista sem este inset.
   const insets = useSafeAreaInsets();
   const { hasSession } = useSession();
@@ -134,8 +140,8 @@ export default function NotificationsScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={reload}
-            tintColor={Colors.light.accent}
-            colors={[Colors.light.accent]}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
           />
         }
       >
@@ -171,7 +177,7 @@ export default function NotificationsScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Refresh"
               >
-                <IconRefresh size={15} color={Colors.light.ink3} />
+                <IconRefresh size={15} color={colors.ink3} />
               </Pressable>
             }
           >
@@ -219,6 +225,8 @@ function FilterBar({
   counts: Record<Filter, number>;
   onChange: (next: Filter) => void;
 }) {
+  const colors = useTheme();
+  const styles = useStyles();
   const chips: { id: Filter; label: string; Icon: (p: IconProps) => React.ReactElement }[] = [
     { id: 'all', label: 'All', Icon: IconInbox },
     { id: 'pending', label: 'Pending', Icon: IconClock },
@@ -246,7 +254,7 @@ function FilterBar({
             accessibilityState={{ selected: active, disabled: empty }}
             accessibilityLabel={`${label}, ${counts[id]}`}
           >
-            <Icon size={13} color={active ? Colors.light.card : Colors.light.ink3} />
+            <Icon size={13} color={active ? colors.onAccent : colors.ink3} />
             <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
             <Text style={[styles.chipCount, active && styles.chipTextActive]}>{counts[id]}</Text>
           </Pressable>
@@ -262,10 +270,12 @@ function FilterBar({
  * vive no painel de perfil, atrás do avatar do header.
  */
 function GuestState() {
+  const colors = useTheme();
+  const styles = useStyles();
   return (
     <View style={styles.guest}>
       <View style={styles.guestIcon}>
-        <IconUser size={22} color={Colors.light.ink3} />
+        <IconUser size={22} color={colors.ink3} />
       </View>
       <Text style={styles.guestTitle}>No wallet connected</Text>
       <Text style={styles.guestText}>
@@ -285,21 +295,33 @@ function NotificationRow({
   busy: boolean;
   onAck: () => void;
 }) {
+  const colors = useTheme();
+  const styles = useStyles();
   const tone = toneOf(item.status);
+  const router = useRouter();
   const channel = CHANNEL[item.channel] ?? { Icon: IconBell, label: item.channel };
-  const meta = metadataRows(item.metadata);
+  // Relatório de 30 dias: o metadata é só o ponteiro (`kind`, `report_id`) —
+  // em vez de linhas rotuladas, o card inteiro abre a tela do relatório.
+  const reportId = reportIdOf(item.metadata);
+  const meta = reportId ? [] : metadataRows(item.metadata);
 
-  return (
-    <View style={styles.row}>
+  // Abrir o relatório é ler a notificação: conta como ack, e o badge do sino some.
+  const openReport = () => {
+    if (tone === 'pending') onAck();
+    router.push({ pathname: '/reports/[id]', params: { id: String(reportId) } });
+  };
+
+  const content = (
+    <>
       <View style={styles.rowTop}>
-        <View style={[styles.dot, DOT[tone]]} />
+        <View style={[styles.dot, { backgroundColor: colors[TONE_COLOR[tone].fg] }]} />
 
         <Text style={styles.rowTitle} numberOfLines={2}>
           {item.title}
         </Text>
 
-        <View style={[styles.badge, BADGE[tone]]}>
-          <Text style={[styles.badgeText, BADGE_TEXT[tone]]}>{item.status}</Text>
+        <View style={[styles.badge, { backgroundColor: colors[TONE_COLOR[tone].bg] }]}>
+          <Text style={[styles.badgeText, { color: colors[TONE_COLOR[tone].fg] }]}>{item.status}</Text>
         </View>
       </View>
 
@@ -309,6 +331,13 @@ function NotificationRow({
         <View style={styles.receipt}>
           <Text style={styles.receiptLabel}>Receipt</Text>
           <Text style={styles.receiptValue}>{item.related_signature}</Text>
+        </View>
+      ) : null}
+
+      {reportId ? (
+        <View style={styles.openReport}>
+          <Text style={styles.openReportText}>Open report</Text>
+          <IconChevronRight size={13} sw={2.2} color={colors.accent} />
         </View>
       ) : null}
 
@@ -327,7 +356,7 @@ function NotificationRow({
 
       <View style={styles.rowFooter}>
         <View style={styles.channel}>
-          <channel.Icon size={11} color={Colors.light.ink3} />
+          <channel.Icon size={11} color={colors.ink3} />
           <Text style={styles.channelText}>{channel.label}</Text>
         </View>
 
@@ -347,17 +376,30 @@ function NotificationRow({
           </Pressable>
         ) : tone === 'delivered' ? (
           <View style={styles.marker}>
-            <IconCheck size={12} color={Colors.light.success} />
+            <IconCheck size={12} color={colors.success} />
             <Text style={[styles.markerText, styles.markerDone]}>Done</Text>
           </View>
         ) : (
           <View style={styles.marker}>
-            <IconAlert size={12} color={Colors.light.danger} />
+            <IconAlert size={12} color={colors.danger} />
             <Text style={[styles.markerText, styles.markerFailed]}>Delivery failed</Text>
           </View>
         )}
       </View>
-    </View>
+    </>
+  );
+
+  if (!reportId) return <View style={styles.row}>{content}</View>;
+
+  return (
+    <Pressable
+      onPress={openReport}
+      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+      accessibilityRole="button"
+      accessibilityLabel={`${item.title}. Open report`}
+    >
+      {content}
+    </Pressable>
   );
 }
 
@@ -395,6 +437,7 @@ function formatMetaValue(value: unknown): string {
  * pula do mesmo jeito.
  */
 function NotificationsSkeleton() {
+  const styles = useStyles();
   return (
     <View style={styles.skeleton} accessible accessibilityLabel="Loading notifications">
       <Skeleton height={34} radius={Radius.pill} />
@@ -404,25 +447,14 @@ function NotificationsSkeleton() {
   );
 }
 
-const DOT: Record<Tone, { backgroundColor: string }> = {
-  delivered: { backgroundColor: Colors.light.success },
-  pending: { backgroundColor: Colors.light.warn },
-  failed: { backgroundColor: Colors.light.danger },
+/** Token de cor por estado — resolvido no tema ativo dentro da linha. */
+const TONE_COLOR: Record<Tone, { fg: ThemeColor; bg: ThemeColor }> = {
+  delivered: { fg: 'success', bg: 'successSoft' },
+  pending: { fg: 'warn', bg: 'warnSoft' },
+  failed: { fg: 'danger', bg: 'dangerSoft' },
 };
 
-const BADGE: Record<Tone, { backgroundColor: string }> = {
-  delivered: { backgroundColor: Colors.light.successSoft },
-  pending: { backgroundColor: Colors.light.warnSoft },
-  failed: { backgroundColor: Colors.light.dangerSoft },
-};
-
-const BADGE_TEXT: Record<Tone, { color: string }> = {
-  delivered: { color: Colors.light.success },
-  pending: { color: Colors.light.warn },
-  failed: { color: Colors.light.danger },
-};
-
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   content: {
     paddingHorizontal: Spacing.three - 4,
     paddingTop: Spacing.four,
@@ -441,15 +473,15 @@ const styles = StyleSheet.create({
     gap: Spacing.two - 3,
     paddingVertical: Spacing.two,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
-  chipActive: { backgroundColor: Colors.light.accent, borderColor: Colors.light.accent },
+  chipActive: { backgroundColor: colors.accentFill, borderColor: colors.accentFill },
   chipEmpty: { opacity: 0.45 },
-  chipText: { fontFamily: Fonts.bold, fontSize: 11, color: Colors.light.ink2 },
-  chipCount: { fontFamily: Fonts.bold, fontSize: 11, color: Colors.light.ink3 },
-  chipTextActive: { color: Colors.light.card },
+  chipText: { fontFamily: Fonts.bold, fontSize: 11, color: colors.ink2 },
+  chipCount: { fontFamily: Fonts.bold, fontSize: 11, color: colors.ink3 },
+  chipTextActive: { color: colors.onAccent },
 
   // ── Convidado ──────────────────────────────────────────────────────────
   guest: { alignItems: 'center', gap: Spacing.two, paddingVertical: Spacing.four },
@@ -459,14 +491,14 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.light.bg,
+    backgroundColor: colors.bg,
   },
-  guestTitle: { fontFamily: Fonts.semibold, fontSize: 14, color: Colors.light.ink },
+  guestTitle: { fontFamily: Fonts.semibold, fontSize: 14, color: colors.ink },
   guestText: {
     fontFamily: Fonts.sans,
     fontSize: 13,
     lineHeight: 20,
-    color: Colors.light.ink2,
+    color: colors.ink2,
     textAlign: 'center',
   },
 
@@ -475,11 +507,11 @@ const styles = StyleSheet.create({
     gap: Spacing.two - 2,
     padding: Spacing.two + 2,
     borderRadius: Radius.md,
-    backgroundColor: Colors.light.bg,
+    backgroundColor: colors.bg,
   },
   rowTop: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two - 2 },
   dot: { width: 8, height: 8, borderRadius: Radius.pill },
-  rowTitle: { flex: 1, fontFamily: Fonts.bold, fontSize: 13, color: Colors.light.ink },
+  rowTitle: { flex: 1, fontFamily: Fonts.bold, fontSize: 13, color: colors.ink },
   badge: { paddingHorizontal: Spacing.two - 2, paddingVertical: 1, borderRadius: Radius.pill },
   badgeText: {
     fontFamily: Fonts.bold,
@@ -487,34 +519,46 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
     textTransform: 'uppercase',
   },
-  rowBody: { fontFamily: Fonts.sans, fontSize: 12, lineHeight: 18, color: Colors.light.ink2 },
+  rowBody: { fontFamily: Fonts.sans, fontSize: 12, lineHeight: 18, color: colors.ink2 },
 
   receipt: {
     gap: 1,
     padding: Spacing.two - 2,
     borderRadius: Radius.sm,
-    backgroundColor: Colors.light.accentSoft,
+    backgroundColor: colors.accentSoft,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
   receiptLabel: {
     fontFamily: Fonts.bold,
     fontSize: 8,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
-    color: Colors.light.accent,
+    color: colors.accent,
   },
-  receiptValue: { fontFamily: Fonts.mono, fontSize: 10, color: Colors.light.ink2 },
+  receiptValue: { fontFamily: Fonts.mono, fontSize: 10, color: colors.ink2 },
+
+  openReport: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 2,
+    paddingHorizontal: Spacing.three - 2,
+    paddingVertical: Spacing.two - 2,
+    borderRadius: Radius.pill,
+    backgroundColor: colors.accentSoft,
+  },
+  openReportText: { fontFamily: Fonts.bold, fontSize: 11, color: colors.accent },
 
   meta: {
     gap: 2,
     padding: Spacing.two - 2,
     borderRadius: Radius.sm,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
   },
   metaRow: { flexDirection: 'row', justifyContent: 'space-between', gap: Spacing.two },
-  metaLabel: { fontFamily: Fonts.sans, fontSize: 10, color: Colors.light.ink3 },
-  metaValue: { flexShrink: 1, fontFamily: Fonts.medium, fontSize: 10, color: Colors.light.ink2 },
+  metaLabel: { fontFamily: Fonts.sans, fontSize: 10, color: colors.ink3 },
+  metaValue: { flexShrink: 1, fontFamily: Fonts.medium, fontSize: 10, color: colors.ink2 },
 
   // ── Rodapé da linha ────────────────────────────────────────────────────
   rowFooter: {
@@ -530,18 +574,18 @@ const styles = StyleSheet.create({
     fontSize: 9,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
-    color: Colors.light.ink3,
+    color: colors.ink3,
   },
   ack: {
     paddingHorizontal: Spacing.three - 2,
     paddingVertical: Spacing.two - 2,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.success,
+    backgroundColor: colors.successFill,
   },
   ackBusy: { opacity: 0.55 },
-  ackText: { fontFamily: Fonts.bold, fontSize: 11, color: Colors.light.card },
+  ackText: { fontFamily: Fonts.bold, fontSize: 11, color: colors.onAccent },
   marker: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two - 3 },
   markerText: { fontFamily: Fonts.bold, fontSize: 11 },
-  markerDone: { color: Colors.light.success },
-  markerFailed: { color: Colors.light.danger },
-});
+  markerDone: { color: colors.success },
+  markerFailed: { color: colors.danger },
+}));

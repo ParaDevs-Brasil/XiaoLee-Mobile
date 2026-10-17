@@ -557,6 +557,51 @@ export function ackNotification(id: number): Promise<AckResponse> {
 }
 
 /**
+ * Números de um período do relatório de 30 dias — `backend/server/creator_report.py::collect_metrics`.
+ * Só atividade na Xiaolee: views e seguidores das redes ainda não existem no backend.
+ */
+export interface CreatorReportMetrics {
+  videos: number;
+  video_minutes: number;
+  clips: number;
+  campaigns_joined: number;
+  usdc_received: number;
+}
+
+export interface CreatorReportSuggestion {
+  title: string;
+  /** O passo concreto para os próximos 30 dias. */
+  action: string;
+  /** O número ou vídeo em que a IA se baseou. */
+  why: string;
+}
+
+/** Item de `GET /v1/reports/me` — `backend/server/creator_report_routes.py::ReportSummary`. */
+export interface CreatorReportSummary {
+  id: number;
+  period_start: string;
+  period_end: string;
+  summary: string;
+}
+
+export interface CreatorReport extends CreatorReportSummary {
+  metrics: Partial<CreatorReportMetrics>;
+  /** Os 30 dias antes do período, para comparar. */
+  previous: Partial<CreatorReportMetrics>;
+  suggestions: CreatorReportSuggestion[];
+}
+
+/** `GET /v1/reports/me` — relatórios de 30 dias do usuário da sessão, mais novo primeiro. Exige sessão. */
+export function listCreatorReports(): Promise<CreatorReportSummary[]> {
+  return apiFetch<CreatorReportSummary[]>('/v1/reports/me');
+}
+
+/** `GET /v1/reports/me/{id}` — relatório completo; de outro usuário responde 404. */
+export function getCreatorReport(id: number): Promise<CreatorReport> {
+  return apiFetch<CreatorReport>(`/v1/reports/me/${id}`);
+}
+
+/**
  * Tesouraria por chain, com o Arc como hub — `frontend/src/hooks/useTreasury.ts`.
  *
  *   GET /v1/arc/wallet/balance            (`server/routes/arc_routes.py:99`)

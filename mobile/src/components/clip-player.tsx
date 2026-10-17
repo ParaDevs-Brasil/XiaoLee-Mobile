@@ -19,7 +19,8 @@ import type { MediaClip } from '@/api/backend';
 import { ApiError } from '@/api/client';
 import type { ClipBusy } from '@/components/clip-card';
 import { IconCheck, IconClose, IconDownload, IconSend } from '@/components/icons';
-import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles } from '@/hooks/use-theme';
 import { freshClipUrl } from '@/lib/clip-share';
 import { formatClock } from '@/lib/clips';
 
@@ -95,6 +96,7 @@ function PlayerBody({
   onClose: () => void;
   actions: PlayerActions;
 }) {
+  const styles = useStyles();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const [source, setSource] = useState<Source>(null);
@@ -168,6 +170,7 @@ function Video({
   clip: MediaClip;
   actions: PlayerActions;
 }) {
+  const styles = useStyles();
   const player = useVideoPlayer(url, (p) => {
     p.loop = true;
     p.timeUpdateEventInterval = 0.1;
@@ -311,6 +314,7 @@ function Scrubber({
   onCommit: (ratio: number) => void;
   onNudge: (seconds: number) => void;
 }) {
+  const styles = useStyles();
   const [trackWidth, setTrackWidth] = useState(0);
   const at = (event: GestureResponderEvent) =>
     trackWidth > 0 ? Math.min(Math.max(event.nativeEvent.locationX / trackWidth, 0), 1) : 0;
@@ -374,8 +378,8 @@ const CONTROLS_HEIGHT = 108;
 const THUMB = 14;
 const THUMB_ACTIVE = 20;
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Colors.light.ink },
+const useStyles = makeStyles((colors) => ({
+  screen: { flex: 1, backgroundColor: colors.media },
   header: {
     height: HEADER_HEIGHT,
     flexDirection: 'row',
@@ -402,12 +406,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     // O triângulo é mais pesado à esquerda: empurra 3 px para parecer centrado.
     paddingLeft: 3,
-    backgroundColor: Colors.light.accent,
+    backgroundColor: colors.accentFill,
   },
   controls: { gap: Spacing.one, paddingTop: Spacing.two },
   scrubHit: { height: 44, justifyContent: 'center' },
   track: { height: 4, borderRadius: Radius.pill, backgroundColor: 'rgba(255,255,255,0.22)', overflow: 'hidden' },
-  fill: { height: '100%', borderRadius: Radius.pill, backgroundColor: Colors.light.accent },
+  fill: { height: '100%', borderRadius: Radius.pill, backgroundColor: colors.accentFill },
   thumb: {
     position: 'absolute',
     width: THUMB,
@@ -444,7 +448,7 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     paddingHorizontal: Spacing.three + 4,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.accent,
+    backgroundColor: colors.accentFill,
   },
   saveButtonDone: { backgroundColor: 'rgba(255,255,255,0.16)' },
   saveText: { fontFamily: Fonts.bold, fontSize: 15, color: WHITE },
@@ -458,4 +462,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: Spacing.four,
   },
-});
+}));

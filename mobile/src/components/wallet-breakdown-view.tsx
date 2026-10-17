@@ -9,7 +9,8 @@ import { NETWORK_LABEL, NetworkMismatchCard } from '@/components/network-badge';
 import { SOURCE_META } from '@/components/receipt-row';
 import { SectionCard } from '@/components/section-card';
 import { WalletMockSwitcher } from '@/components/wallet-mock-switcher';
-import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 import type { CreatorWallet } from '@/hooks/use-creator-wallet';
 import { useReduceMotion } from '@/hooks/use-reduce-motion';
 import {
@@ -59,6 +60,8 @@ export function WalletBreakdownView({
   onBack: () => void;
   onOpenPayments: (filter: ReceiptFilter) => void;
 }) {
+  const colors = useTheme();
+  const styles = useStyles();
   const insets = useSafeAreaInsets();
   // 30 dias por padrão: é a janela da faixa da home, de onde a pessoa veio.
   const [period, setPeriod] = useState<InflowPeriod>('30d');
@@ -91,8 +94,8 @@ export function WalletBreakdownView({
         <RefreshControl
           refreshing={wallet.refreshing}
           onRefresh={wallet.reload}
-          tintColor={Colors.light.accent}
-          colors={[Colors.light.accent]}
+          tintColor={colors.accent}
+          colors={[colors.accent]}
         />
       }
     >
@@ -103,7 +106,7 @@ export function WalletBreakdownView({
           accessibilityRole="button"
           accessibilityLabel="Back to wallet"
         >
-          <IconChevronLeft size={20} sw={2.2} color={Colors.light.ink} />
+          <IconChevronLeft size={20} sw={2.2} color={colors.ink} />
         </Pressable>
         <View style={styles.flex}>
           <Text style={styles.title}>Received</Text>
@@ -218,6 +221,7 @@ export function WalletBreakdownView({
  * driver nativo; com "reduzir movimento", ela só aparece no lugar.
  */
 function PeriodTabs({ period, onChange }: { period: InflowPeriod; onChange: (next: InflowPeriod) => void }) {
+  const styles = useStyles();
   const reduceMotion = useReduceMotion();
   const index = INFLOW_PERIODS.findIndex((item) => item.key === period);
   const [trackWidth, setTrackWidth] = useState(0);
@@ -324,6 +328,8 @@ function MonthStepper({
   onBack: () => void;
   onForward: () => void;
 }) {
+  const colors = useTheme();
+  const styles = useStyles();
   return (
     <View style={styles.stepper}>
       <Pressable
@@ -334,7 +340,7 @@ function MonthStepper({
         accessibilityLabel="Previous month"
         accessibilityState={{ disabled: !canGoBack }}
       >
-        <IconChevronLeft size={18} sw={2.2} color={canGoBack ? Colors.light.ink : Colors.light.border} />
+        <IconChevronLeft size={18} sw={2.2} color={canGoBack ? colors.ink : colors.ink3} />
       </Pressable>
       <Text style={styles.stepperLabel} accessibilityRole="header">
         {label}
@@ -347,7 +353,7 @@ function MonthStepper({
         accessibilityLabel="Next month"
         accessibilityState={{ disabled: !canGoForward }}
       >
-        <IconChevronRight size={18} sw={2.2} color={canGoForward ? Colors.light.ink : Colors.light.border} />
+        <IconChevronRight size={18} sw={2.2} color={canGoForward ? colors.ink : colors.ink3} />
       </Pressable>
     </View>
   );
@@ -370,7 +376,10 @@ function LegendRow({
   dimmed: boolean;
   onPress: () => void;
 }) {
-  const { plural, color } = SOURCE_META[entry.source];
+  const colors = useTheme();
+  const styles = useStyles();
+  const { plural, colorKey } = SOURCE_META[entry.source];
+  const color = colors[colorKey];
   const count = entry.count === 1 ? '1 payment' : `${entry.count} payments`;
 
   return (
@@ -397,7 +406,10 @@ function LegendRow({
  * para o menor, com uma barrinha da fatia dele dentro da origem.
  */
 function SourceSection({ entry, onOpenPayments }: { entry: SourceBreakdown; onOpenPayments?: () => void }) {
-  const { plural, color } = SOURCE_META[entry.source];
+  const colors = useTheme();
+  const styles = useStyles();
+  const { plural, colorKey } = SOURCE_META[entry.source];
+  const color = colors[colorKey];
   const count = entry.count === 1 ? '1 payment' : `${entry.count} payments`;
 
   return (
@@ -414,7 +426,7 @@ function SourceSection({ entry, onOpenPayments }: { entry: SourceBreakdown; onOp
             accessibilityLabel={`See ${plural.toLowerCase()} payments`}
           >
             <Text style={styles.seeAllText}>Payments</Text>
-            <IconChevronRight size={14} sw={2.2} color={Colors.light.ink2} />
+            <IconChevronRight size={14} sw={2.2} color={colors.ink2} />
           </Pressable>
         ) : undefined
       }
@@ -443,6 +455,7 @@ function SourceSection({ entry, onOpenPayments }: { entry: SourceBreakdown; onOp
 }
 
 function BreakdownSkeleton() {
+  const styles = useStyles();
   return (
     <View style={[styles.card, styles.skeleton]} accessible accessibilityLabel="Loading breakdown">
       <Skeleton height={176} width={176} radius={Radius.pill} style={styles.skeletonDonut} />
@@ -452,7 +465,7 @@ function BreakdownSkeleton() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   flex: { flex: 1 },
   content: { paddingHorizontal: Spacing.three - 4, paddingTop: Spacing.three, gap: Spacing.three },
   pressed: { opacity: 0.7 },
@@ -465,17 +478,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  title: { fontFamily: Fonts.bold, fontSize: 22, lineHeight: 28, color: Colors.light.ink },
-  meta: { fontFamily: Fonts.medium, fontSize: 13, color: Colors.light.ink3 },
+  title: { fontFamily: Fonts.bold, fontSize: 22, lineHeight: 28, color: colors.ink },
+  meta: { fontFamily: Fonts.medium, fontSize: 13, color: colors.ink3 },
 
   periods: {
     flexDirection: 'row',
     gap: TAB_GAP,
     padding: TAB_PAD,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
   period: {
     flex: 1,
@@ -490,10 +503,10 @@ const styles = StyleSheet.create({
     bottom: TAB_PAD,
     left: TAB_PAD,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.ink,
+    backgroundColor: colors.ink,
   },
-  periodText: { fontFamily: Fonts.bold, fontSize: 13, color: Colors.light.ink2 },
-  periodTextActive: { color: Colors.light.bg },
+  periodText: { fontFamily: Fonts.bold, fontSize: 13, color: colors.ink2 },
+  periodTextActive: { color: colors.bg },
 
   stepper: {
     flexDirection: 'row',
@@ -502,15 +515,15 @@ const styles = StyleSheet.create({
     marginTop: -Spacing.two,
   },
   stepperButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  stepperLabel: { fontFamily: Fonts.bold, fontSize: 15, color: Colors.light.ink },
+  stepperLabel: { fontFamily: Fonts.bold, fontSize: 15, color: colors.ink },
 
   card: {
     gap: Spacing.three,
     padding: Spacing.three + 4,
     borderRadius: Radius.xl,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
   donutWrap: { alignItems: 'center', paddingVertical: Spacing.two },
 
@@ -524,14 +537,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three - 4,
     borderRadius: Radius.md,
   },
-  legendRowActive: { backgroundColor: Colors.light.bg },
+  legendRowActive: { backgroundColor: colors.bg },
   legendDot: { width: 12, height: 12, borderRadius: Radius.pill },
-  legendName: { fontFamily: Fonts.semibold, fontSize: 14, color: Colors.light.ink },
-  legendCount: { fontFamily: Fonts.medium, fontSize: 12, color: Colors.light.ink3, marginTop: 1 },
+  legendName: { fontFamily: Fonts.semibold, fontSize: 14, color: colors.ink },
+  legendCount: { fontFamily: Fonts.medium, fontSize: 12, color: colors.ink3, marginTop: 1 },
   legendValue: {
     fontFamily: Fonts.bold,
     fontSize: 15,
-    color: Colors.light.ink,
+    color: colors.ink,
     fontVariant: ['tabular-nums'],
   },
   legendPercent: {
@@ -539,32 +552,32 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     fontFamily: Fonts.semibold,
     fontSize: 13,
-    color: Colors.light.ink2,
+    color: colors.ink2,
     fontVariant: ['tabular-nums'],
   },
   dimmed: { opacity: 0.3 },
-  dimmedText: { color: Colors.light.ink3 },
-  hint: { fontFamily: Fonts.medium, fontSize: 12, color: Colors.light.ink3, textAlign: 'center' },
+  dimmedText: { color: colors.ink3 },
+  hint: { fontFamily: Fonts.medium, fontSize: 12, color: colors.ink3, textAlign: 'center' },
 
   pending: {
     fontFamily: Fonts.semibold,
     fontSize: 12,
     lineHeight: 18,
-    color: Colors.light.warn,
+    color: colors.warn,
     textAlign: 'center',
     paddingHorizontal: Spacing.three,
   },
 
   seeAll: { flexDirection: 'row', alignItems: 'center', gap: 2, minHeight: 32 },
-  seeAllText: { fontFamily: Fonts.bold, fontSize: 13, color: Colors.light.ink2 },
+  seeAllText: { fontFamily: Fonts.bold, fontSize: 13, color: colors.ink2 },
 
   itemRow: { gap: Spacing.one + 2, paddingVertical: Spacing.one + 2 },
   itemTop: { flexDirection: 'row', alignItems: 'baseline', gap: Spacing.two },
-  itemTitle: { flex: 1, fontFamily: Fonts.semibold, fontSize: 14, color: Colors.light.ink },
+  itemTitle: { flex: 1, fontFamily: Fonts.semibold, fontSize: 14, color: colors.ink },
   itemValue: {
     fontFamily: Fonts.bold,
     fontSize: 14,
-    color: Colors.light.ink,
+    color: colors.ink,
     fontVariant: ['tabular-nums'],
   },
   itemBottom: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
@@ -572,21 +585,21 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 6,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.bg,
+    backgroundColor: colors.bg,
     overflow: 'hidden',
   },
   itemFill: { height: '100%', borderRadius: Radius.pill },
-  itemCount: { fontFamily: Fonts.medium, fontSize: 11, color: Colors.light.ink3, minWidth: 68, textAlign: 'right' },
+  itemCount: { fontFamily: Fonts.medium, fontSize: 11, color: colors.ink3, minWidth: 68, textAlign: 'right' },
 
   note: {
     fontFamily: Fonts.medium,
     fontSize: 12,
     lineHeight: 18,
-    color: Colors.light.ink3,
+    color: colors.ink3,
     textAlign: 'center',
     paddingHorizontal: Spacing.three,
   },
 
   skeleton: { alignItems: 'stretch' },
   skeletonDonut: { alignSelf: 'center' },
-});
+}));

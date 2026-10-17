@@ -1,16 +1,23 @@
 import { useRouter } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import { DropdownPanel } from '@/components/dropdown-panel';
-import { IconBarChart, IconDollar, IconRocket, IconScissors } from '@/components/icons';
-import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import {
+  IconBarChart,
+  IconClipboard,
+  IconDollar,
+  IconRocket,
+  IconScissors,
+} from '@/components/icons';
+import { Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 
 /**
  * Menu de navegação — frame "Xiaolee - menu" (grupo `Group 9`, 191x264).
  *
  * Título maior (16 w700) e sem descrição — é a diferença visual em relação
- * ao painel de perfil. O Figma tem três destinos; Clips é o quarto, ainda
- * fora do frame.
+ * ao painel de perfil. O Figma tem três destinos; Clips e Reports vêm depois,
+ * ainda fora do frame.
  *
  * A linha inteira é o alvo do toque, como no `PanelRow` do perfil: antes só o
  * texto respondia, e tocar no ícone ou ao lado do nome não fazia nada.
@@ -22,6 +29,8 @@ interface NavMenuProps {
 }
 
 export function NavMenu({ visible, onDismiss }: NavMenuProps) {
+  const colors = useTheme();
+  const styles = useStyles();
   const router = useRouter();
 
   const items = [
@@ -29,6 +38,7 @@ export function NavMenu({ visible, onDismiss }: NavMenuProps) {
     { key: 'traction', Icon: IconDollar, label: 'Traction', href: '/traction' as const },
     { key: 'campaigns', Icon: IconRocket, label: 'Campaigns', href: '/campaigns' as const },
     { key: 'clips', Icon: IconScissors, label: 'Clips', href: '/clips' as const },
+    { key: 'reports', Icon: IconClipboard, label: 'Reports', href: '/reports' as const },
   ];
 
   return (
@@ -45,7 +55,7 @@ export function NavMenu({ visible, onDismiss }: NavMenuProps) {
           accessibilityLabel={label}
         >
           <View style={styles.icon}>
-            <Icon size={20} color={Colors.light.accent} />
+            <Icon size={20} color={colors.accent} />
           </View>
           <Text style={styles.label}>{label}</Text>
         </Pressable>
@@ -54,7 +64,7 @@ export function NavMenu({ visible, onDismiss }: NavMenuProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two + 2, paddingVertical: 2 },
   icon: {
     width: 36,
@@ -62,8 +72,8 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.light.accentSoft,
+    backgroundColor: colors.accentSoft,
   },
-  label: { flex: 1, fontFamily: Fonts.bold, fontSize: 16, color: Colors.light.ink },
+  label: { flex: 1, fontFamily: Fonts.bold, fontSize: 16, color: colors.ink },
   pressed: { opacity: 0.6 },
-});
+}));

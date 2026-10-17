@@ -5,7 +5,8 @@ import { ActivityIndicator, Animated, Easing, Pressable, StyleSheet, Text, View 
 import { ConnectWalletSheet } from '@/components/connect-wallet-sheet';
 import type { IconProps } from '@/components/icons';
 import { IconWallet } from '@/components/icons';
-import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 
 /**
  * Os três estados que toda tela de dado tem antes (ou em vez) do conteúdo:
@@ -17,9 +18,11 @@ import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 
 /** Primeira carga. Para recarga com dado na tela, use o `RefreshControl`. */
 export function LoadingState({ label = 'Loading…' }: { label?: string }) {
+  const colors = useTheme();
+  const styles = useStyles();
   return (
     <View style={styles.centered}>
-      <ActivityIndicator color={Colors.light.accent} />
+      <ActivityIndicator color={colors.accent} />
       <Text style={styles.dim}>{label}</Text>
     </View>
   );
@@ -37,10 +40,12 @@ export function EmptyState({
   /** Saída do estado vazio, quando existe uma — um `SignInButton`, por exemplo. */
   action?: React.ReactNode;
 }) {
+  const colors = useTheme();
+  const styles = useStyles();
   return (
     <View style={styles.centered}>
       <View style={styles.emptyIcon}>
-        <Icon size={22} color={Colors.light.ink3} />
+        <Icon size={22} color={colors.ink3} />
       </View>
       <Text style={styles.emptyTitle}>{title}</Text>
       <Text style={styles.dim}>{text}</Text>
@@ -72,6 +77,7 @@ export function Skeleton({
   radius?: number;
   style?: StyleProp<ViewStyle>;
 }) {
+  const styles = useStyles();
   // A `Animated.Value` nasce uma vez e sobrevive aos re-renders — mesmo idioma
   // do `dropdown-panel`.
   const [pulse] = useState(() => new Animated.Value(0));
@@ -121,6 +127,7 @@ export function ErrorState({
   message: string;
   onRetry?: () => void;
 }) {
+  const styles = useStyles();
   return (
     <View style={styles.error}>
       <Text style={styles.errorTitle}>{title}</Text>
@@ -151,6 +158,8 @@ export function ErrorState({
  * próprio `ConnectWalletSheet`.
  */
 export function ConnectWalletButton({ label = 'Connect Wallet' }: { label?: string }) {
+  const colors = useTheme();
+  const styles = useStyles();
   const [visible, setVisible] = useState(false);
 
   return (
@@ -161,7 +170,7 @@ export function ConnectWalletButton({ label = 'Connect Wallet' }: { label?: stri
         accessibilityRole="button"
         accessibilityLabel={label}
       >
-        <IconWallet size={16} color={Colors.light.card} />
+        <IconWallet size={16} color={colors.onAccent} />
         <Text style={styles.signInText}>{label}</Text>
       </Pressable>
       <ConnectWalletSheet visible={visible} onClose={() => setVisible(false)} />
@@ -169,13 +178,13 @@ export function ConnectWalletButton({ label = 'Connect Wallet' }: { label?: stri
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   centered: { alignItems: 'center', gap: Spacing.two, paddingVertical: Spacing.five },
   dim: {
     fontFamily: Fonts.sans,
     fontSize: 13,
     lineHeight: 20,
-    color: Colors.light.ink2,
+    color: colors.ink2,
     textAlign: 'center',
   },
   emptyIcon: {
@@ -184,30 +193,30 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.light.bg,
+    backgroundColor: colors.bg,
   },
-  emptyTitle: { fontFamily: Fonts.semibold, fontSize: 14, color: Colors.light.ink },
+  emptyTitle: { fontFamily: Fonts.semibold, fontSize: 14, color: colors.ink },
 
-  skeleton: { backgroundColor: Colors.light.border },
+  skeleton: { backgroundColor: colors.border },
 
   error: {
     gap: Spacing.two,
     padding: Spacing.three - 2,
     borderRadius: Radius.lg,
-    backgroundColor: Colors.light.dangerSoft,
+    backgroundColor: colors.dangerSoft,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.danger,
+    borderColor: colors.danger,
   },
-  errorTitle: { fontFamily: Fonts.bold, fontSize: 14, color: Colors.light.danger },
-  errorText: { fontFamily: Fonts.sans, fontSize: 13, lineHeight: 20, color: Colors.light.ink2 },
+  errorTitle: { fontFamily: Fonts.bold, fontSize: 14, color: colors.danger },
+  errorText: { fontFamily: Fonts.sans, fontSize: 13, lineHeight: 20, color: colors.ink2 },
   retry: {
     alignSelf: 'flex-start',
     paddingHorizontal: Spacing.three - 2,
     paddingVertical: Spacing.two - 2,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.danger,
+    backgroundColor: colors.dangerFill,
   },
-  retryText: { fontFamily: Fonts.semibold, fontSize: 12, color: Colors.light.card },
+  retryText: { fontFamily: Fonts.semibold, fontSize: 12, color: colors.onAccent },
   pressed: { opacity: 0.65 },
 
   // Sem `marginTop`: todos os pais que o usam já separam por `gap`, e a margem
@@ -221,7 +230,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingVertical: Spacing.two,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.accent,
+    backgroundColor: colors.accentFill,
   },
-  signInText: { fontFamily: Fonts.bold, fontSize: 13, color: Colors.light.card },
-});
+  signInText: { fontFamily: Fonts.bold, fontSize: 13, color: colors.onAccent },
+}));

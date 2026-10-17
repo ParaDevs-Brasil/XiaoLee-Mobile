@@ -1,6 +1,6 @@
 # XiaoLee Design System & Guidelines
 
-Atualizado em: **2026-07-04** — Revisão v4 (paleta neutra + acento único; sprint Arc Lepton)
+Atualizado em: **2026-10-17** — Revisão v5 (variante escura e ajustes de contraste; XIAOLEEACE-13). Revisão v4 em 2026-07-04 (paleta neutra + acento único; sprint Arc Lepton)
 
 Este documento detalha a linguagem visual, padrões e especificações técnicas para a interface premium do XiaoLee, focada em transmitir uma estética moderna, limpa e sofisticada, alinhada aos melhores produtos DeFi.
 
@@ -41,7 +41,8 @@ A família tipográfica principal do projeto é a **Quicksand**.
 
 Paleta **neutra quente com acento único de marca** (revisão v4, 04 jul 2026). Os valores vivem como CSS custom properties em `frontend/src/app/globals.css` — nos componentes, use sempre os tokens (`var(--accent)`, `border-[var(--border)]`, etc.), nunca hex solto ou classes de cor do Tailwind (`pink-*`, `fuchsia-*`, `purple-*` estão proibidas fora da landing).
 
-> **Nota:** o modo escuro está suspenso até esta paleta ganhar uma variante escura (`theme-context.tsx` força `light`; toggle removido da Navbar).
+> **Nota (v5):** o **mobile** tem tema claro, escuro e do sistema (seletor no painel de perfil), com a variante escura da seção 3.6; os valores vivem em `mobile/src/constants/theme.ts`. O **web** continua só no claro (`theme-context.tsx` força `light`; toggle removido da Navbar).
+
 
 ### 3.1. Tokens Base
 
@@ -52,7 +53,7 @@ Paleta **neutra quente com acento único de marca** (revisão v4, 04 jul 2026). 
 | `--border` | `#ece9e4` | Todas as bordas |
 | `--ink` / `--text-primary` | `#1a1917` | Texto primário, títulos, valores |
 | `--ink-2` / `--text-secondary` | `#6b6862` | Texto secundário, descrições |
-| `--ink-3` / `--text-placeholder` | `#9a968f` | Muted: metadados, placeholders, timestamps |
+| `--ink-3` / `--text-placeholder` | `#736f68` | Muted: metadados, placeholders, timestamps. Era `#9a968f` (v4), que dava 2.9:1 sobre `--card` e 2.7:1 sobre `--bg`; o novo dá 5.0:1 / 4.6:1 (AA) e continua mais claro que `--ink-2` |
 
 ### 3.2. Acento de Marca
 
@@ -62,13 +63,13 @@ Paleta **neutra quente com acento único de marca** (revisão v4, 04 jul 2026). 
 | `--accent-hover` | `#c0166a` | Hover do acento |
 | `--accent-soft` | `#fdf0f6` | Fundo suave: chips, moldura do avatar, ícones de sugestão |
 
-Contraste verificado: branco sobre `--accent` = **4.8:1** (AA). Regra de ouro: **acento só em botão primário, avatar e destaques — o resto neutro.**
+Contraste verificado: branco sobre `--accent` = **4.8:1** (AA). O acento como **texto** sobre `--bg` dá 4.4:1, um pouco abaixo de AA para texto comum: **mantido de propósito** (é a cor da marca e aparece quase sempre em negrito, onde o mínimo é 3:1). Regra de ouro: **acento só em botão primário, avatar e destaques — o resto neutro.**
 
 ### 3.3. Cores Semânticas
 
 | Estado | Token / Classe | Uso |
 |---|---|---|
-| Sucesso | `--success` `#1f8a5b` (+ `bg-emerald-50`, `border-emerald-100` como soft) | Badges Online/Verified, métricas de dinheiro (USDC pago, TVL, volume) |
+| Sucesso | `--success` `#1a7a50` (+ `bg-emerald-50`, `border-emerald-100` como soft). Era `#1f8a5b` (v4): 4.3:1 sobre `--card`, abaixo de AA; o novo dá 5.3:1 | Badges Online/Verified, métricas de dinheiro (USDC pago, TVL, volume) |
 | Negativo / Erro | `--danger` `#c23a3a` (+ `bg-red-50`, `border-red-100`) | Erros de API, logout |
 | Pendente | `text-amber-600`, `bg-amber-50`, `border-amber-100` | Status "pending", latência degradada |
 
@@ -89,6 +90,37 @@ Contraste verificado: branco sobre `--accent` = **4.8:1** (AA). Regra de ouro: *
 | Subtítulo / desc | `text-[var(--text-secondary)]` ou `text-gray-500` |
 | Label seção | `text-gray-500 uppercase tracking-widest text-xs font-bold` |
 | Valor de destaque | `text-[var(--text-primary)] font-black`; se for dinheiro/positivo, `text-[var(--success)]` |
+
+### 3.6. Variante escura e tokens do mobile (v5)
+
+Derivada da paleta clara (mesmo hue de cada token, luminância invertida). Contraste conferido com a fórmula WCAG contra `card` e `bg` de cada tema.
+
+| Token (`theme.ts`) | Claro | Escuro | Uso |
+|---|---|---|---|
+| `bg` | `#f6f4f1` | `#141316` | Fundo do app |
+| `card` | `#ffffff` | `#1f1c20` | Cards e painéis |
+| `border` | `#ece9e4` | `#332f34` | Bordas |
+| `borderStrong` | `#d4d0ca` | `#4d474e` | Borda que precisa aparecer mais (caixa preenchida do OTP) |
+| `popover` / `popoverBorder` | `#ffffff` / `#ece9e4` | `#2a262c` / `#45404a` | Painéis flutuantes (menu, perfil). No escuro a sombra não aparece, por isso um degrau mais claro e borda visível |
+| `ink` | `#1a1917` | `#f5f2f0` | Texto primário (15.1:1 no escuro) |
+| `ink2` | `#6b6862` | `#b7b2ac` | Texto secundário (8.0:1) |
+| `ink3` | `#736f68` | `#8c8781` | Muted (4.7:1) |
+| `accent` | `#d81b78` | `#f0509a` | Acento como texto e ícone (5.1:1 no escuro) |
+| `accentSoft` | `#fdf0f6` | `#3a1428` | Fundo suave do acento |
+| `accentFill` / `onAccent` | `#d81b78` / `#ffffff` | `#d81b78` / `#ffffff` | **Preenchimento** com texto branco (botão primário, chip ativo, avatar). Igual nos dois temas: branco sobre o `accent` escuro daria só 3.3:1 |
+| `success` / `successSoft` | `#1a7a50` / `#ecfdf5` | `#34c98a` / `#0f2b20` | Sucesso como texto |
+| `successFill` / `dangerFill` | `#1a7a50` / `#c23a3a` | `#1a7a50` / `#c23a3a` | Fundo verde/vermelho com texto branco (ack, badge do sino, excluir) |
+| `danger` / `dangerSoft` | `#c23a3a` / `#fef2f2` | `#e2665f` / `#301414` | Erro |
+| `warn` / `warnSoft` | `#b45309` / `#fffbeb` | `#e0a840` / `#2e2210` | Degradado / pendente |
+| `media` / `onMedia` | `#1a1917` / `#ffffff` | `#000000` / `#ffffff` | Fundo atrás de vídeo e thumbnail e o texto por cima; escuro nos dois temas |
+| `scrim` | `rgba(26,25,23,0.35)` | `rgba(0,0,0,0.6)` | Fundo escurecido atrás dos sheets |
+| `arc` | `#7c3aed` | `#a78bfa` | Roxo da Arc, só no "Arc." do slogan do login. Era `#8b5cf6` (3.9:1 sobre `bg`) |
+| `chartCampaign` / `chartPurchase` / `chartTransfer` | `#d81b78` / `#2a78d6` / `#c98500` | `#e5418d` / `#3987e5` / `#c98500` | Origem do dinheiro nos gráficos da carteira |
+
+Regras:
+- Preenchimento com o acento usa `accentFill` + `onAccent`; texto e ícone em rosa usam `accent`. No claro os dois são o mesmo rosa; no escuro, não.
+- O cartão de compartilhar perfil é **sempre claro**: vira imagem e vai para as redes, então sai igual em qualquer tema.
+- Teclado e alertas nativos seguem o tema do celular, não o do app (forçar o tema nativo quebraria a opção "System").
 
 ---
 
