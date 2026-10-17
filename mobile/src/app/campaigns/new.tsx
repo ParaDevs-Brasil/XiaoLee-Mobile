@@ -15,7 +15,8 @@ import { createCampaign } from '@/api/backend';
 import { ApiError } from '@/api/client';
 import { ErrorState } from '@/components/feedback';
 import { IconAlert } from '@/components/icons';
-import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useKeyboard } from '@/hooks/use-keyboard';
 import { useSession } from '@/hooks/use-session';
 import { formatTokenAmount } from '@/lib/format';
@@ -68,6 +69,8 @@ const INITIAL: FormState = {
 };
 
 export default function NewCampaignScreen() {
+  const colors = useTheme();
+  const styles = useStyles();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const keyboard = useKeyboard();
@@ -156,7 +159,7 @@ export default function NewCampaignScreen() {
       >
         {!hasSession ? (
           <View style={styles.notice}>
-            <IconAlert size={14} color={Colors.light.ink2} />
+            <IconAlert size={14} color={colors.ink2} />
             <Text style={styles.noticeText}>
               Connect a wallet first — the campaign is created under your account.
             </Text>
@@ -272,7 +275,7 @@ export default function NewCampaignScreen() {
           accessibilityState={{ disabled: !valid || submitting }}
         >
           {submitting ? (
-            <ActivityIndicator color={Colors.light.card} />
+            <ActivityIndicator color={colors.onAccent} />
           ) : (
             <Text style={styles.submitText}>Create campaign</Text>
           )}
@@ -311,6 +314,8 @@ function Field({
   autoCapitalize?: 'none' | 'characters';
   style?: object;
 }) {
+  const colors = useTheme();
+  const styles = useStyles();
   return (
     <View style={[styles.field, style]}>
       <Text style={styles.label}>
@@ -321,7 +326,7 @@ function Field({
         value={value}
         onChangeText={onChange}
         placeholder={placeholder}
-        placeholderTextColor={Colors.light.ink3}
+        placeholderTextColor={colors.ink3}
         style={[styles.input, multiline && styles.inputMultiline]}
         multiline={multiline}
         keyboardType={keyboardType}
@@ -331,8 +336,8 @@ function Field({
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Colors.light.bg },
+const useStyles = makeStyles((colors) => ({
+  screen: { flex: 1, backgroundColor: colors.bg },
   flex: { flex: 1 },
   content: {
     padding: Spacing.three - 4,
@@ -348,28 +353,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.two + 2,
     paddingVertical: Spacing.two,
     borderRadius: Radius.md,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
-  noticeText: { flex: 1, fontFamily: Fonts.semibold, fontSize: 12, color: Colors.light.ink2 },
+  noticeText: { flex: 1, fontFamily: Fonts.semibold, fontSize: 12, color: colors.ink2 },
 
   // ── Campos ─────────────────────────────────────────────────────────────
   field: { gap: Spacing.two - 2 },
   row: { flexDirection: 'row', gap: Spacing.three - 4 },
-  label: { fontFamily: Fonts.semibold, fontSize: 12, color: Colors.light.ink2 },
-  required: { color: Colors.light.accent },
+  label: { fontFamily: Fonts.semibold, fontSize: 12, color: colors.ink2 },
+  required: { color: colors.accent },
   input: {
     minHeight: 44,
     paddingHorizontal: Spacing.three - 2,
     paddingVertical: Spacing.two + 2,
     borderRadius: Radius.md,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
     fontFamily: Fonts.medium,
     fontSize: 14,
-    color: Colors.light.ink,
+    color: colors.ink,
   },
   inputMultiline: { minHeight: 92, textAlignVertical: 'top' },
 
@@ -379,9 +384,9 @@ const styles = StyleSheet.create({
     gap: Spacing.one,
     padding: Spacing.one,
     borderRadius: Radius.md,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
   segment: {
     flex: 1,
@@ -390,9 +395,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: Radius.sm,
   },
-  segmentActive: { backgroundColor: Colors.light.accent },
-  segmentText: { fontFamily: Fonts.semibold, fontSize: 12, color: Colors.light.ink2 },
-  segmentTextActive: { color: Colors.light.card },
+  segmentActive: { backgroundColor: colors.accentFill },
+  segmentText: { fontFamily: Fonts.semibold, fontSize: 12, color: colors.ink2 },
+  segmentTextActive: { color: colors.onAccent },
 
   // ── Total ──────────────────────────────────────────────────────────────
   totalBox: {
@@ -402,12 +407,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three - 2,
     paddingVertical: Spacing.two + 2,
     borderRadius: Radius.md,
-    backgroundColor: Colors.light.accentSoft,
+    backgroundColor: colors.accentSoft,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
-  totalLabel: { fontFamily: Fonts.semibold, fontSize: 12, color: Colors.light.ink2 },
-  totalValue: { fontFamily: Fonts.bold, fontSize: 16, color: Colors.light.accent },
+  totalLabel: { fontFamily: Fonts.semibold, fontSize: 12, color: colors.ink2 },
+  totalValue: { fontFamily: Fonts.bold, fontSize: 16, color: colors.accent },
 
   // ── Ações ──────────────────────────────────────────────────────────────
   submit: {
@@ -415,11 +420,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: Radius.md,
-    backgroundColor: Colors.light.accent,
+    backgroundColor: colors.accentFill,
     marginTop: Spacing.two,
   },
   submitIdle: { opacity: 0.45 },
-  submitText: { fontFamily: Fonts.bold, fontSize: 14, color: Colors.light.card },
+  submitText: { fontFamily: Fonts.bold, fontSize: 14, color: colors.onAccent },
   cancel: { height: 42, alignItems: 'center', justifyContent: 'center' },
-  cancelText: { fontFamily: Fonts.semibold, fontSize: 13, color: Colors.light.ink2 },
-});
+  cancelText: { fontFamily: Fonts.semibold, fontSize: 13, color: colors.ink2 },
+}));

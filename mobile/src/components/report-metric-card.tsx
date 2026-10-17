@@ -3,7 +3,8 @@ import { Animated, StyleSheet, Text, View, type StyleProp, type ViewStyle } from
 
 import { IconTrendingDown, IconTrendingUp, type IconProps } from '@/components/icons';
 import { useReveal } from '@/components/motion';
-import { CardShadow, Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { CardShadow, Fonts, Radius, Spacing, type ThemeColor } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useReduceMotion } from '@/hooks/use-reduce-motion';
 import { useTweenedValues } from '@/hooks/use-tweened-values';
 import { formatMetricValue, type DeltaTone, type MetricRow } from '@/lib/creator-report';
@@ -26,11 +27,11 @@ import { formatMetricValue, type DeltaTone, type MetricRow } from '@/lib/creator
  * aparece por último — assim o olho lê o número antes da comparação.
  */
 
-const DELTA_COLOR: Record<DeltaTone, string> = {
-  up: Colors.light.success,
-  new: Colors.light.success,
-  down: Colors.light.danger,
-  flat: Colors.light.ink3,
+const DELTA_COLOR: Record<DeltaTone, ThemeColor> = {
+  up: 'success',
+  new: 'success',
+  down: 'danger',
+  flat: 'ink3',
 };
 
 /** Seta verde subindo quando cresceu (ou apareceu), vermelha descendo quando caiu; igual não leva seta. */
@@ -57,6 +58,8 @@ interface ReportMetricCardProps {
 }
 
 export function ReportMetricCard({ row, Icon, wide = false, index = 0 }: ReportMetricCardProps) {
+  const colors = useTheme();
+  const styles = useStyles();
   const reveal = useReveal(index);
   const shown = useCountUp(row.now, index * STEP_MS + COUNT_DELAY_MS);
   const value = formatMetricValue(row.key, shown);
@@ -64,7 +67,7 @@ export function ReportMetricCard({ row, Icon, wide = false, index = 0 }: ReportM
 
   const chip = (
     <View style={styles.chip}>
-      <Icon size={18} color={Colors.light.accent} />
+      <Icon size={18} color={colors.accent} />
     </View>
   );
 
@@ -124,6 +127,8 @@ function useCountUp(target: number, delay: number): number {
 }
 
 function Delta({ row, index }: { row: MetricRow; index: number }) {
+  const colors = useTheme();
+  const styles = useStyles();
   // A variação entra por último e sobe só um pouco: é leitura de apoio, não manchete.
   const reveal = useReveal(index, { rise: 6, delay: COUNT_DELAY_MS + 500 });
 
@@ -133,7 +138,7 @@ function Delta({ row, index }: { row: MetricRow; index: number }) {
     return <Text style={styles.deltaEmpty}>—</Text>;
   }
   const Arrow = DELTA_ICON[row.tone];
-  const color = DELTA_COLOR[row.tone];
+  const color = colors[DELTA_COLOR[row.tone]];
   return (
     <Animated.View style={[styles.delta, reveal]}>
       {Arrow ? <Arrow size={14} sw={2.2} color={color} /> : null}
@@ -145,6 +150,7 @@ function Delta({ row, index }: { row: MetricRow; index: number }) {
 }
 
 function PeriodBars({ before, now, index }: { before: number; now: number; index: number }) {
+  const styles = useStyles();
   const max = Math.max(before, now);
   if (max <= 0) return null;
   // Valor zero ainda deixa um traço fino, senão o período "vazio" some e a
@@ -174,6 +180,7 @@ function Bar({
   height: number;
   delay: number;
 }) {
+  const styles = useStyles();
   const reduce = useReduceMotion();
   const [grow] = useState(() => new Animated.Value(0));
 
@@ -200,14 +207,14 @@ function Bar({
   return <Animated.View style={[styles.bar, style, { height, transform: [{ scaleY: grow }] }]} />;
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   flex: { flex: 1 },
   card: {
     padding: Spacing.three - 2,
     borderRadius: Radius.lg,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
     ...CardShadow,
   },
   // Dois por linha numa grade com `flexWrap`: a base de 47% + o gap cabem duas, e `flexGrow` reparte a sobra.
@@ -220,9 +227,9 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.light.accentSoft,
+    backgroundColor: colors.accentSoft,
   },
-  label: { fontFamily: Fonts.medium, fontSize: 13, lineHeight: 17, color: Colors.light.ink2 },
+  label: { fontFamily: Fonts.medium, fontSize: 13, lineHeight: 17, color: colors.ink2 },
   valueRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -234,13 +241,13 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bold,
     fontSize: 30,
     lineHeight: 36,
-    color: Colors.light.ink,
+    color: colors.ink,
   },
-  valueWide: { fontFamily: Fonts.bold, fontSize: 24, color: Colors.light.ink },
+  valueWide: { fontFamily: Fonts.bold, fontSize: 24, color: colors.ink },
 
   delta: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
   deltaText: { flexShrink: 1, fontFamily: Fonts.medium, fontSize: 12 },
-  deltaEmpty: { fontFamily: Fonts.medium, fontSize: 12, color: Colors.light.ink3 },
+  deltaEmpty: { fontFamily: Fonts.medium, fontSize: 12, color: colors.ink3 },
 
   bars: {
     flexDirection: 'row',
@@ -255,6 +262,6 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 3,
     transformOrigin: 'bottom',
   },
-  barBefore: { backgroundColor: Colors.light.ink3, opacity: 0.35 },
-  barNow: { backgroundColor: Colors.light.accent },
-});
+  barBefore: { backgroundColor: colors.ink3, opacity: 0.35 },
+  barNow: { backgroundColor: colors.accentFill },
+}));

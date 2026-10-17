@@ -27,7 +27,8 @@ import {
   IconTarget,
 } from '@/components/icons';
 import { PageHeading, ScreenShell } from '@/components/screen-shell';
-import { CardShadow, Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useBackendData } from '@/hooks/use-backend-data';
 import { useSession } from '@/hooks/use-session';
 import { formatTokenAmount } from '@/lib/format';
@@ -71,6 +72,8 @@ const CARD_GAP = Spacing.three - 4;
 type Tab = 'explore' | 'mine' | 'rewards';
 
 export default function CampaignsScreen() {
+  const colors = useTheme();
+  const styles = useStyles();
   // Barra de gestos do Android come o fim da lista sem este inset.
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -125,8 +128,8 @@ export default function CampaignsScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={reload}
-            tintColor={Colors.light.accent}
-            colors={[Colors.light.accent]}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
           />
         }
       >
@@ -182,7 +185,7 @@ export default function CampaignsScreen() {
                       accessibilityRole="button"
                       accessibilityLabel="Refresh"
                     >
-                      <IconRefresh size={15} color={Colors.light.ink3} />
+                      <IconRefresh size={15} color={colors.ink3} />
                     </Pressable>
                     <Arrow
                       direction="left"
@@ -285,12 +288,14 @@ export default function CampaignsScreen() {
  * já que não estar logado não é erro.
  */
 function SessionBanner({ hasSession }: { hasSession: boolean }) {
+  const colors = useTheme();
+  const styles = useStyles();
   const router = useRouter();
 
   return (
     <View style={[styles.banner, hasSession ? styles.bannerActive : styles.bannerGuest]}>
       <View style={[styles.bannerIcon, hasSession ? styles.bannerIconActive : styles.bannerIconGuest]}>
-        <IconClock size={15} color={hasSession ? Colors.light.success : Colors.light.ink2} />
+        <IconClock size={15} color={hasSession ? colors.success : colors.ink2} />
       </View>
 
       <View style={styles.flex}>
@@ -336,6 +341,8 @@ function TabBar({
   rewardsCount: number;
   hasSession: boolean;
 }) {
+  const colors = useTheme();
+  const styles = useStyles();
   const router = useRouter();
 
   const tabs: { id: Tab; label: string; count: number }[] = [
@@ -383,7 +390,7 @@ function TabBar({
         accessibilityRole="button"
         accessibilityLabel={hasSession ? 'Create campaign' : 'Connect a wallet to create a campaign'}
       >
-        <IconPlus size={16} sw={2.2} color={Colors.light.card} />
+        <IconPlus size={16} sw={2.2} color={colors.onAccent} />
       </Pressable>
     </View>
   );
@@ -397,6 +404,8 @@ const HOW_STEPS = [
 ];
 
 function HowItWorks({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  const colors = useTheme();
+  const styles = useStyles();
   return (
     <View style={styles.howBox}>
       <Pressable
@@ -405,13 +414,13 @@ function HowItWorks({ open, onToggle }: { open: boolean; onToggle: () => void })
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
       >
-        <IconTarget size={16} color={Colors.light.accent} />
+        <IconTarget size={16} color={colors.accent} />
         <Text style={styles.howTitle}>How it works — Testnet</Text>
         {/* A rotação vai no wrapper: `IconProps` não expõe `style`, e abrir
             esse contrato para um único uso espalharia estilo por todos os
             ícones do app. */}
         <View style={open ? styles.chevronOpen : undefined}>
-          <IconChevronDown size={16} sw={2.2} color={Colors.light.ink3} />
+          <IconChevronDown size={16} sw={2.2} color={colors.ink3} />
         </View>
       </Pressable>
 
@@ -450,6 +459,7 @@ function stageLabel(item: UserCampaignParticipation): string {
 
 /** Uma linha por participação, na aba "My Campaigns". */
 function ParticipationRow({ item }: { item: UserCampaignParticipation }) {
+  const styles = useStyles();
   return (
     <View style={styles.row}>
       <View style={styles.rowTop}>
@@ -471,6 +481,7 @@ function ParticipationRow({ item }: { item: UserCampaignParticipation }) {
 
 /** Uma linha por recompensa já resgatada, na aba "Rewards". */
 function RewardRow({ item }: { item: UserCampaignParticipation }) {
+  const styles = useStyles();
   return (
     <View style={styles.row}>
       <View style={styles.rowTop}>
@@ -491,6 +502,7 @@ function RewardRow({ item }: { item: UserCampaignParticipation }) {
 }
 
 function CampaignsSkeleton() {
+  const styles = useStyles();
   return (
     <View style={styles.skeleton} accessible accessibilityLabel="Loading campaigns">
       <Skeleton height={16} width="55%" radius={Radius.sm} />
@@ -509,6 +521,8 @@ function Arrow({
   disabled: boolean;
   onPress: () => void;
 }) {
+  const colors = useTheme();
+  const styles = useStyles();
   const Icon = direction === 'left' ? IconChevronLeft : IconChevronRight;
 
   return (
@@ -524,12 +538,12 @@ function Arrow({
       accessibilityLabel={direction === 'left' ? 'Previous' : 'Next'}
       accessibilityState={{ disabled }}
     >
-      <Icon size={15} sw={2.2} color={Colors.light.accent} />
+      <Icon size={15} sw={2.2} color={colors.accent} />
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   flex: { flex: 1 },
   content: {
     paddingHorizontal: H_PADDING,
@@ -548,10 +562,10 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   bannerActive: {
-    backgroundColor: Colors.light.successSoft,
-    borderColor: Colors.light.successBorder,
+    backgroundColor: colors.successSoft,
+    borderColor: colors.successBorder,
   },
-  bannerGuest: { backgroundColor: Colors.light.card, borderColor: Colors.light.border },
+  bannerGuest: { backgroundColor: colors.card, borderColor: colors.border },
   bannerIcon: {
     width: 30,
     height: 30,
@@ -559,17 +573,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  bannerIconActive: { backgroundColor: Colors.light.successBorder },
-  bannerIconGuest: { backgroundColor: Colors.light.bg },
-  bannerTitle: { fontFamily: Fonts.bold, fontSize: 13, color: Colors.light.ink },
-  bannerText: { fontFamily: Fonts.sans, fontSize: 12, color: Colors.light.ink2, marginTop: 1 },
+  bannerIconActive: { backgroundColor: colors.successBorder },
+  bannerIconGuest: { backgroundColor: colors.bg },
+  bannerTitle: { fontFamily: Fonts.bold, fontSize: 13, color: colors.ink },
+  bannerText: { fontFamily: Fonts.sans, fontSize: 12, color: colors.ink2, marginTop: 1 },
   bannerButton: {
     paddingHorizontal: Spacing.three - 2,
     paddingVertical: Spacing.two - 1,
     borderRadius: Radius.md,
-    backgroundColor: Colors.light.accent,
+    backgroundColor: colors.accentFill,
   },
-  bannerButtonText: { fontFamily: Fonts.bold, fontSize: 12, color: Colors.light.card },
+  bannerButtonText: { fontFamily: Fonts.bold, fontSize: 12, color: colors.onAccent },
 
   // ── Abas ───────────────────────────────────────────────────────────────
   tabBar: {
@@ -578,9 +592,9 @@ const styles = StyleSheet.create({
     gap: Spacing.two - 2,
     padding: Spacing.one + 2,
     borderRadius: Radius.lg,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
     ...CardShadow,
   },
   tabScroller: { alignItems: 'center', gap: Spacing.one },
@@ -592,35 +606,35 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
     borderRadius: Radius.md,
   },
-  tabActive: { backgroundColor: Colors.light.accent },
-  tabText: { fontFamily: Fonts.bold, fontSize: 13, color: Colors.light.ink3 },
-  tabTextActive: { color: Colors.light.card },
+  tabActive: { backgroundColor: colors.accentFill },
+  tabText: { fontFamily: Fonts.bold, fontSize: 13, color: colors.ink3 },
+  tabTextActive: { color: colors.onAccent },
   tabBadge: {
     paddingHorizontal: Spacing.two - 3,
     paddingVertical: 1,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.accentSoft,
+    backgroundColor: colors.accentSoft,
   },
   // Translúcido sobre o acento, como o `bg-white/25` do web.
   tabBadgeActive: { backgroundColor: 'rgba(255,255,255,0.28)' },
-  tabBadgeText: { fontFamily: Fonts.bold, fontSize: 10, color: Colors.light.accent },
-  tabBadgeTextActive: { color: Colors.light.card },
+  tabBadgeText: { fontFamily: Fonts.bold, fontSize: 10, color: colors.accent },
+  tabBadgeTextActive: { color: colors.onAccent },
   createButton: {
     width: 34,
     height: 34,
     borderRadius: Radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.light.accent,
+    backgroundColor: colors.accentFill,
   },
   createButtonDisabled: { opacity: 0.45 },
 
   // ── Como funciona ──────────────────────────────────────────────────────
   howBox: {
     borderRadius: Radius.lg,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
     overflow: 'hidden',
     ...CardShadow,
   },
@@ -637,7 +651,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
-    color: Colors.light.ink3,
+    color: colors.ink3,
   },
   chevronOpen: { transform: [{ rotate: '180deg' }] },
   howSteps: {
@@ -652,12 +666,12 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.light.accentSoft,
+    backgroundColor: colors.accentSoft,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
-  howNumberText: { fontFamily: Fonts.bold, fontSize: 10, color: Colors.light.accent },
-  howStepText: { flex: 1, fontFamily: Fonts.sans, fontSize: 13, lineHeight: 19, color: Colors.light.ink2 },
+  howNumberText: { fontFamily: Fonts.bold, fontSize: 10, color: colors.accent },
+  howStepText: { flex: 1, fontFamily: Fonts.sans, fontSize: 13, lineHeight: 19, color: colors.ink2 },
 
   // ── Contador e navegação ───────────────────────────────────────────────
   listHeader: {
@@ -672,10 +686,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     letterSpacing: 0.6,
     textTransform: 'uppercase',
-    color: Colors.light.ink2,
+    color: colors.ink2,
   },
-  countCurrent: { color: Colors.light.accent },
-  countTotal: { color: Colors.light.ink3 },
+  countCurrent: { color: colors.accent },
+  countTotal: { color: colors.ink3 },
   listActions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   arrow: {
     width: 30,
@@ -683,9 +697,9 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
   arrowDisabled: { opacity: 0.4 },
 
@@ -694,8 +708,8 @@ const styles = StyleSheet.create({
   skeletonDots: { alignSelf: 'center' },
   carousel: { gap: CARD_GAP },
   dots: { flexDirection: 'row', justifyContent: 'center', gap: Spacing.two - 2 },
-  dot: { width: 8, height: 8, borderRadius: Radius.pill, backgroundColor: Colors.light.border },
-  dotActive: { width: 22, backgroundColor: Colors.light.accent },
+  dot: { width: 8, height: 8, borderRadius: Radius.pill, backgroundColor: colors.border },
+  dotActive: { width: 22, backgroundColor: colors.accentFill },
 
   // ── My Campaigns / Rewards ─────────────────────────────────────────────
   list: { gap: Spacing.two },
@@ -703,27 +717,27 @@ const styles = StyleSheet.create({
     gap: Spacing.one,
     padding: Spacing.three - 2,
     borderRadius: Radius.md,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
   rowTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two },
-  rowTitle: { flex: 1, fontFamily: Fonts.bold, fontSize: 14, color: Colors.light.ink },
-  rowSubtitle: { fontFamily: Fonts.sans, fontSize: 12, color: Colors.light.ink2 },
+  rowTitle: { flex: 1, fontFamily: Fonts.bold, fontSize: 14, color: colors.ink },
+  rowSubtitle: { fontFamily: Fonts.sans, fontSize: 12, color: colors.ink2 },
   rowBadge: {
     paddingHorizontal: Spacing.two - 2,
     paddingVertical: 2,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.warnSoft,
+    backgroundColor: colors.warnSoft,
   },
-  rowBadgeDone: { backgroundColor: Colors.light.successSoft },
+  rowBadgeDone: { backgroundColor: colors.successSoft },
   rowBadgeText: {
     fontFamily: Fonts.bold,
     fontSize: 9,
     letterSpacing: 0.4,
     textTransform: 'uppercase',
-    color: Colors.light.warn,
+    color: colors.warn,
   },
-  rowBadgeTextDone: { color: Colors.light.success },
-  rewardAmount: { fontFamily: Fonts.bold, fontSize: 14, color: Colors.light.accent },
-});
+  rowBadgeTextDone: { color: colors.success },
+  rewardAmount: { fontFamily: Fonts.bold, fontSize: 14, color: colors.accent },
+}));

@@ -6,7 +6,8 @@ import { EmptyState, Skeleton } from '@/components/feedback';
 import { IconInbox, IconSpark, IconUser } from '@/components/icons';
 import { PageHeading, ScreenShell } from '@/components/screen-shell';
 import { SectionCard } from '@/components/section-card';
-import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useBackendData } from '@/hooks/use-backend-data';
 import { loadChatHistory, type StoredMessage } from '@/lib/chat-history';
 import { timeAgo } from '@/lib/format';
@@ -43,6 +44,8 @@ const FILTERS: { id: Filter; label: string }[] = [
 ];
 
 export default function HistoryScreen() {
+  const colors = useTheme();
+  const styles = useStyles();
   // Barra de gestos do Android come o fim da lista sem este inset.
   const insets = useSafeAreaInsets();
   // `loadChatHistory` nunca lança — armazenamento corrompido já vira lista
@@ -68,8 +71,8 @@ export default function HistoryScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={reload}
-            tintColor={Colors.light.accent}
-            colors={[Colors.light.accent]}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
           />
         }
       >
@@ -126,6 +129,7 @@ function FilterBar({
   counts: Record<Filter, number>;
   onChange: (next: Filter) => void;
 }) {
+  const styles = useStyles();
   return (
     <View style={styles.filters}>
       {FILTERS.map(({ id, label }) => {
@@ -157,6 +161,8 @@ function FilterBar({
 }
 
 function MessageRow({ message }: { message: StoredMessage }) {
+  const colors = useTheme();
+  const styles = useStyles();
   const mine = message.role === 'user';
 
   return (
@@ -164,9 +170,9 @@ function MessageRow({ message }: { message: StoredMessage }) {
       <View style={styles.rowTop}>
         <View style={[styles.roleIcon, mine ? styles.roleIconUser : styles.roleIconAssistant]}>
           {mine ? (
-            <IconUser size={12} color={Colors.light.ink2} />
+            <IconUser size={12} color={colors.ink2} />
           ) : (
-            <IconSpark size={11} color={Colors.light.accent} />
+            <IconSpark size={11} color={colors.accent} />
           )}
         </View>
         <Text style={styles.roleLabel}>{mine ? 'You' : 'Xiaolee'}</Text>
@@ -186,6 +192,7 @@ function MessageRow({ message }: { message: StoredMessage }) {
  * pula do mesmo jeito.
  */
 function HistorySkeleton() {
+  const styles = useStyles();
   return (
     <View style={styles.skeleton} accessible accessibilityLabel="Loading history">
       <Skeleton height={44} radius={Radius.pill} />
@@ -194,7 +201,7 @@ function HistorySkeleton() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   content: {
     paddingHorizontal: Spacing.three - 4,
     paddingTop: Spacing.four,
@@ -213,22 +220,22 @@ const styles = StyleSheet.create({
     gap: Spacing.two - 3,
     paddingVertical: Spacing.two,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
-  chipActive: { backgroundColor: Colors.light.accent, borderColor: Colors.light.accent },
+  chipActive: { backgroundColor: colors.accentFill, borderColor: colors.accentFill },
   chipEmpty: { opacity: 0.45 },
-  chipText: { fontFamily: Fonts.bold, fontSize: 11, color: Colors.light.ink2 },
-  chipCount: { fontFamily: Fonts.bold, fontSize: 11, color: Colors.light.ink3 },
-  chipTextActive: { color: Colors.light.card },
+  chipText: { fontFamily: Fonts.bold, fontSize: 11, color: colors.ink2 },
+  chipCount: { fontFamily: Fonts.bold, fontSize: 11, color: colors.ink3 },
+  chipTextActive: { color: colors.onAccent },
 
   // ── Linha de mensagem ──────────────────────────────────────────────────
   row: {
     gap: Spacing.one + 2,
     padding: Spacing.two + 2,
     borderRadius: Radius.md,
-    backgroundColor: Colors.light.bg,
+    backgroundColor: colors.bg,
   },
   rowTop: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two - 2 },
   roleIcon: {
@@ -238,9 +245,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  roleIconUser: { backgroundColor: Colors.light.border },
-  roleIconAssistant: { backgroundColor: Colors.light.accentSoft },
-  roleLabel: { flex: 1, fontFamily: Fonts.bold, fontSize: 12, color: Colors.light.ink },
-  rowTime: { fontFamily: Fonts.sans, fontSize: 10, color: Colors.light.ink3 },
-  rowContent: { fontFamily: Fonts.sans, fontSize: 13, lineHeight: 20, color: Colors.light.ink2 },
-});
+  roleIconUser: { backgroundColor: colors.border },
+  roleIconAssistant: { backgroundColor: colors.accentSoft },
+  roleLabel: { flex: 1, fontFamily: Fonts.bold, fontSize: 12, color: colors.ink },
+  rowTime: { fontFamily: Fonts.sans, fontSize: 10, color: colors.ink3 },
+  rowContent: { fontFamily: Fonts.sans, fontSize: 13, lineHeight: 20, color: colors.ink2 },
+}));

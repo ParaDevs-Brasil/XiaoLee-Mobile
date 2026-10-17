@@ -4,7 +4,8 @@ import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-nativ
 import type { CreatorReportSuggestion } from '@/api/backend';
 import { IconCheck, IconChevronDown, IconSpark } from '@/components/icons';
 import { Pop, useReveal } from '@/components/motion';
-import { CardShadow, Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useReduceMotion } from '@/hooks/use-reduce-motion';
 import { doneSummary } from '@/lib/report-ideas';
 
@@ -40,6 +41,8 @@ export function ReportIdeaCard({
   onToggleDone,
   revealIndex,
 }: ReportIdeaCardProps) {
+  const colors = useTheme();
+  const styles = useStyles();
   const reduce = useReduceMotion();
   const reveal = useReveal(revealIndex);
   const [open, setOpen] = useState(false);
@@ -118,7 +121,7 @@ export function ReportIdeaCard({
         style={[
           styles.bar,
           {
-            backgroundColor: done ? Colors.light.success : Colors.light.accent,
+            backgroundColor: done ? colors.success : colors.accent,
             opacity: expand,
             transform: [{ scaleY: expand }],
           },
@@ -146,7 +149,7 @@ export function ReportIdeaCard({
               { opacity: doneOpacity, transform: [{ scale: checkScale }] },
             ]}
           >
-            <IconCheck size={18} sw={2.8} color={Colors.light.card} />
+            <IconCheck size={18} sw={2.8} color={colors.onAccent} />
           </Animated.View>
         </View>
 
@@ -164,7 +167,7 @@ export function ReportIdeaCard({
             ],
           }}
         >
-          <IconChevronDown size={16} color={Colors.light.ink3} />
+          <IconChevronDown size={16} color={colors.ink3} />
         </Animated.View>
       </Pressable>
 
@@ -206,7 +209,7 @@ export function ReportIdeaCard({
               <IconCheck
                 size={14}
                 sw={2.6}
-                color={done ? Colors.light.success : Colors.light.accent}
+                color={done ? colors.success : colors.accent}
               />
               <Text style={[styles.doneText, done && styles.doneTextOn]}>
                 {done ? 'Done' : 'Mark as done'}
@@ -224,6 +227,8 @@ export function ReportIdeaCard({
  * o texto ao lado. Com todas feitas, o texto vira reconhecimento.
  */
 export function IdeasProgress({ done, total }: { done: number; total: number }) {
+  const colors = useTheme();
+  const styles = useStyles();
   if (total <= 0) return null;
   const complete = done >= total;
 
@@ -242,7 +247,7 @@ export function IdeasProgress({ done, total }: { done: number; total: number }) 
       {/* A chave remonta o texto quando passa a "tudo feito", e o Pop faz a
           comemoração aparecer em vez de só trocar a frase. */}
       <Pop key={complete ? 'all' : 'some'} style={styles.progressLabelWrap}>
-        {complete ? <IconSpark size={12} color={Colors.light.success} /> : null}
+        {complete ? <IconSpark size={12} color={colors.success} /> : null}
         <Text style={[styles.progressLabel, complete && styles.progressLabelAll]}>
           {doneSummary(done, total)}
         </Text>
@@ -252,6 +257,7 @@ export function IdeasProgress({ done, total }: { done: number; total: number }) 
 }
 
 function Segment({ filled, order }: { filled: boolean; order: number }) {
+  const styles = useStyles();
   const reduce = useReduceMotion();
   const [fill] = useState(() => new Animated.Value(filled ? 1 : 0));
 
@@ -282,14 +288,14 @@ function Segment({ filled, order }: { filled: boolean; order: number }) {
 
 const BADGE = 36;
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   flex: { flex: 1 },
   pressed: { opacity: 0.7 },
   card: {
     borderRadius: Radius.lg,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
     ...CardShadow,
   },
   bar: {
@@ -314,25 +320,25 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.light.accentSoft,
+    backgroundColor: colors.accentSoft,
   },
   badgeDone: {
     ...StyleSheet.absoluteFill,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.success,
+    backgroundColor: colors.successFill,
   },
-  badgeNumber: { fontFamily: Fonts.bold, fontSize: 16, color: Colors.light.accent },
+  badgeNumber: { fontFamily: Fonts.bold, fontSize: 16, color: colors.accent },
   badgeCheck: { position: 'absolute' },
 
-  title: { fontFamily: Fonts.bold, fontSize: 15, color: Colors.light.ink },
+  title: { fontFamily: Fonts.bold, fontSize: 15, color: colors.ink },
   action: {
     fontFamily: Fonts.sans,
     fontSize: 13,
     lineHeight: 19,
-    color: Colors.light.ink2,
+    color: colors.ink2,
     marginTop: 2,
   },
-  actionDone: { color: Colors.light.ink3 },
+  actionDone: { color: colors.ink3 },
 
   bodyClip: { overflow: 'hidden' },
   body: {
@@ -349,16 +355,16 @@ const styles = StyleSheet.create({
     padding: Spacing.two + 2,
     borderRadius: Radius.md,
     // Rosa suave, o mesmo do selo numerado: o "porquê" lê como parte da ideia.
-    backgroundColor: Colors.light.accentSoft,
+    backgroundColor: colors.accentSoft,
   },
   whyLabel: {
     fontFamily: Fonts.bold,
     fontSize: 9,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
-    color: Colors.light.accent,
+    color: colors.accent,
   },
-  whyText: { fontFamily: Fonts.sans, fontSize: 12, lineHeight: 18, color: Colors.light.ink },
+  whyText: { fontFamily: Fonts.sans, fontSize: 12, lineHeight: 18, color: colors.ink },
 
   doneButton: {
     flexDirection: 'row',
@@ -369,11 +375,11 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two - 1,
     borderRadius: Radius.pill,
     borderWidth: 1,
-    borderColor: Colors.light.accent,
+    borderColor: colors.accent,
   },
-  doneButtonOn: { borderColor: Colors.light.success, backgroundColor: Colors.light.successSoft },
-  doneText: { fontFamily: Fonts.bold, fontSize: 12, color: Colors.light.accent },
-  doneTextOn: { color: Colors.light.success },
+  doneButtonOn: { borderColor: colors.success, backgroundColor: colors.successSoft },
+  doneText: { fontFamily: Fonts.bold, fontSize: 12, color: colors.accent },
+  doneTextOn: { color: colors.success },
 
   progress: { gap: Spacing.one + 2, marginTop: Spacing.one },
   segments: { flexDirection: 'row', gap: Spacing.one + 2 },
@@ -383,14 +389,14 @@ const styles = StyleSheet.create({
     height: 4,
     borderRadius: 2,
     overflow: 'hidden',
-    backgroundColor: Colors.light.border,
+    backgroundColor: colors.border,
   },
   segmentFill: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: Colors.light.success,
+    backgroundColor: colors.success,
     transformOrigin: 'left',
   },
   progressLabelWrap: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one + 1 },
-  progressLabel: { fontFamily: Fonts.medium, fontSize: 12, color: Colors.light.ink3 },
-  progressLabelAll: { fontFamily: Fonts.bold, color: Colors.light.success },
-});
+  progressLabel: { fontFamily: Fonts.medium, fontSize: 12, color: colors.ink3 },
+  progressLabelAll: { fontFamily: Fonts.bold, color: colors.success },
+}));

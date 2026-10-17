@@ -17,7 +17,8 @@ import { PageHeading, ScreenShell } from '@/components/screen-shell';
 import { SectionCard } from '@/components/section-card';
 import { Sparkline } from '@/components/sparkline';
 import { MiniStat, StatCard } from '@/components/stat-card';
-import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useBackendData } from '@/hooks/use-backend-data';
 import { useTractionStream } from '@/hooks/use-traction-stream';
 import { isOnChainTx, txExplorerUrl } from '@/lib/explorer';
@@ -41,6 +42,8 @@ import { formatUSDC, shortHash, timeAgo } from '@/lib/format';
 const LATENCY_OK_MS = 500;
 
 export default function TractionScreen() {
+  const colors = useTheme();
+  const styles = useStyles();
   // Barra de gestos do Android come o fim da lista sem este inset.
   const insets = useSafeAreaInsets();
   // `getTractionStats` é função de módulo, então a identidade é estável e o
@@ -63,8 +66,8 @@ export default function TractionScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={reload}
-            tintColor={Colors.light.accent}
-            colors={[Colors.light.accent]}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
           />
         }
       >
@@ -143,6 +146,7 @@ export default function TractionScreen() {
  * cabeçalho do feed porque é ali que as linhas novas nascem.
  */
 function LiveBadge() {
+  const styles = useStyles();
   return (
     <View style={styles.live}>
       <View style={styles.liveDot} />
@@ -251,13 +255,15 @@ function heroSubLabel(payments: number, feed: PaymentEvent[]): string {
  * de escala, e a linha pararia de comunicar saúde.
  */
 function LatencyBar({ avg, p95, payments }: { avg: number; p95: number; payments: number }) {
+  const colors = useTheme();
+  const styles = useStyles();
   // Sem pagamento nenhum a média chega como 0, que passa no teste de "rápido"
   // e anunciaria liquidação instantânea numa tela que nunca liquidou nada.
   if (payments === 0) {
     return (
       <View style={[styles.latency, styles.latencyIdle]}>
         <View style={[styles.latencyIcon, styles.latencyIconIdle]}>
-          <IconZap size={18} color={Colors.light.ink3} />
+          <IconZap size={18} color={colors.ink3} />
         </View>
 
         <View style={styles.flex}>
@@ -269,7 +275,7 @@ function LatencyBar({ avg, p95, payments }: { avg: number; p95: number; payments
   }
 
   const ok = avg < LATENCY_OK_MS;
-  const color = ok ? Colors.light.success : Colors.light.warn;
+  const color = ok ? colors.success : colors.warn;
 
   return (
     <View style={[styles.latency, ok ? styles.latencyOk : styles.latencyWarn]}>
@@ -311,12 +317,14 @@ function openTx(tx: string) {
  * usuário para uma página de "não encontrado" seria pior do que não linkar.
  */
 function FeedRow({ event }: { event: PaymentEvent }) {
+  const colors = useTheme();
+  const styles = useStyles();
   const linkable = isOnChainTx(event.tx);
 
   const content = (
     <>
       <View style={styles.feedIcon}>
-        <IconDollar size={14} color={Colors.light.accent} />
+        <IconDollar size={14} color={colors.accent} />
       </View>
 
       <View style={styles.flex}>
@@ -334,7 +342,7 @@ function FeedRow({ event }: { event: PaymentEvent }) {
       </View>
 
       {/* A seta é o que diferencia a linha que abre da que não abre. */}
-      {linkable ? <IconChevronRight size={14} color={Colors.light.ink3} /> : null}
+      {linkable ? <IconChevronRight size={14} color={colors.ink3} /> : null}
     </>
   );
 
@@ -360,6 +368,7 @@ function FeedRow({ event }: { event: PaymentEvent }) {
  * chegava — logo no primeiro segundo de uma demo.
  */
 function TractionSkeleton() {
+  const styles = useStyles();
   return (
     <View style={styles.skeleton} accessible accessibilityLabel="Loading traction">
       <Skeleton height={SKELETON.hero} radius={Radius.lg} />
@@ -395,7 +404,7 @@ const SKELETON = {
   feed: 228,
 } as const;
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   flex: { flex: 1 },
   content: {
     paddingHorizontal: Spacing.three - 4,
@@ -416,20 +425,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.two,
     paddingVertical: 2,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.successSoft,
+    backgroundColor: colors.successSoft,
   },
   liveDot: {
     width: 6,
     height: 6,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.success,
+    backgroundColor: colors.success,
   },
   liveText: {
     fontFamily: Fonts.bold,
     fontSize: 9,
     letterSpacing: 0.6,
     textTransform: 'uppercase',
-    color: Colors.light.success,
+    color: colors.success,
   },
   skeleton: { gap: Spacing.three - 4 },
 
@@ -442,9 +451,9 @@ const styles = StyleSheet.create({
     borderRadius: Radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  latencyOk: { backgroundColor: Colors.light.successSoft, borderColor: Colors.light.successBorder },
-  latencyWarn: { backgroundColor: Colors.light.warnSoft, borderColor: Colors.light.warnBorder },
-  latencyIdle: { backgroundColor: Colors.light.card, borderColor: Colors.light.border },
+  latencyOk: { backgroundColor: colors.successSoft, borderColor: colors.successBorder },
+  latencyWarn: { backgroundColor: colors.warnSoft, borderColor: colors.warnBorder },
+  latencyIdle: { backgroundColor: colors.card, borderColor: colors.border },
   latencyIcon: {
     width: 36,
     height: 36,
@@ -452,12 +461,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  latencyIconOk: { backgroundColor: Colors.light.successBorder },
-  latencyIconWarn: { backgroundColor: Colors.light.warnBorder },
-  latencyIconIdle: { backgroundColor: Colors.light.bg },
+  latencyIconOk: { backgroundColor: colors.successBorder },
+  latencyIconWarn: { backgroundColor: colors.warnBorder },
+  latencyIconIdle: { backgroundColor: colors.bg },
   latencyTitle: { fontFamily: Fonts.bold, fontSize: 13 },
-  latencyIdleTitle: { fontFamily: Fonts.bold, fontSize: 13, color: Colors.light.ink2 },
-  latencySub: { fontFamily: Fonts.sans, fontSize: 11, color: Colors.light.ink2, marginTop: 1 },
+  latencyIdleTitle: { fontFamily: Fonts.bold, fontSize: 13, color: colors.ink2 },
+  latencySub: { fontFamily: Fonts.sans, fontSize: 11, color: colors.ink2, marginTop: 1 },
 
   // ── Feed ───────────────────────────────────────────────────────────────
   feedRow: {
@@ -467,23 +476,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.two + 2,
     paddingVertical: Spacing.two + 2,
     borderRadius: Radius.md,
-    backgroundColor: Colors.light.bg,
+    backgroundColor: colors.bg,
   },
-  feedRowPressed: { backgroundColor: Colors.light.border },
+  feedRowPressed: { backgroundColor: colors.border },
   feedIcon: {
     width: 32,
     height: 32,
     borderRadius: Radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.light.accentSoft,
+    backgroundColor: colors.accentSoft,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
-  feedCreator: { fontFamily: Fonts.semibold, fontSize: 13, color: Colors.light.ink },
-  feedTx: { fontFamily: Fonts.mono, fontSize: 10, color: Colors.light.ink3, marginTop: 2 },
-  feedNoTx: { fontFamily: Fonts.sans, fontSize: 10, color: Colors.light.ink3, marginTop: 2 },
+  feedCreator: { fontFamily: Fonts.semibold, fontSize: 13, color: colors.ink },
+  feedTx: { fontFamily: Fonts.mono, fontSize: 10, color: colors.ink3, marginTop: 2 },
+  feedNoTx: { fontFamily: Fonts.sans, fontSize: 10, color: colors.ink3, marginTop: 2 },
   feedRight: { alignItems: 'flex-end' },
-  feedAmount: { fontFamily: Fonts.bold, fontSize: 13, color: Colors.light.success },
-  feedTime: { fontFamily: Fonts.sans, fontSize: 10, color: Colors.light.ink3, marginTop: 2 },
-});
+  feedAmount: { fontFamily: Fonts.bold, fontSize: 13, color: colors.success },
+  feedTime: { fontFamily: Fonts.sans, fontSize: 10, color: colors.ink3, marginTop: 2 },
+}));

@@ -2,7 +2,8 @@ import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import type { IconProps } from '@/components/icons';
-import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { Fonts, Radius, Spacing, type ThemeColor } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 
 /**
  * Cartão de métrica — o bloco que o web repete no topo de Traction, Dashboard
@@ -18,10 +19,10 @@ import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 
 export type StatTone = 'accent' | 'success' | 'neutral';
 
-const TONE: Record<StatTone, { color: string; background: string }> = {
-  accent: { color: Colors.light.accent, background: Colors.light.accentSoft },
-  success: { color: Colors.light.success, background: Colors.light.successSoft },
-  neutral: { color: Colors.light.ink2, background: Colors.light.bg },
+const TONE: Record<StatTone, { color: ThemeColor; background: ThemeColor }> = {
+  accent: { color: 'accent', background: 'accentSoft' },
+  success: { color: 'success', background: 'successSoft' },
+  neutral: { color: 'ink2', background: 'bg' },
 };
 
 interface StatCardProps {
@@ -54,7 +55,10 @@ export function StatCard({
   size = 'md',
   chart,
 }: StatCardProps) {
-  const { color, background } = TONE[tone];
+  const colors = useTheme();
+  const styles = useStyles();
+  const color = colors[TONE[tone].color];
+  const background = colors[TONE[tone].background];
   const large = size === 'lg';
 
   return (
@@ -97,9 +101,11 @@ interface MiniStatProps {
  * os números ficam na mesma linha mesmo quando um rótulo quebra em duas.
  */
 export function MiniStat({ Icon, label, value }: MiniStatProps) {
+  const colors = useTheme();
+  const styles = useStyles();
   return (
     <View style={styles.mini}>
-      <Icon size={14} color={Colors.light.ink3} />
+      <Icon size={14} color={colors.ink3} />
       <Text style={styles.miniValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
         {value}
       </Text>
@@ -110,7 +116,7 @@ export function MiniStat({ Icon, label, value }: MiniStatProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   card: {
     // `flex: 1` + `minWidth` deixa dois por linha num wrap sem calcular
     // larguras: dois cabem, um terceiro quebra.
@@ -119,9 +125,9 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     padding: Spacing.three - 2,
     borderRadius: Radius.lg,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
   // Fora de uma linha o `flex: 1` herdado faria o cartão esticar até o fim do
   // scroll; `alignSelf` devolve a largura cheia sem esticar a altura.
@@ -141,13 +147,13 @@ const styles = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
-    color: Colors.light.ink3,
+    color: colors.ink3,
   },
-  value: { fontFamily: Fonts.bold, fontSize: 24, color: Colors.light.ink },
+  value: { fontFamily: Fonts.bold, fontSize: 24, color: colors.ink },
   // 48 é o piso do número herói. Abaixo disso ele deixa de liderar a tela e
   // vira só mais um número grande.
   valueLg: { fontSize: 48, letterSpacing: -0.8 },
-  sub: { fontFamily: Fonts.sans, fontSize: 11, color: Colors.light.ink2, marginTop: -Spacing.one },
+  sub: { fontFamily: Fonts.sans, fontSize: 11, color: colors.ink2, marginTop: -Spacing.one },
   chart: { marginTop: Spacing.one },
 
   mini: {
@@ -157,18 +163,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.two,
     paddingVertical: Spacing.two + 4,
     borderRadius: Radius.lg,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
-  miniValue: { fontFamily: Fonts.bold, fontSize: 19, color: Colors.light.ink },
+  miniValue: { fontFamily: Fonts.bold, fontSize: 19, color: colors.ink },
   miniLabel: {
     fontFamily: Fonts.bold,
     fontSize: 9,
     lineHeight: 12,
     letterSpacing: 0.6,
     textTransform: 'uppercase',
-    color: Colors.light.ink3,
+    color: colors.ink3,
     textAlign: 'center',
   },
-});
+}));

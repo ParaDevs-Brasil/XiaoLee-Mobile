@@ -104,7 +104,7 @@ export default function ConnectionScreen() {
 
         {state.error ? (
           <ThemedView type="backgroundElement" style={styles.card}>
-            <ThemedText type="smallBold" style={styles.error}>
+            <ThemedText type="smallBold" themeColor="danger">
               SEM CONEXÃO
             </ThemedText>
             <ThemedText type="small">{state.error}</ThemedText>
@@ -117,7 +117,7 @@ export default function ConnectionScreen() {
 
         {connected && state.health ? (
           <ThemedView type="backgroundElement" style={styles.card}>
-            <ThemedText type="smallBold" style={styles.ok}>
+            <ThemedText type="smallBold" themeColor="success">
               CONECTADO
             </ThemedText>
             <Row label="serviço" value={state.health.service} />
@@ -193,11 +193,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: Spacing.three,
     borderRadius: Spacing.three,
-  },
-  ok: {
-    color: '#16a34a',
-  },
-  error: {
-    color: '#dc2626',
   },
 });

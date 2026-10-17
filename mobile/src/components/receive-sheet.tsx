@@ -5,7 +5,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconAlert, IconCheck, IconClose, IconCopy, IconQr, IconShare } from '@/components/icons';
 import { NETWORK_LABEL } from '@/components/network-badge';
 import { ChunkedAddress, useCopyAddress } from '@/components/wallet-address-card';
-import { CardShadow, Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { ARC_NETWORK } from '@/lib/arc-network';
 
 /**
@@ -34,6 +35,8 @@ export function ReceiveSheet({
   address: string;
   onClose: () => void;
 }) {
+  const colors = useTheme();
+  const styles = useStyles();
   const insets = useSafeAreaInsets();
   const { copied, copy } = useCopyAddress(address);
 
@@ -48,14 +51,14 @@ export function ReceiveSheet({
 
           <View style={styles.header}>
             <View style={styles.icon}>
-              <IconQr size={20} color={Colors.light.accent} />
+              <IconQr size={20} color={colors.accent} />
             </View>
             <View style={styles.headerText}>
               <Text style={styles.title}>Receive USDC</Text>
               <Text style={styles.subtitle}>Scan or share your address</Text>
             </View>
             <Pressable onPress={onClose} hitSlop={Spacing.two} accessibilityLabel="Close">
-              <IconClose size={18} color={Colors.light.ink3} />
+              <IconClose size={18} color={colors.ink3} />
             </Pressable>
           </View>
 
@@ -82,7 +85,7 @@ export function ReceiveSheet({
             </View>
 
             <View style={styles.warning}>
-              <IconAlert size={16} color={Colors.light.warn} />
+              <IconAlert size={16} color={colors.warn} />
               <Text style={styles.warningText}>
                 Send only USDC on {NETWORK_LABEL}. Funds sent on any other network can&apos;t be recovered.
               </Text>
@@ -96,9 +99,9 @@ export function ReceiveSheet({
                 accessibilityLabel={copied ? 'Address copied' : 'Copy address'}
               >
                 {copied ? (
-                  <IconCheck size={16} sw={2.2} color={Colors.light.card} />
+                  <IconCheck size={16} sw={2.2} color={colors.onAccent} />
                 ) : (
-                  <IconCopy size={16} color={Colors.light.card} />
+                  <IconCopy size={16} color={colors.onAccent} />
                 )}
                 <Text style={styles.primaryText}>{copied ? 'Copied' : 'Copy address'}</Text>
               </Pressable>
@@ -111,7 +114,7 @@ export function ReceiveSheet({
                 accessibilityRole="button"
                 accessibilityLabel="Share address"
               >
-                <IconShare size={16} color={Colors.light.ink} />
+                <IconShare size={16} color={colors.ink} />
               </Pressable>
             </View>
           </ScrollView>
@@ -122,6 +125,7 @@ export function ReceiveSheet({
 }
 
 function Fact({ label, value, last = false }: { label: string; value: string; last?: boolean }) {
+  const styles = useStyles();
   return (
     <View style={[styles.fact, !last && styles.factDivider]}>
       <Text style={styles.factLabel}>{label}</Text>
@@ -130,8 +134,8 @@ function Fact({ label, value, last = false }: { label: string; value: string; la
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+const useStyles = makeStyles((colors) => ({
+  backdrop: { flex: 1, backgroundColor: colors.scrim, justifyContent: 'flex-end' },
   sheet: {
     maxHeight: '94%',
     gap: Spacing.three - 4,
@@ -139,9 +143,9 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.two,
     borderTopLeftRadius: Radius.xl,
     borderTopRightRadius: Radius.xl,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
     ...CardShadow,
   },
   handleBar: {
@@ -149,7 +153,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.border,
+    backgroundColor: colors.border,
   },
   header: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three - 4 },
   icon: {
@@ -158,11 +162,11 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.light.accentSoft,
+    backgroundColor: colors.accentSoft,
   },
   headerText: { flex: 1 },
-  title: { fontFamily: Fonts.bold, fontSize: 17, color: Colors.light.ink },
-  subtitle: { fontFamily: Fonts.sans, fontSize: 13, color: Colors.light.ink2, marginTop: 1 },
+  title: { fontFamily: Fonts.bold, fontSize: 17, color: colors.ink },
+  subtitle: { fontFamily: Fonts.sans, fontSize: 13, color: colors.ink2, marginTop: 1 },
 
   content: { gap: Spacing.three + 4, paddingTop: Spacing.two, alignItems: 'stretch' },
   plate: {
@@ -172,14 +176,14 @@ const styles = StyleSheet.create({
     backgroundColor: QR_PLATE,
     // No tema claro a placa é branca sobre o cartão branco — o fio a separa.
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
 
   facts: {
     borderRadius: Radius.md,
-    backgroundColor: Colors.light.bg,
+    backgroundColor: colors.bg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
   fact: {
     flexDirection: 'row',
@@ -188,20 +192,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     height: 44,
   },
-  factDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Colors.light.border },
-  factLabel: { fontFamily: Fonts.medium, fontSize: 13, color: Colors.light.ink2 },
-  factValue: { fontFamily: Fonts.bold, fontSize: 13, color: Colors.light.ink },
+  factDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  factLabel: { fontFamily: Fonts.medium, fontSize: 13, color: colors.ink2 },
+  factValue: { fontFamily: Fonts.bold, fontSize: 13, color: colors.ink },
 
   warning: {
     flexDirection: 'row',
     gap: Spacing.two + 2,
     padding: Spacing.three - 2,
     borderRadius: Radius.md,
-    backgroundColor: Colors.light.warnSoft,
+    backgroundColor: colors.warnSoft,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.warnBorder,
+    borderColor: colors.warnBorder,
   },
-  warningText: { flex: 1, fontFamily: Fonts.medium, fontSize: 12, lineHeight: 18, color: Colors.light.warn },
+  warningText: { flex: 1, fontFamily: Fonts.medium, fontSize: 12, lineHeight: 18, color: colors.warn },
 
   actions: { flexDirection: 'row', gap: Spacing.two },
   primary: {
@@ -212,18 +216,18 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     height: 52,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.accent,
+    backgroundColor: colors.accentFill,
   },
-  primaryText: { fontFamily: Fonts.bold, fontSize: 15, color: Colors.light.card },
+  primaryText: { fontFamily: Fonts.bold, fontSize: 15, color: colors.onAccent },
   secondary: {
     width: 52,
     height: 52,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.bg,
+    backgroundColor: colors.bg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
   pressed: { opacity: 0.8 },
-});
+}));

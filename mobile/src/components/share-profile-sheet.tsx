@@ -22,7 +22,8 @@ import { APP_NOT_INSTALLED, shareImage } from '../../modules/share-intent';
 import { getMyProfile, type MyProfile } from '@/api/backend';
 import { IconClose, IconShare, IconUser } from '@/components/icons';
 import { CARD_RATIOS, ShareProfileCard, type CardFormat } from '@/components/share-profile-card';
-import { CardShadow, Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useProfilePhoto } from '@/hooks/use-profile-photo';
 import {
   buildShareCaption,
@@ -98,6 +99,8 @@ const TARGETS: Record<ShareChannel, { packageName: string; className?: string }>
 };
 
 export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) {
+  const colors = useTheme();
+  const styles = useStyles();
   const insets = useSafeAreaInsets();
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { user } = usePrivy();
@@ -294,14 +297,14 @@ export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) 
 
           <View style={styles.header}>
             <View style={styles.icon}>
-              <IconShare size={20} color={Colors.light.accent} />
+              <IconShare size={20} color={colors.accent} />
             </View>
             <View style={styles.headerText}>
               <Text style={styles.title}>Share profile</Text>
               <Text style={styles.subtitle}>Ready-made post with your photo</Text>
             </View>
             <Pressable onPress={close} hitSlop={Spacing.two} accessibilityLabel="Close">
-              <IconClose size={18} color={Colors.light.ink3} />
+              <IconClose size={18} color={colors.ink3} />
             </Pressable>
           </View>
 
@@ -361,7 +364,7 @@ export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) 
               </Animated.View>
             ) : (
               <View style={[styles.placeholder, post]}>
-                <ActivityIndicator color={Colors.light.accent} />
+                <ActivityIndicator color={colors.accent} />
               </View>
             )}
 
@@ -379,9 +382,9 @@ export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) 
                 accessibilityRole="button"
               >
                 {pickingPhoto ? (
-                  <ActivityIndicator size="small" color={Colors.light.accent} />
+                  <ActivityIndicator size="small" color={colors.accent} />
                 ) : (
-                  <IconUser size={15} color={Colors.light.accent} />
+                  <IconUser size={15} color={colors.accent} />
                 )}
                 <Text style={styles.photoLabel}>{photoUrl ? 'Change photo' : 'Add your photo'}</Text>
               </Pressable>
@@ -421,6 +424,7 @@ export function ShareProfileSheet({ visible, onClose }: ShareProfileSheetProps) 
 
 /** Retângulo na proporção do formato, ao lado do rótulo da aba. */
 function AspectGlyph({ format, active }: { format: CardFormat; active: boolean }) {
+  const styles = useStyles();
   const height = 14;
   return (
     <View
@@ -446,7 +450,12 @@ function ShareButton({
   disabled: boolean;
   onPress: () => void;
 }) {
-  const color = variant === 'secondary' ? Colors.light.ink : Colors.light.card;
+  const colors = useTheme();
+  const styles = useStyles();
+  // `ink` é o botão do X: preto no claro, e no escuro inverte (claro com
+  // texto escuro), que é como o próprio X se desenha no tema escuro.
+  const color =
+    variant === 'secondary' ? colors.ink : variant === 'primary' ? colors.onAccent : colors.card;
   return (
     <Pressable
       onPress={onPress}
@@ -467,10 +476,10 @@ function ShareButton({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(26,25,23,0.35)',
+    backgroundColor: colors.scrim,
     justifyContent: 'flex-end',
   },
   sheet: {
@@ -480,9 +489,9 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.two,
     borderTopLeftRadius: Radius.xl,
     borderTopRightRadius: Radius.xl,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
     ...CardShadow,
   },
   handleBar: {
@@ -490,7 +499,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: Colors.light.border,
+    backgroundColor: colors.border,
     marginBottom: Spacing.one,
   },
   header: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two + 2 },
@@ -500,18 +509,18 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.light.accentSoft,
+    backgroundColor: colors.accentSoft,
   },
   headerText: { flex: 1 },
-  title: { fontFamily: Fonts.bold, fontSize: 16, color: Colors.light.ink },
-  subtitle: { fontFamily: Fonts.sans, fontSize: 11, color: Colors.light.ink2, marginTop: 1 },
+  title: { fontFamily: Fonts.bold, fontSize: 16, color: colors.ink },
+  subtitle: { fontFamily: Fonts.sans, fontSize: 11, color: colors.ink2, marginTop: 1 },
   content: { gap: Spacing.three - 4 },
   formats: {
     alignSelf: 'center',
     flexDirection: 'row',
     padding: 3,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.bg,
+    backgroundColor: colors.bg,
   },
   formatIndicator: {
     position: 'absolute',
@@ -520,9 +529,9 @@ const styles = StyleSheet.create({
     width: TAB_WIDTH,
     height: 30,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
   formatTab: {
     width: TAB_WIDTH,
@@ -532,14 +541,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
   },
-  formatLabel: { fontFamily: Fonts.semibold, fontSize: 12, color: Colors.light.ink3 },
-  formatLabelActive: { color: Colors.light.ink },
-  glyph: { borderRadius: 2, borderWidth: 1.5, borderColor: Colors.light.ink3 },
-  glyphActive: { borderColor: Colors.light.accent },
+  formatLabel: { fontFamily: Fonts.semibold, fontSize: 12, color: colors.ink3 },
+  formatLabelActive: { color: colors.ink },
+  glyph: { borderRadius: 2, borderWidth: 1.5, borderColor: colors.ink3 },
+  glyphActive: { borderColor: colors.accent },
   formatHint: {
     fontFamily: Fonts.sans,
     fontSize: 11,
-    color: Colors.light.ink3,
+    color: colors.ink3,
     textAlign: 'center',
     marginTop: -Spacing.one,
   },
@@ -555,7 +564,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.xl,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.light.accentSoft,
+    backgroundColor: colors.accentSoft,
   },
   photoButton: {
     alignSelf: 'center',
@@ -565,13 +574,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     height: 34,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.accentSoft,
+    backgroundColor: colors.accentSoft,
   },
-  photoLabel: { fontFamily: Fonts.bold, fontSize: 12, color: Colors.light.accent },
+  photoLabel: { fontFamily: Fonts.bold, fontSize: 12, color: colors.accent },
   notice: {
     fontFamily: Fonts.semibold,
     fontSize: 12,
-    color: Colors.light.ink2,
+    color: colors.ink2,
     textAlign: 'center',
   },
   row: { flexDirection: 'row', gap: Spacing.two },
@@ -582,14 +591,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  primary: { backgroundColor: Colors.light.accent },
-  ink: { backgroundColor: Colors.light.ink },
+  primary: { backgroundColor: colors.accentFill },
+  ink: { backgroundColor: colors.ink },
   secondary: {
     flex: 0,
-    backgroundColor: Colors.light.bg,
+    backgroundColor: colors.bg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
   buttonLabel: { fontFamily: Fonts.bold, fontSize: 14 },
   pressed: { opacity: 0.6 },
-});
+}));

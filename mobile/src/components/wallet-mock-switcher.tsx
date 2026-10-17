@@ -1,6 +1,7 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles } from '@/hooks/use-theme';
 import { useWalletMockMode } from '@/hooks/use-creator-wallet';
 import { WALLET_MOCK_MODES, type WalletMockMode } from '@/lib/creator-wallet-mock';
 
@@ -19,6 +20,7 @@ const LABEL: Record<WalletMockMode, string> = {
  * nem mexer na chain. Em build de produção não renderiza nada.
  */
 export function WalletMockSwitcher() {
+  const styles = useStyles();
   const mode = useWalletMockMode((state) => state.mode);
   const setMode = useWalletMockMode((state) => state.setMode);
 
@@ -47,21 +49,21 @@ export function WalletMockSwitcher() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   wrap: {
     gap: Spacing.two - 2,
     padding: Spacing.two + 2,
     borderRadius: Radius.md,
     borderWidth: 1,
     borderStyle: 'dashed',
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
   label: {
     fontFamily: Fonts.bold,
     fontSize: 9,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
-    color: Colors.light.ink3,
+    color: colors.ink3,
   },
   row: { gap: Spacing.two - 2 },
   chip: {
@@ -69,11 +71,11 @@ const styles = StyleSheet.create({
     height: 30,
     justifyContent: 'center',
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.bg,
+    backgroundColor: colors.bg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
-  chipActive: { backgroundColor: Colors.light.ink, borderColor: Colors.light.ink },
-  chipText: { fontFamily: Fonts.bold, fontSize: 12, color: Colors.light.ink2 },
-  chipTextActive: { color: Colors.light.bg },
-});
+  chipActive: { backgroundColor: colors.ink, borderColor: colors.ink },
+  chipText: { fontFamily: Fonts.bold, fontSize: 12, color: colors.ink2 },
+  chipTextActive: { color: colors.bg },
+}));

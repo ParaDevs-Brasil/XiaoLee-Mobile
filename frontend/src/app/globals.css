@@ -5,18 +5,20 @@
 /* ── Design tokens (desbloqueados para o app inteiro) ──────────────────────── */
 
 /* Paleta neutra + acento único (04 jul) — acento só em botão primário,
-   avatar e destaques; o resto neutro */
+   avatar e destaques; o resto neutro. Revisão v5 (17 out): `--ink-3` e
+   `--success` escurecidos para passar AA, iguais ao mobile
+   (`mobile/src/constants/theme.ts`; ver docs/DESIGN_SYSTEM.md). */
 :root {
   --ink: #1a1917;          /* texto primário */
   --ink-2: #6b6862;        /* texto secundário */
-  --ink-3: #9a968f;        /* texto muted / metadados */
+  --ink-3: #736f68;        /* texto muted / metadados — era #9a968f (2.9:1) */
   --bg: #f6f4f1;           /* fundo do app */
   --card: #ffffff;         /* cards */
   --border: #ece9e4;       /* bordas */
   --accent: #d81b78;       /* marca */
   --accent-hover: #c0166a;
   --accent-soft: #fdf0f6;  /* fundo suave do acento */
-  --success: #1f8a5b;
+  --success: #1a7a50;      /* era #1f8a5b (4.3:1 sobre branco) */
   --danger: #c23a3a;
 }
 
@@ -132,7 +134,7 @@
   --text-primary: #1a1917;
   --text-secondary: #6b6862;
   --text-accent: #d81b78;
-  --text-placeholder: #9a968f;
+  --text-placeholder: #736f68;
   --text-kawaii: #d81b78;
 
   /* Cores de Navbar — neutra, borda sutil */
@@ -218,7 +220,7 @@
   --input-focus-border: rgba(216, 27, 120, 0.45);
   --input-focus-ring: rgba(216, 27, 120, 0.25);
   --input-text: #1a1917;
-  --input-placeholder-text: #9a968f;
+  --input-placeholder-text: #736f68;
   --input-icon: #d81b78;
 
   /* Scrollbar */
