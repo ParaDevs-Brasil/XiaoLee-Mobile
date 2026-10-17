@@ -28,7 +28,8 @@ import {
   avatarAnimation,
   type AnimationKey,
 } from '@/lib/avatar-animation';
-import { matchCards, type ChatCards } from '@/lib/chat-cards';
+import { matchCards, type CardSwap, type ChatCards } from '@/lib/chat-cards';
+import { parseSwapRequest } from '@/lib/arc-swap-request';
 import { appendChatMessage, loadChatHistory, updateChatMessage } from '@/lib/chat-history';
 import { refreshChatSessions, setActiveChatSessionId } from '@/lib/chat-session';
 import { isOnChainTx, txExplorerUrl } from '@/lib/explorer';
@@ -143,6 +144,14 @@ interface Message {
   claim?: PendingClaim;
   /** Recibo devolvido pelo backend, quando já resgatou. */
   claimReceiptId?: string;
+  /**
+   * Swap que o backend preparou (`execution.swap`, tool `arc_swap_prepare`).
+   * Mesmo acordo do `transfer`: o botão é da mensagem; quem assina é o usuário.
+   */
+  swap?: CardSwap;
+  /** Hash do swap, quando já assinado, e o quanto o SDK diz que entrou na carteira. */
+  swapTxHash?: string;
+  swapAmountOut?: string;
   /** `at` da entrada correspondente no histórico local — é por ele que o comprovante é gravado depois de assinar. */
   storedAt?: string;
 }
@@ -187,6 +196,16 @@ function claimFrom(execution: Record<string, unknown> | undefined): PendingClaim
   return { campaignId: c.campaign_id, amount: c.amount, token: c.token };
 }
 
+/**
+ * `execution.swap` -> cartão de swap, ou `undefined` se não é um swap pronto ou o
+ * pedido não passa na mesma validação que o botão usa (tokens da Arc, valor > 0).
+ */
+function swapFrom(execution: Record<string, unknown> | undefined): CardSwap | undefined {
+  if (!execution || execution.status !== 'swap_ready') return undefined;
+  const parsed = parseSwapRequest((execution.swap ?? {}) as Record<string, unknown>);
+  return parsed.ok ? parsed.request : undefined;
+}
+
 function now(): string {
   return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
@@ -208,7 +227,7 @@ function messageFromChatSession(
     time: new Date(entry.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     // O backend só guarda o texto; botões e comprovante vêm do histórico local
     // (`lib/chat-cards.ts`).
-    ...(cards && { storedAt: cards.at, transfer: cards.transfer, txHash: cards.txHash, claim: cards.claim, claimReceiptId: cards.claimReceiptId }),
+    ...(cards && { storedAt: cards.at, transfer: cards.transfer, txHash: cards.txHash, claim: cards.claim, claimReceiptId: cards.claimReceiptId, swap: cards.swap, swapTxHash: cards.swapTxHash, swapAmountOut: cards.swapAmountOut }),
   };
 }
 
@@ -385,6 +404,15 @@ export default function ChatScreen() {
     );
   }
 
+  /** Mesmo acordo de `markSigned`, para o botão de swap. */
+  function markSwapped(id: string, hash: string, amountOut?: string) {
+    const storedAt = messages.find((m) => m.id === id)?.storedAt;
+    if (storedAt) void updateChatMessage(storedAt, { swapTxHash: hash, swapAmountOut: amountOut });
+    setMessages((current) =>
+      current.map((m) => (m.id === id ? { ...m, swapTxHash: hash, swapAmountOut: amountOut } : m)),
+    );
+  }
+
   async function send(text: string) {
     const message = text.trim();
     if (!message || sending) return;
@@ -435,15 +463,16 @@ export default function ChatScreen() {
 
       const transfer = transferFrom(result.execution);
       const claim = claimFrom(result.execution);
+      const swap = swapFrom(result.execution);
       const storedAt = new Date().toISOString();
       setMessages((current) => [
         ...current,
-        { id: `x${Date.now()}`, author: 'xiaolee', text: reply, time: now(), transfer, claim, storedAt },
+        { id: `x${Date.now()}`, author: 'xiaolee', text: reply, time: now(), transfer, claim, swap, storedAt },
       ]);
       // O texto gravado é o mesmo que foi para a bolha, fallback incluído —
       // o histórico não deve divergir do que a tela mostrou. Os cards vão junto:
       // é o que os traz de volta quando a conversa é reaberta.
-      appendChatMessage('assistant', reply, { at: storedAt, cards: { transfer, claim } });
+      appendChatMessage('assistant', reply, { at: storedAt, cards: { transfer, claim, swap } });
 
       // O agente escolhe a emoção; nome desconhecido volta para o idle.
       const animation = animationFromBackend(result.animations);
@@ -563,6 +592,7 @@ export default function ChatScreen() {
                     message={message}
                     onSigned={markSigned}
                     onClaimed={markClaimed}
+                    onSwapped={markSwapped}
                   />
                 ))}
                 {sending ? <Typing /> : null}
@@ -777,14 +807,155 @@ function ClaimButton({
   );
 }
 
+/** "1.259119" -> "1.259119", "1.2000000" -> "1.2": só para exibir. */
+function fmtAmount(value: string | undefined): string {
+  const n = Number(value);
+  return Number.isFinite(n) ? n.toLocaleString('en-US', { maximumFractionDigits: 6 }) : String(value ?? '');
+}
+
+/**
+ * Swap na Arc (`arc_swap_prepare`): mostra a cotação do App Kit e só então libera
+ * o botão — o usuário sempre vê o que vai receber (e o piso do slippage) antes de
+ * assinar. Quem executa é a carteira dele, aqui; o backend só preparou o pedido.
+ */
+function SwapButton({
+  message,
+  onSwapped,
+}: {
+  message: Message;
+  onSwapped: (id: string, hash: string, amountOut?: string) => void;
+}) {
+  const { isConnected, estimateSwap, swap: runSwap } = usePrivyWallet();
+  // Um estado só, indexado pela cotação pedida: a "atual" é derivada (só vale se a chave bate),
+  // então trocar de pedido ou tentar de novo volta a "carregando" sem setState dentro do efeito.
+  const [result, setResult] = useState<{
+    key: string;
+    quote?: { estimatedOut: string; minimumOut: string };
+    error?: string;
+  }>();
+  const [attempt, setAttempt] = useState(0);
+  const [swapping, setSwapping] = useState(false);
+  const [error, setError] = useState<string>();
+  // Revalida mesmo vindo do histórico local: o que assina nunca é um valor cru do armazenamento.
+  const parsed = message.swap ? parseSwapRequest(message.swap) : undefined;
+  const request = parsed?.ok ? parsed.request : undefined;
+  const done = Boolean(message.swapTxHash);
+  const key = request ? `${request.tokenIn}|${request.tokenOut}|${request.amountIn}|${attempt}` : '';
+  const current = result?.key === key ? result : undefined;
+  const quote = current?.quote;
+  const quoteError = current?.error;
+
+  useEffect(() => {
+    if (!request || done || !isConnected) return;
+    let active = true;
+    estimateSwap(request)
+      .then((q) => active && setResult({ key, quote: q }))
+      .catch((err) => active && setResult({ key, error: errorText(err) }));
+    return () => {
+      active = false;
+    };
+    // `estimateSwap` muda a cada render do provider; re-cotar por isso seria um loop.
+    // Só reage ao pedido (via `key`), a estar conectado/pendente e a "tentar de novo".
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, done, isConnected]);
+
+  if (!request) return null;
+
+  if (message.swapTxHash) {
+    const linkable = isOnChainTx(message.swapTxHash);
+    const badge = (
+      <View style={styles.txDone}>
+        <IconCheck size={14} color={Colors.light.success} />
+        <Text style={styles.txDoneText}>
+          Swapped · {shortHash(message.swapTxHash)}
+          {message.swapAmountOut ? ` · +${fmtAmount(message.swapAmountOut)} ${request.tokenOut}` : ''}
+        </Text>
+      </View>
+    );
+    if (!linkable) return badge;
+    return (
+      <Pressable
+        onPress={() => WebBrowser.openBrowserAsync(txExplorerUrl(message.swapTxHash!)).catch(() => {})}
+        style={({ pressed }) => pressed && styles.pressed}
+        accessibilityRole="link"
+        accessibilityLabel={`Swapped ${shortHash(message.swapTxHash)} — open the transaction in the Arc explorer`}
+      >
+        {badge}
+      </Pressable>
+    );
+  }
+
+  if (!isConnected) return <Text style={styles.txHint}>Connect a wallet to swap.</Text>;
+
+  async function run() {
+    if (!request) return;
+    setSwapping(true);
+    setError(undefined);
+    try {
+      const receipt = await runSwap(request);
+      onSwapped(message.id, receipt.txHash, receipt.amountOut);
+      avatarAnimation.play('xiaolee_cheer');
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setSwapping(false);
+    }
+  }
+
+  return (
+    <>
+      <Text style={styles.txHint}>
+        {fmtAmount(request.amountIn)} {request.tokenIn} →{' '}
+        {quote
+          ? `≈ ${fmtAmount(quote.estimatedOut)} ${request.tokenOut} (min ${fmtAmount(quote.minimumOut)})`
+          : quoteError
+            ? request.tokenOut
+            : `${request.tokenOut} · getting quote…`}
+      </Text>
+      {quoteError ? (
+        <Pressable onPress={() => setAttempt((n) => n + 1)} accessibilityRole="button">
+          <Text style={styles.txError}>{quoteError} — tap to retry</Text>
+        </Pressable>
+      ) : null}
+      <Pressable
+        onPress={run}
+        disabled={swapping || !quote}
+        style={({ pressed }) => [styles.signButton, (!quote || swapping) && styles.signButtonDisabled, pressed && styles.signButtonPressed]}
+        accessibilityRole="button"
+      >
+        {swapping ? (
+          <ActivityIndicator size="small" color={Colors.light.card} />
+        ) : (
+          <>
+            <IconWallet size={15} color={Colors.light.card} />
+            <Text style={styles.signButtonText}>
+              Swap {request.tokenIn} → {request.tokenOut}
+            </Text>
+          </>
+        )}
+      </Pressable>
+      {error ? <Text style={styles.txError}>{error}</Text> : null}
+    </>
+  );
+}
+
+/** Erro de carteira vem como `{code, message}` puro, não Error — por isso não dá para usar `instanceof`. */
+function errorText(err: unknown): string {
+  return err && typeof err === 'object' && 'message' in err
+    ? String((err as { message: unknown }).message)
+    : String(err);
+}
+
 function Bubble({
   message,
   onSigned,
   onClaimed,
+  onSwapped,
 }: {
   message: Message;
   onSigned: (id: string, hash: string) => void;
   onClaimed: (id: string, receiptId: string) => void;
+  onSwapped: (id: string, hash: string, amountOut?: string) => void;
 }) {
   const mine = message.author === 'user';
 
@@ -819,6 +990,7 @@ function Bubble({
           {message.claim || message.claimReceiptId ? (
             <ClaimButton message={message} onClaimed={onClaimed} />
           ) : null}
+          {message.swap ? <SwapButton message={message} onSwapped={onSwapped} /> : null}
         </View>
         <View style={styles.meta}>
           <Text style={styles.metaText}>Xiaolee{message.time ? ` · ${message.time}` : ''}</Text>
@@ -1187,6 +1359,7 @@ const styles = StyleSheet.create({
     marginTop: Spacing.two,
   },
   signButtonPressed: { opacity: 0.7 },
+  signButtonDisabled: { opacity: 0.5 },
   signButtonText: { fontFamily: Fonts.bold, fontSize: 13, color: Colors.light.card },
   txDone: {
     flexDirection: 'row',

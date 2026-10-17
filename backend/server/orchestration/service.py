@@ -5,6 +5,7 @@ import logging
 import re
 from typing import Any, Dict, Optional
 
+from server.arc_swap import ARC_SWAP_TOKENS, validate_arc_swap
 from server.integrations.gemini_client import GeminiClient
 from server.integrations.solana_client import SolanaClient
 from server.integrations.stellar_adapter import StellarAdapter
@@ -257,6 +258,27 @@ _STELLAR_CONTEXT = (
 )
 
 
+# Swap na Arc: o agente só PREPARA (valida e devolve `execution.swap`); quem assina é o
+# usuário, no app, pelo App Kit da Circle. Oferecida quando há wallet EVM (ver `_tools_for`).
+ARC_SWAP_TOOL = {"type": "function", "function": {
+    "name": "arc_swap_prepare",
+    "description": (
+        "Prepara um swap na Arc (EVM) para o usuário assinar na própria wallet — você NÃO executa. "
+        "Na Arc só dá para trocar " + ", ".join(ARC_SWAP_TOKENS) + ". Use quando o usuário pedir "
+        "trocar/swap entre esses tokens (ex: USDC→EURC). Depois de chamar, diga o par e o valor e que "
+        "ele confirma no botão que aparece; não prometa o valor recebido — a cotação aparece no botão."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "token_in": {"type": "string", "description": "Token de origem: " + ", ".join(ARC_SWAP_TOKENS)},
+            "token_out": {"type": "string", "description": "Token de destino: " + ", ".join(ARC_SWAP_TOKENS)},
+            "amount": {"type": "number", "description": "Quantidade do token de origem a trocar"},
+        },
+        "required": ["token_in", "token_out", "amount"],
+    },
+}}
+
 _AUTO_DETECT_CLAUDE_ENGINE = object()  # sentinel: distingue "não passado" de "explicitamente None"
 
 
@@ -335,7 +357,8 @@ class OrchestrationService:
                 f"WALLETS CONECTADAS: EVM {evm_wallet} (trilho principal — Arc) e "
                 f"Stellar {stellar_wallet} (Freighter/SEP-10). Contexto padrão da conversa: Arc/EVM "
                 "(USDC nativo, campanhas, agente autônomo, x402, transferências no chat). Use o trilho "
-                "Stellar apenas quando o usuário pedir swap XLM/USDC, anchor SEP-24 ou algo da Stellar."
+                "Stellar apenas quando o usuário pedir swap XLM/USDC, anchor SEP-24 ou algo da Stellar; "
+                "swap entre USDC/EURC/cirBTC é do Arc (arc_swap_prepare)."
             )
         if evm_wallet:
             return (
@@ -343,7 +366,8 @@ class OrchestrationService:
                 "NÃO há wallet Stellar conectada: não assuma Freighter nem ofereça saldo XLM/swap DEX como "
                 "padrão — se o usuário pedir algo da Stellar, avise que precisaria conectar a Freighter. "
                 "Foque no que a wallet dele já faz: transferir USDC no Arc pelo chat (você prepara e ele "
-                "assina), campanhas com payout do agente, x402, receber USDC."
+                "assina), trocar USDC/EURC/cirBTC no Arc (arc_swap_prepare; ele confirma no botão), "
+                "campanhas com payout do agente, x402, receber USDC."
             )
         if stellar_wallet:
             return (
@@ -905,6 +929,32 @@ class OrchestrationService:
                     "fee_xlm": quote.fee_xlm, "ready_to_sign": bool(swap_xdr),
                 })
 
+            if tool_name == "arc_swap_prepare":
+                if not evm_wallet:
+                    return json.dumps({"error": "no_evm_wallet", "message": "Conecte uma carteira Arc para trocar."})
+                swap, error = validate_arc_swap(
+                    tool_input.get("token_in"), tool_input.get("token_out"), tool_input.get("amount")
+                )
+                if error or not swap:
+                    return json.dumps({"error": "invalid_swap", "message": error})
+                # Aviso antecipado (antes do botão): só dá para conferir o USDC; os outros tokens o SDK confere.
+                # Se não der para ler o saldo, não bloqueia — o app recusa de qualquer forma sem saldo.
+                if swap["tokenIn"] == "USDC":
+                    try:
+                        from server.routes.arc_routes import read_arc_usdc_balance
+                        balance = await read_arc_usdc_balance(evm_wallet)
+                    except Exception:
+                        logger.warning("[chat-tool] arc_swap_prepare: balance read failed", exc_info=True)
+                    else:
+                        if balance < float(swap["amountIn"]):
+                            return json.dumps({
+                                "error": "insufficient_balance",
+                                "message": f"Saldo insuficiente: você tem {balance:g} USDC e o swap pede {swap['amountIn']}.",
+                            })
+                captured["actions"].append("arc_swap")
+                captured["execution"] = {"status": "swap_ready", "chain": "arc", "wallet": evm_wallet, "swap": swap}
+                return json.dumps({"ready_to_sign": True, **swap})
+
             return json.dumps({"error": "unknown_tool", "tool": tool_name})
 
         return executor
@@ -912,6 +962,8 @@ class OrchestrationService:
     def _synthesize_intent(self, captured: Dict[str, Any], stellar_wallet: str | None) -> IntentResponse:
         """Reconstruct an IntentResponse from the tools Claude actually called."""
         actions = captured.get("actions", [])
+        if "arc_swap" in actions:
+            return IntentResponse(action="arc_swap", confidence=0.9, entities={})
         if "stellar_swap" in actions:
             return IntentResponse(action="stellar_swap", confidence=0.9,
                                   entities=captured.get("last_swap_args", {}))
@@ -943,6 +995,18 @@ class OrchestrationService:
             messages.append({"role": role, "content": content})
         return messages
 
+    @staticmethod
+    def _tools_for(stellar_wallet: str | None, evm_wallet: str | None) -> list:
+        """Tools do chat conforme a(s) carteira(s) conectada(s).
+
+        Só Arc (EVM): o swap é o da Arc e o do Stellar DEX sai — senão a Xiaolee mandava
+        "conectar a Freighter". Stellar (ou nenhuma wallet): como sempre foi.
+        """
+        if not evm_wallet:
+            return STELLAR_AGENT_TOOLS
+        tools = [t for t in STELLAR_AGENT_TOOLS if stellar_wallet or t["function"]["name"] != "stellar_swap_quote"]
+        return [*tools, ARC_SWAP_TOOL]
+
     async def _execute_agentic(self, text: str, user_id: str, history: list = None,
                                platform: str = "web") -> Dict[str, Any]:
         stellar_wallet = self._extract_stellar_wallet_from_note(text)
@@ -958,7 +1022,7 @@ class OrchestrationService:
         result = await self.claude_engine.run(
             system_prompt=system_prompt,
             message=clean_text,
-            tools=STELLAR_AGENT_TOOLS,
+            tools=self._tools_for(stellar_wallet, evm_wallet),
             tool_executor=executor,
             history=self._history_to_anthropic(history),
         )
