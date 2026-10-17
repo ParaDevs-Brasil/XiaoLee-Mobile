@@ -26,6 +26,8 @@ import {
 import { useSession } from '@/hooks/use-session';
 import { isRealSession } from '@/lib/auth-state';
 import { ARC_NETWORK } from '@/lib/arc-network';
+import { estimateArcSwap, executeArcSwap, type ArcSwapQuote, type ArcSwapReceipt } from '@/lib/arc-swap';
+import type { ArcSwapRequest } from '@/lib/arc-swap-request';
 import { shortHash } from '@/lib/format';
 import { clearSession, clearWallet, saveSession, saveWallet } from '@/lib/session';
 
@@ -105,6 +107,10 @@ interface WalletContextValue {
    * resgates de campanha sem sessão custodial.
    */
   signMessage: (message: string) => Promise<string>;
+  /** Cotação de um swap na Arc (App Kit da Circle) — não executa nada. */
+  estimateSwap: (request: ArcSwapRequest) => Promise<ArcSwapQuote>;
+  /** Executa o swap na carteira do usuário; ele confirma no próprio app. */
+  swap: (request: ArcSwapRequest) => Promise<ArcSwapReceipt>;
 }
 
 /** O provider da carteira embutida fala JSON-RPC; só isto é usado daqui. */
@@ -432,6 +438,25 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     return personalSign(await requester(), address, message);
   }
 
+  /** Provider já conferido: a carteira precisa estar na Arc, como no envio de USDC. */
+  async function arcProvider() {
+    if (!address) throw new Error('Nenhuma carteira conectada.');
+    const r = await requester();
+    const chainId = await currentChainId(r);
+    if (chainId !== ARC_CHAIN_ID) {
+      throw new Error(`Sua carteira está na chain ${chainId ?? 'desconhecida'}, não no Arc (${ARC_CHAIN_ID}).`);
+    }
+    return r;
+  }
+
+  async function estimateSwap(request: ArcSwapRequest): Promise<ArcSwapQuote> {
+    return estimateArcSwap(await arcProvider(), request);
+  }
+
+  async function swap(request: ArcSwapRequest): Promise<ArcSwapReceipt> {
+    return executeArcSwap(await arcProvider(), request);
+  }
+
   const value = useMemo(
     () => ({
       isConnected: Boolean(user && address),
@@ -443,6 +468,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       signAndSend,
       signAndRelay,
       signMessage,
+      estimateSwap,
+      swap,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [user, address, sessionError],
