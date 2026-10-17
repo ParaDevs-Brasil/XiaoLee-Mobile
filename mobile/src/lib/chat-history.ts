@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import type { ChatCards } from '@/lib/chat-cards';
 import { getSession } from '@/lib/session';
 
 /**
@@ -36,7 +37,7 @@ async function storageKey(): Promise<string> {
  */
 const MAX_MESSAGES = 400;
 
-export interface StoredMessage {
+export interface StoredMessage extends ChatCards {
   role: 'user' | 'assistant';
   content: string;
   /** ISO 8601, capturado no instante do envio ou da resposta — não é a hora de exibição. */
@@ -73,14 +74,31 @@ export async function loadChatHistory(): Promise<StoredMessage[]> {
  * Nunca lança: se o `AsyncStorage` falhar (sem espaço, indisponível), a
  * mensagem já está na tela — perder só a gravação não deve travar o chat.
  */
-export async function appendChatMessage(role: StoredMessage['role'], content: string): Promise<void> {
+export async function appendChatMessage(
+  role: StoredMessage['role'],
+  content: string,
+  /** `at` fixado por quem chama, para achar a mensagem de novo em `updateChatMessage`; `cards` é o que a bolha carrega além do texto. */
+  extra: { at?: string; cards?: ChatCards } = {},
+): Promise<void> {
   const current = await loadChatHistory();
-  const next: StoredMessage[] = [...current, { role, content, at: new Date().toISOString() }].slice(
-    -MAX_MESSAGES,
-  );
+  const entry: StoredMessage = { role, content, at: extra.at ?? new Date().toISOString(), ...extra.cards };
+  await save([...current, entry].slice(-MAX_MESSAGES));
+}
 
+/**
+ * Atualiza uma mensagem já gravada (achada pelo `at`) — é como o comprovante de
+ * uma transação assinada depois da resposta chega ao histórico. Sem
+ * correspondência (mensagem já cortada pelo teto), não faz nada.
+ */
+export async function updateChatMessage(at: string, patch: ChatCards): Promise<void> {
+  const current = await loadChatHistory();
+  if (!current.some((m) => m.at === at)) return;
+  await save(current.map((m) => (m.at === at ? { ...m, ...patch } : m)));
+}
+
+async function save(messages: StoredMessage[]): Promise<void> {
   try {
-    await AsyncStorage.setItem(await storageKey(), JSON.stringify(next));
+    await AsyncStorage.setItem(await storageKey(), JSON.stringify(messages));
   } catch {
     // sem espaço ou storage indisponível — nada a fazer daqui
   }

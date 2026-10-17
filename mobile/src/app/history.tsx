@@ -9,7 +9,7 @@ import { SectionCard } from '@/components/section-card';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { useBackendData } from '@/hooks/use-backend-data';
 import { loadChatHistory, type StoredMessage } from '@/lib/chat-history';
-import { timeAgo } from '@/lib/format';
+import { shortHash, timeAgo } from '@/lib/format';
 
 /**
  * Tela de History — terceiro destino do `ProfileMenu`.
@@ -176,6 +176,9 @@ function MessageRow({ message }: { message: StoredMessage }) {
       {/* Sem `numberOfLines`: é o único lugar do app onde a mensagem inteira
           é o ponto — cortar o texto derrotaria a tela. */}
       <Text style={styles.rowContent}>{message.content}</Text>
+      {/* Comprovante do card de ação — só texto, o visual fino é do frontend. */}
+      {message.txHash ? <Text style={styles.rowContent}>Sent · {shortHash(message.txHash)}</Text> : null}
+      {message.claimReceiptId ? <Text style={styles.rowContent}>Claimed · {message.claimReceiptId}</Text> : null}
     </View>
   );
 }
