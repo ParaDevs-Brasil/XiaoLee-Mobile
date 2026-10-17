@@ -22,7 +22,7 @@
 ### Integração Circle (modo sandbox)
 - `ArcClient` conectado à Circle Programmable Wallets API (W3S)
 - Modo sandbox (`ARC_SANDBOX=true`): pagamentos simulados localmente, sem chamar a API real
-- API key validada: `TEST_API_KEY:ccab7...` funciona na Circle W3S API
+- API key validada: `TEST_API_KEY:<redacted>` funciona na Circle W3S API
 
 ### Qualidade
 - **91/91 testes passando** (4 falhas pré-existentes corrigidas)
@@ -40,14 +40,14 @@
 
 ```bash
 # ── Estado atual — PAGAMENTO SIMULADO ──────────────────────────────────────
-CIRCLE_API_KEY="TEST_API_KEY:ccab7721557e60017b952b3b08841469:742bdfdc1f80353705ea9ce1671ddb16"
+CIRCLE_API_KEY="TEST_API_KEY:<redacted>"
 CIRCLE_WALLET_ID=353c8584-efb6-50e9-adf9-132bfa21569b   # ← este é o APP ID, não wallet ID
 ARC_SANDBOX=true                                          # ← modo fake, precisa virar false
 
 # ── O que precisa ficar assim — PAGAMENTO REAL ──────────────────────────────
-CIRCLE_API_KEY="TEST_API_KEY:ccab7721..."    # já preenchido ✅
+CIRCLE_API_KEY="TEST_API_KEY:<redacted>"    # já preenchido ✅
 CIRCLE_WALLET_ID=<uuid-da-wallet-real>       # ← FALTA: criar wallet na Circle W3S API
-CIRCLE_ENTITY_SECRET=01e2accc96c870...       # ← FALTA: entity secret para assinar requests
+CIRCLE_ENTITY_SECRET=<redacted>       # ← FALTA: entity secret para assinar requests
 ARC_SANDBOX=false                            # ← FALTA: mudar para ativar pagamentos reais
 ```
 
