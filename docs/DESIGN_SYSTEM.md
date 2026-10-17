@@ -42,8 +42,7 @@ A família tipográfica principal do projeto é a **Quicksand**.
 Paleta **neutra quente com acento único de marca** (revisão v4, 04 jul 2026). Os valores vivem como CSS custom properties em `frontend/src/app/globals.css` — nos componentes, use sempre os tokens (`var(--accent)`, `border-[var(--border)]`, etc.), nunca hex solto ou classes de cor do Tailwind (`pink-*`, `fuchsia-*`, `purple-*` estão proibidas fora da landing).
 
 > **Nota (v5):** o **mobile** tem tema claro, escuro e do sistema (seletor no painel de perfil), com a variante escura da seção 3.6; os valores vivem em `mobile/src/constants/theme.ts`. O **web** continua só no claro (`theme-context.tsx` força `light`; toggle removido da Navbar).
->
-> **Pendência web:** `frontend/src/app/globals.css` ainda usa os valores da v4 para `--ink-3` (`#9a968f`) e `--success` (`#1f8a5b`). Atualizar para os da v5 abaixo, senão web e mobile divergem.
+
 
 ### 3.1. Tokens Base
 
