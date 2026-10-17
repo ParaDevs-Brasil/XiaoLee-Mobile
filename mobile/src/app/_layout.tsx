@@ -83,6 +83,10 @@ function RootNavigator() {
         },
         headerTintColor: colors.accent,
         contentStyle: { backgroundColor: colors.bg },
+        // Telas fora de vista na pilha não re-renderizam até voltarem ao foco.
+        // Sem isto, trocar o tema re-renderizava todas as telas abertas de uma
+        // vez: com ~20 na pilha, 5 s num celular de entrada (XIAOLEEACE-13).
+        freezeOnBlur: true,
       }}
     >
       <Stack.Protected guard={!signedIn}>

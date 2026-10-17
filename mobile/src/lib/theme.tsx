@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SystemUI from 'expo-system-ui';
 import { type ReactNode, useEffect, useState } from 'react';
-import { Appearance, Platform, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { ThemeTransition, type ThemeTransitionPhase } from '@/components/theme-transition';
 import { Colors } from '@/constants/theme';
@@ -18,11 +18,14 @@ import { parsePreference, resolveScheme, type ThemePreference } from '@/lib/them
  * inteira enquanto o tema muda por baixo — ver
  * `components/theme-transition.tsx`.
  *
- * Além das cores do app, o tema escolhido vai para:
- *  - `Appearance.setColorScheme`, para o que o RN desenha nativo (teclado,
- *    alertas, seletores) acompanhar o app em vez do aparelho;
- *  - a cor de fundo da janela (`expo-system-ui`), que aparece na transição
- *    entre telas e atrás do teclado — sem isso pisca o fundo do outro tema.
+ * Além das cores do app, o tema escolhido vai para a cor de fundo da janela
+ * (`expo-system-ui`), que aparece na transição entre telas e atrás do
+ * teclado — sem isso pisca o fundo do outro tema.
+ *
+ * Não chama `Appearance.setColorScheme`: com ele forçando claro/escuro, o
+ * `useColorScheme` passa a devolver o tema forçado no lugar do aparelho, e ao
+ * voltar para "System" o app não sabe mais o tema real do celular. O custo é
+ * que teclado e alertas nativos seguem o aparelho, não o app.
  */
 
 interface PendingTransition {
@@ -30,8 +33,6 @@ interface PendingTransition {
   next: ThemePreference;
   phase: ThemeTransitionPhase;
 }
-
-const isWeb = Platform.OS === 'web';
 
 /** Não é dado sensível: AsyncStorage, como o histórico de chat, não SecureStore. */
 const STORAGE_KEY = 'xiaolee_theme_preference';
@@ -53,12 +54,6 @@ async function saveThemePreference(preference: ThemePreference): Promise<void> {
   }
 }
 
-function applyNativeScheme(preference: ThemePreference) {
-  // O web não implementa `setColorScheme` (react-native-web só lê o tema).
-  if (isWeb) return;
-  Appearance.setColorScheme(preference === 'system' ? 'unspecified' : preference);
-}
-
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const system = useColorScheme();
   const reduceMotion = useReduceMotion();
@@ -75,7 +70,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     loadThemePreference().then((saved) => {
       if (cancelled) return;
       setPreferenceState(saved);
-      applyNativeScheme(saved);
       setReady(true);
     });
     return () => {
@@ -91,7 +85,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   function commit(next: ThemePreference) {
     setPreferenceState(next);
-    applyNativeScheme(next);
     void saveThemePreference(next);
   }
 
