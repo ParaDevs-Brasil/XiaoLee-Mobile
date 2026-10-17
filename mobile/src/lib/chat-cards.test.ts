@@ -55,3 +55,14 @@ test('ignora espaços nas pontas na comparação', () => {
   const [m] = matchCards([{ role: 'assistant', content: '  Pronto para enviar\n' }], stored);
   assert.equal(m?.at, '2');
 });
+
+test('card de swap (pendente e assinado) também volta', () => {
+  const swap = { tokenIn: 'USDC', tokenOut: 'EURC', amountIn: '1' };
+  const withSwap: StoredWithCards[] = [
+    { role: 'assistant', content: 'Preparei o swap', at: '9', swap, swapTxHash: '0xfeed', swapAmountOut: '1.25' },
+  ];
+  const [m] = matchCards([{ role: 'assistant', content: 'Preparei o swap' }], withSwap);
+  assert.deepEqual(m?.swap, swap);
+  assert.equal(m?.swapTxHash, '0xfeed');
+  assert.equal(m?.swapAmountOut, '1.25');
+});
