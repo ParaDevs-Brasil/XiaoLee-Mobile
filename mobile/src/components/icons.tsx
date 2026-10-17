@@ -38,16 +38,7 @@ export const IconBell = (p: IconProps) => (
   </Svg>
 );
 
-/** Hambúrguer limpo — o `material-symbols:menu-rounded` do Figma. */
-export const IconMenu = (p: IconProps) => (
-  <Svg {...base(p)}>
-    <Line x1="3" y1="6" x2="21" y2="6" />
-    <Line x1="3" y1="12" x2="21" y2="12" />
-    <Line x1="3" y1="18" x2="21" y2="18" />
-  </Svg>
-);
-
-/** Lista com marcadores — não confundir com `IconMenu`. */
+/** Lista com marcadores — não confundir com o hambúrguer (`MenuToggleIcon`). */
 export const IconList = (p: IconProps) => (
   <Svg {...base(p)}>
     <Line x1="8" y1="6" x2="21" y2="6" />
