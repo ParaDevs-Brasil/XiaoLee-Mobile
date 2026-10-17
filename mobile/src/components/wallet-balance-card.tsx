@@ -4,7 +4,8 @@ import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-nativ
 import { IconChevronRight, IconQr } from '@/components/icons';
 import { NetworkBadge } from '@/components/network-badge';
 import { SOURCE_META } from '@/components/receipt-row';
-import { CardShadow, Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useReduceMotion } from '@/hooks/use-reduce-motion';
 import { inflowBySource, type ReceiptSource, type WalletReceipt } from '@/lib/creator-wallet';
 import { formatUSDC } from '@/lib/format';
@@ -39,6 +40,7 @@ export function WalletBalanceCard({
   /** Abre o detalhamento; sem ele, a faixa fica sem o "Details ›". */
   onDetails?: () => void;
 }) {
+  const styles = useStyles();
   const [whole, cents] = formatUSDC(balanceUsdc).split('.');
   const empty = balanceUsdc === 0 && (receipts?.length ?? 0) === 0;
 
@@ -72,6 +74,8 @@ export function WalletBalanceCard({
 }
 
 function EmptyInvite({ onReceive }: { onReceive: () => void }) {
+  const colors = useTheme();
+  const styles = useStyles();
   return (
     <View style={styles.invite}>
       <Text style={styles.inviteText}>
@@ -82,7 +86,7 @@ function EmptyInvite({ onReceive }: { onReceive: () => void }) {
         style={({ pressed }) => [styles.primary, pressed && styles.pressed]}
         accessibilityRole="button"
       >
-        <IconQr size={16} color={Colors.light.card} />
+        <IconQr size={16} color={colors.onAccent} />
         <Text style={styles.primaryText}>Receive USDC</Text>
       </Pressable>
     </View>
@@ -94,6 +98,8 @@ function EmptyInvite({ onReceive }: { onReceive: () => void }) {
  * Com "reduzir movimento" ligado no aparelho ela já nasce cheia.
  */
 function InflowRibbon({ receipts, onDetails }: { receipts: WalletReceipt[]; onDetails?: () => void }) {
+  const colors = useTheme();
+  const styles = useStyles();
   // `Date.now()` no inicializador e não no corpo: o React Compiler trata
   // leitura de relógio no render como impura.
   const [since] = useState(() => Date.now() - WINDOW_DAYS * 86_400_000);
@@ -137,7 +143,7 @@ function InflowRibbon({ receipts, onDetails }: { receipts: WalletReceipt[]; onDe
         {parts.map((source) => (
           <View
             key={source}
-            style={[styles.segment, { flex: split[source], backgroundColor: SOURCE_META[source].color }]}
+            style={[styles.segment, { flex: split[source], backgroundColor: colors[SOURCE_META[source].colorKey] }]}
           />
         ))}
       </Animated.View>
@@ -145,7 +151,7 @@ function InflowRibbon({ receipts, onDetails }: { receipts: WalletReceipt[]; onDe
       <View style={styles.legend}>
         {parts.map((source) => (
           <View key={source} style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: SOURCE_META[source].color }]} />
+            <View style={[styles.legendDot, { backgroundColor: colors[SOURCE_META[source].colorKey] }]} />
             <Text style={styles.legendName}>{SOURCE_META[source].plural}</Text>
             <Text style={styles.legendValue}>${formatUSDC(split[source])}</Text>
           </View>
@@ -160,21 +166,21 @@ function InflowRibbon({ receipts, onDetails }: { receipts: WalletReceipt[]; onDe
           accessibilityLabel="See the full breakdown of what you received"
         >
           <Text style={styles.detailsText}>See full breakdown</Text>
-          <IconChevronRight size={16} sw={2.2} color={Colors.light.ink2} />
+          <IconChevronRight size={16} sw={2.2} color={colors.ink2} />
         </Pressable>
       ) : null}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   card: {
     gap: Spacing.three,
     padding: Spacing.four - 4,
     borderRadius: Radius.xl,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
     ...CardShadow,
   },
   top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
@@ -183,18 +189,18 @@ const styles = StyleSheet.create({
     height: 22,
     justifyContent: 'center',
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.warnSoft,
+    backgroundColor: colors.warnSoft,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.warnBorder,
+    borderColor: colors.warnBorder,
   },
-  mockText: { fontFamily: Fonts.bold, fontSize: 10, letterSpacing: 0.3, color: Colors.light.warn },
+  mockText: { fontFamily: Fonts.bold, fontSize: 10, letterSpacing: 0.3, color: colors.warn },
 
   eyebrow: {
     fontFamily: Fonts.bold,
     fontSize: 10,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
-    color: Colors.light.ink3,
+    color: colors.ink3,
   },
   // O número lidera; o "$" e os centavos recuam para o cinza — quem olha lê
   // "74", não "$74.50" como um bloco só.
@@ -203,20 +209,20 @@ const styles = StyleSheet.create({
     fontSize: 56,
     lineHeight: 64,
     letterSpacing: -1.5,
-    color: Colors.light.ink,
+    color: colors.ink,
     fontVariant: ['tabular-nums'],
     marginTop: Spacing.one,
   },
-  currency: { fontSize: 30, letterSpacing: 0, color: Colors.light.ink3 },
-  cents: { fontSize: 30, letterSpacing: -0.5, color: Colors.light.ink3 },
+  currency: { fontSize: 30, letterSpacing: 0, color: colors.ink3 },
+  cents: { fontSize: 30, letterSpacing: -0.5, color: colors.ink3 },
 
   inflow: { gap: Spacing.two + 2 },
   inflowHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
-  inflowLabel: { fontFamily: Fonts.semibold, fontSize: 12, color: Colors.light.ink2 },
+  inflowLabel: { fontFamily: Fonts.semibold, fontSize: 12, color: colors.ink2 },
   inflowTotal: {
     fontFamily: Fonts.bold,
     fontSize: 13,
-    color: Colors.light.ink,
+    color: colors.ink,
     fontVariant: ['tabular-nums'],
   },
   ribbon: {
@@ -230,11 +236,11 @@ const styles = StyleSheet.create({
   legend: { flexDirection: 'row', flexWrap: 'wrap', columnGap: Spacing.three, rowGap: Spacing.one },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one + 2 },
   legendDot: { width: 8, height: 8, borderRadius: Radius.pill },
-  legendName: { fontFamily: Fonts.medium, fontSize: 12, color: Colors.light.ink2 },
+  legendName: { fontFamily: Fonts.medium, fontSize: 12, color: colors.ink2 },
   legendValue: {
     fontFamily: Fonts.bold,
     fontSize: 12,
-    color: Colors.light.ink,
+    color: colors.ink,
     fontVariant: ['tabular-nums'],
   },
 
@@ -246,12 +252,12 @@ const styles = StyleSheet.create({
     marginTop: Spacing.one,
     paddingHorizontal: Spacing.three - 2,
     borderRadius: Radius.md,
-    backgroundColor: Colors.light.bg,
+    backgroundColor: colors.bg,
   },
-  detailsText: { fontFamily: Fonts.bold, fontSize: 13, color: Colors.light.ink },
+  detailsText: { fontFamily: Fonts.bold, fontSize: 13, color: colors.ink },
 
   invite: { gap: Spacing.three },
-  inviteText: { fontFamily: Fonts.sans, fontSize: 14, lineHeight: 21, color: Colors.light.ink2 },
+  inviteText: { fontFamily: Fonts.sans, fontSize: 14, lineHeight: 21, color: colors.ink2 },
   primary: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -259,8 +265,8 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     height: 48,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.accent,
+    backgroundColor: colors.accentFill,
   },
-  primaryText: { fontFamily: Fonts.bold, fontSize: 15, color: Colors.light.card },
+  primaryText: { fontFamily: Fonts.bold, fontSize: 15, color: colors.onAccent },
   pressed: { opacity: 0.8 },
-});
+}));

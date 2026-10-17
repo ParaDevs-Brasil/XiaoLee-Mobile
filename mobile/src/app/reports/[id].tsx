@@ -22,7 +22,8 @@ import { Pop, Reveal, Twinkle } from '@/components/motion';
 import { IdeasProgress, ReportIdeaCard } from '@/components/report-idea-card';
 import { ReportMetricCard } from '@/components/report-metric-card';
 import { ScreenShell } from '@/components/screen-shell';
-import { CardShadow, Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useBackendData } from '@/hooks/use-backend-data';
 import { useIdeaProgress } from '@/hooks/use-idea-progress';
 import {
@@ -66,6 +67,8 @@ const CHAT_FAB_CLEARANCE = 72;
 const ORDER = { summary: 0, numbersHeading: 1, tiles: 2, ideasHeading: 7, ideas: 8, footer: 9 };
 
 export default function ReportScreen() {
+  const colors = useTheme();
+  const styles = useStyles();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string }>();
@@ -92,8 +95,8 @@ export default function ReportScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={reload}
-            tintColor={Colors.light.accent}
-            colors={[Colors.light.accent]}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
           />
         }
       >
@@ -104,7 +107,7 @@ export default function ReportScreen() {
             accessibilityRole="button"
             accessibilityLabel="Back"
           >
-            <IconChevronLeft size={20} sw={2.2} color={Colors.light.ink} />
+            <IconChevronLeft size={20} sw={2.2} color={colors.ink} />
           </Pressable>
           <View style={styles.flex}>
             <Text style={styles.title} accessibilityRole="header">
@@ -115,7 +118,7 @@ export default function ReportScreen() {
             </Text>
           </View>
           <View style={styles.aiPill}>
-            <IconSpark size={11} color={Colors.light.accent} />
+            <IconSpark size={11} color={colors.accent} />
             <Text style={styles.aiPillText}>AI insight</Text>
           </View>
         </View>
@@ -137,7 +140,7 @@ export default function ReportScreen() {
             <Reveal index={ORDER.summary}>
               <View style={styles.summary}>
                 <Twinkle style={styles.summaryIcon}>
-                  <IconSpark size={18} color={Colors.light.accent} />
+                  <IconSpark size={18} color={colors.accent} />
                 </Twinkle>
                 <View style={styles.flex}>
                   <Text style={styles.summaryText}>{data.summary}</Text>
@@ -145,16 +148,16 @@ export default function ReportScreen() {
                     <View style={styles.chips}>
                       {up > 0 ? (
                         <Pop delay={450} style={[styles.chip, styles.chipUp]}>
-                          <IconTrendingUp size={13} sw={2.4} color={Colors.light.success} />
-                          <Text style={[styles.chipText, { color: Colors.light.success }]}>
+                          <IconTrendingUp size={13} sw={2.4} color={colors.success} />
+                          <Text style={[styles.chipText, { color: colors.success }]}>
                             {up} up
                           </Text>
                         </Pop>
                       ) : null}
                       {down > 0 ? (
                         <Pop delay={560} style={[styles.chip, styles.chipDown]}>
-                          <IconTrendingDown size={13} sw={2.4} color={Colors.light.danger} />
-                          <Text style={[styles.chipText, { color: Colors.light.danger }]}>
+                          <IconTrendingDown size={13} sw={2.4} color={colors.danger} />
+                          <Text style={[styles.chipText, { color: colors.danger }]}>
                             {down} down
                           </Text>
                         </Pop>
@@ -236,7 +239,7 @@ export default function ReportScreen() {
                 hitSlop={Spacing.two}
               >
                 <Text style={styles.pastLinkText}>Past reports</Text>
-                <IconChevronRight size={13} sw={2.2} color={Colors.light.accent} />
+                <IconChevronRight size={13} sw={2.2} color={colors.accent} />
               </Pressable>
             </Reveal>
           </>
@@ -247,6 +250,7 @@ export default function ReportScreen() {
 }
 
 function SectionHeading({ title, subtitle }: { title: string; subtitle: string }) {
+  const styles = useStyles();
   return (
     <View style={styles.sectionHeading}>
       <Text style={styles.sectionTitle} accessibilityRole="header">
@@ -257,7 +261,7 @@ function SectionHeading({ title, subtitle }: { title: string; subtitle: string }
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   flex: { flex: 1 },
   content: {
     paddingHorizontal: Spacing.three - 4,
@@ -275,8 +279,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  title: { fontFamily: Fonts.bold, fontSize: 22, lineHeight: 28, color: Colors.light.ink },
-  meta: { fontFamily: Fonts.medium, fontSize: 13, color: Colors.light.ink3 },
+  title: { fontFamily: Fonts.bold, fontSize: 22, lineHeight: 28, color: colors.ink },
+  meta: { fontFamily: Fonts.medium, fontSize: 13, color: colors.ink3 },
   aiPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -284,14 +288,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.two + 2,
     paddingVertical: Spacing.one + 1,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.accentSoft,
+    backgroundColor: colors.accentSoft,
   },
   aiPillText: {
     fontFamily: Fonts.bold,
     fontSize: 10,
     letterSpacing: 0.6,
     textTransform: 'uppercase',
-    color: Colors.light.accent,
+    color: colors.accent,
   },
 
   summary: {
@@ -301,9 +305,9 @@ const styles = StyleSheet.create({
     padding: Spacing.three - 2,
     borderRadius: Radius.lg,
     // Branco como os cartões de métrica: a cor do resumo vem do ícone e dos chips, não do fundo.
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
     ...CardShadow,
   },
   summaryIcon: {
@@ -312,13 +316,13 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.light.accentSoft,
+    backgroundColor: colors.accentSoft,
   },
   summaryText: {
     fontFamily: Fonts.medium,
     fontSize: 14,
     lineHeight: 21,
-    color: Colors.light.ink,
+    color: colors.ink,
   },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two, marginTop: Spacing.two + 2 },
   chip: {
@@ -329,20 +333,20 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.one + 1,
     borderRadius: Radius.pill,
   },
-  chipUp: { backgroundColor: Colors.light.successSoft },
-  chipDown: { backgroundColor: Colors.light.dangerSoft },
+  chipUp: { backgroundColor: colors.successSoft },
+  chipDown: { backgroundColor: colors.dangerSoft },
   chipText: { fontFamily: Fonts.bold, fontSize: 12 },
 
   sectionHeading: { gap: 2, marginTop: Spacing.two },
-  sectionTitle: { fontFamily: Fonts.bold, fontSize: 18, color: Colors.light.ink },
-  sectionSubtitle: { fontFamily: Fonts.sans, fontSize: 12, color: Colors.light.ink3 },
+  sectionTitle: { fontFamily: Fonts.bold, fontSize: 18, color: colors.ink },
+  sectionSubtitle: { fontFamily: Fonts.sans, fontSize: 12, color: colors.ink3 },
 
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.three - 4 },
   emptyCard: {
     borderRadius: Radius.lg,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
 
   footer: { alignItems: 'center', gap: Spacing.two, paddingHorizontal: Spacing.three },
@@ -350,9 +354,9 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.sans,
     fontSize: 11,
     lineHeight: 16,
-    color: Colors.light.ink3,
+    color: colors.ink3,
     textAlign: 'center',
   },
   pastLink: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  pastLinkText: { fontFamily: Fonts.bold, fontSize: 12, color: Colors.light.accent },
-});
+  pastLinkText: { fontFamily: Fonts.bold, fontSize: 12, color: colors.accent },
+}));

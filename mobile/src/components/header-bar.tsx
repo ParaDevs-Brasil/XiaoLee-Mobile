@@ -2,7 +2,8 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { IconBell, IconMenu, IconSpark, IconUser } from '@/components/icons';
-import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useProfilePhoto } from '@/hooks/use-profile-photo';
 
 /**
@@ -31,6 +32,8 @@ export function HeaderBar({
   onPressLogo,
   unreadCount,
 }: HeaderBarProps) {
+  const colors = useTheme();
+  const styles = useStyles();
   // O frame do Figma começa em y=0 porque não desenha a status bar. No
   // aparelho, sem este inset o wordmark fica embaixo do relógio e da bateria.
   const insets = useSafeAreaInsets();
@@ -56,7 +59,7 @@ export function HeaderBar({
         </Text>
         {/* A faísca sobe um pouco, como o `-translate-y-1.5` do web. */}
         <View style={styles.spark}>
-          <IconSpark size={13} color={Colors.light.accent} />
+          <IconSpark size={13} color={colors.accent} />
         </View>
       </Pressable>
 
@@ -69,7 +72,7 @@ export function HeaderBar({
             unreadCount ? `Notificações, ${unreadCount} pendentes` : 'Notificações'
           }
         >
-          <IconBell size={24} color={Colors.light.accent} />
+          <IconBell size={24} color={colors.accent} />
           {unreadCount ? (
             <View style={styles.badge}>
               <Text style={styles.badgeText} numberOfLines={1}>
@@ -85,7 +88,7 @@ export function HeaderBar({
           accessibilityRole="button"
           accessibilityLabel="Menu"
         >
-          <IconMenu size={26} sw={2.2} color={Colors.light.accent} />
+          <IconMenu size={26} sw={2.2} color={colors.accent} />
         </Pressable>
 
         {/* Avatar: a foto de perfil quando há (a mesma do card de share e do
@@ -101,7 +104,7 @@ export function HeaderBar({
           {photo ? (
             <Image source={{ uri: photo }} style={StyleSheet.absoluteFill} />
           ) : (
-            <IconUser size={18} sw={2} color={Colors.light.card} />
+            <IconUser size={18} sw={2} color={colors.onAccent} />
           )}
         </Pressable>
       </View>
@@ -109,27 +112,27 @@ export function HeaderBar({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   bar: {
     paddingHorizontal: Spacing.two,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Colors.light.border,
+    borderBottomColor: colors.border,
   },
   logo: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
   wordmark: {
     // Candice é a fonte da marca, só do logo — o resto do app é Quicksand.
     fontFamily: Fonts.brand,
     fontSize: 26,
-    color: Colors.light.ink,
+    color: colors.ink,
     // Candice tem ascendentes altos; sem isto o Android corta o topo das letras.
     lineHeight: 34,
   },
   wordmarkAccent: {
-    color: Colors.light.accent,
+    color: colors.accent,
   },
   spark: { marginTop: -6 },
   actions: {
@@ -141,7 +144,7 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.accent,
+    backgroundColor: colors.accentFill,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -154,9 +157,9 @@ const styles = StyleSheet.create({
     height: 16,
     paddingHorizontal: 3,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.danger,
+    backgroundColor: colors.dangerFill,
     borderWidth: 1.5,
-    borderColor: Colors.light.card,
+    borderColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -164,6 +167,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bold,
     fontSize: 10,
     lineHeight: 12,
-    color: Colors.light.card,
+    color: colors.onAccent,
   },
-});
+}));

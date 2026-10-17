@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text } from 'react-native';
+import { Text } from 'react-native';
 
 import { createChatSession } from '@/api/backend';
 import { DropdownPanel, PanelRow } from '@/components/dropdown-panel';
 import { IconClock, IconEdit } from '@/components/icons';
-import { Colors, Fonts, Spacing } from '@/constants/theme';
+import { Fonts, Spacing } from '@/constants/theme';
+import { makeStyles } from '@/hooks/use-theme';
 import { useChatSession } from '@/hooks/use-chat-session';
 import { refreshChatSessions, setActiveChatSessionId } from '@/lib/chat-session';
 import { timeAgo } from '@/lib/format';
@@ -27,6 +28,7 @@ interface SessionsPanelProps {
 }
 
 export function SessionsPanel({ visible, onDismiss, anchor }: SessionsPanelProps) {
+  const styles = useStyles();
   const { sessions } = useChatSession();
   const [creating, setCreating] = useState(false);
 
@@ -77,11 +79,11 @@ export function SessionsPanel({ visible, onDismiss, anchor }: SessionsPanelProps
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   empty: {
     fontFamily: Fonts.sans,
     fontSize: 12,
-    color: Colors.light.ink2,
+    color: colors.ink2,
     paddingVertical: Spacing.one,
   },
-});
+}));

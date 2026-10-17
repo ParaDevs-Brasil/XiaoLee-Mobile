@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { listCreatorReports, type CreatorReportSummary } from '@/api/backend';
@@ -8,7 +8,8 @@ import { IconChevronRight, IconClipboard } from '@/components/icons';
 import { Reveal } from '@/components/motion';
 import { PageHeading, ScreenShell } from '@/components/screen-shell';
 import { SectionCard } from '@/components/section-card';
-import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useBackendData } from '@/hooks/use-backend-data';
 import { useSession } from '@/hooks/use-session';
 import { reportPeriodLabel } from '@/lib/creator-report';
@@ -23,6 +24,8 @@ async function fetchReports(): Promise<CreatorReportSummary[]> {
 
 /** Histórico dos relatórios de 30 dias, mais novo primeiro. Cada um abre em `/reports/[id]`. */
 export default function ReportsScreen() {
+  const colors = useTheme();
+  const styles = useStyles();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { hasSession } = useSession();
@@ -37,8 +40,8 @@ export default function ReportsScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={reload}
-            tintColor={Colors.light.accent}
-            colors={[Colors.light.accent]}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
           />
         }
       >
@@ -80,7 +83,7 @@ export default function ReportsScreen() {
                         {r.summary}
                       </Text>
                     </View>
-                    <IconChevronRight size={16} color={Colors.light.ink3} />
+                    <IconChevronRight size={16} color={colors.ink3} />
                   </Pressable>
                 </Reveal>
               ))
@@ -92,7 +95,7 @@ export default function ReportsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   flex: { flex: 1 },
   content: {
     paddingHorizontal: Spacing.three - 4,
@@ -106,14 +109,14 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     padding: Spacing.two + 2,
     borderRadius: Radius.md,
-    backgroundColor: Colors.light.bg,
+    backgroundColor: colors.bg,
   },
-  period: { fontFamily: Fonts.bold, fontSize: 13, color: Colors.light.ink },
+  period: { fontFamily: Fonts.bold, fontSize: 13, color: colors.ink },
   summary: {
     fontFamily: Fonts.sans,
     fontSize: 12,
     lineHeight: 18,
-    color: Colors.light.ink2,
+    color: colors.ink2,
     marginTop: 2,
   },
-});
+}));

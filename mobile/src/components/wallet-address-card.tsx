@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { IconCheck, IconCopy, IconQr } from '@/components/icons';
-import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { addressChunks } from '@/lib/creator-wallet';
 
 /**
@@ -52,6 +53,7 @@ export function ChunkedAddress({
   compact?: boolean;
   centered?: boolean;
 }) {
+  const styles = useStyles();
   const chunks = addressChunks(address);
   const style = [styles.mono, centered && styles.centered];
   if (chunks.length === 1) return <Text style={style}>{address}</Text>;
@@ -72,6 +74,8 @@ export function ChunkedAddress({
 }
 
 export function WalletAddressCard({ address, onShowQr }: { address: string; onShowQr: () => void }) {
+  const colors = useTheme();
+  const styles = useStyles();
   const { copied, copy } = useCopyAddress(address);
 
   return (
@@ -91,9 +95,9 @@ export function WalletAddressCard({ address, onShowQr }: { address: string; onSh
           accessibilityLabel={copied ? 'Address copied' : 'Copy address'}
         >
           {copied ? (
-            <IconCheck size={15} sw={2.2} color={Colors.light.success} />
+            <IconCheck size={15} sw={2.2} color={colors.success} />
           ) : (
-            <IconCopy size={15} color={Colors.light.ink} />
+            <IconCopy size={15} color={colors.ink} />
           )}
           <Text style={[styles.actionText, copied && styles.actionTextDone]}>
             {copied ? 'Copied' : 'Copy'}
@@ -105,7 +109,7 @@ export function WalletAddressCard({ address, onShowQr }: { address: string; onSh
           style={({ pressed }) => [styles.action, pressed && styles.pressed]}
           accessibilityRole="button"
         >
-          <IconQr size={15} color={Colors.light.ink} />
+          <IconQr size={15} color={colors.ink} />
           <Text style={styles.actionText}>Show QR</Text>
         </Pressable>
       </View>
@@ -113,14 +117,14 @@ export function WalletAddressCard({ address, onShowQr }: { address: string; onSh
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   card: {
     gap: Spacing.three - 4,
     padding: Spacing.three + 4,
     borderRadius: Radius.lg,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
   head: { gap: 2 },
   eyebrow: {
@@ -128,14 +132,14 @@ const styles = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
-    color: Colors.light.ink3,
+    color: colors.ink3,
   },
-  hint: { fontFamily: Fonts.medium, fontSize: 12, color: Colors.light.ink3 },
+  hint: { fontFamily: Fonts.medium, fontSize: 12, color: colors.ink3 },
 
   mono: { fontFamily: Fonts.mono, fontSize: 16, lineHeight: 24, letterSpacing: 0.3 },
   centered: { textAlign: 'center' },
-  strong: { color: Colors.light.ink, fontWeight: '700' },
-  dim: { color: Colors.light.ink3 },
+  strong: { color: colors.ink, fontWeight: '700' },
+  dim: { color: colors.ink3 },
 
   actions: { flexDirection: 'row', gap: Spacing.two },
   action: {
@@ -146,12 +150,12 @@ const styles = StyleSheet.create({
     gap: Spacing.two - 2,
     height: 44,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.bg,
+    backgroundColor: colors.bg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
-  actionDone: { backgroundColor: Colors.light.successSoft, borderColor: Colors.light.successBorder },
-  actionText: { fontFamily: Fonts.bold, fontSize: 13, color: Colors.light.ink },
-  actionTextDone: { color: Colors.light.success },
+  actionDone: { backgroundColor: colors.successSoft, borderColor: colors.successBorder },
+  actionText: { fontFamily: Fonts.bold, fontSize: 13, color: colors.ink },
+  actionTextDone: { color: colors.success },
   pressed: { opacity: 0.7 },
-});
+}));

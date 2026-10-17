@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { CardShadow, Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles } from '@/hooks/use-theme';
 
 /**
  * Cartão de seção — mesma anatomia do card do chat (`app/index.tsx`): borda de
@@ -20,6 +21,7 @@ interface SectionCardProps {
 }
 
 export function SectionCard({ title, subtitle, action, children }: SectionCardProps) {
+  const styles = useStyles();
   return (
     <View style={styles.card}>
       <View style={styles.header}>
@@ -35,12 +37,12 @@ export function SectionCard({ title, subtitle, action, children }: SectionCardPr
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   card: {
     borderRadius: Radius.lg,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
     overflow: 'hidden',
     ...CardShadow,
   },
@@ -51,10 +53,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three - 2,
     paddingVertical: Spacing.two + 2,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Colors.light.border,
+    borderBottomColor: colors.border,
   },
   headerText: { flex: 1 },
-  title: { fontFamily: Fonts.bold, fontSize: 15, color: Colors.light.ink },
-  subtitle: { fontFamily: Fonts.sans, fontSize: 12, color: Colors.light.ink2, marginTop: 1 },
+  title: { fontFamily: Fonts.bold, fontSize: 15, color: colors.ink },
+  subtitle: { fontFamily: Fonts.sans, fontSize: 12, color: colors.ink2, marginTop: 1 },
   body: { padding: Spacing.two + 2, gap: Spacing.two },
-});
+}));

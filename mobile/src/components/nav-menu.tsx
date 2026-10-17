@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import { DropdownPanel } from '@/components/dropdown-panel';
 import {
@@ -9,7 +9,8 @@ import {
   IconRocket,
   IconScissors,
 } from '@/components/icons';
-import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 
 /**
  * Menu de navegação — frame "Xiaolee - menu" (grupo `Group 9`, 191x264).
@@ -28,6 +29,8 @@ interface NavMenuProps {
 }
 
 export function NavMenu({ visible, onDismiss }: NavMenuProps) {
+  const colors = useTheme();
+  const styles = useStyles();
   const router = useRouter();
 
   const items = [
@@ -52,7 +55,7 @@ export function NavMenu({ visible, onDismiss }: NavMenuProps) {
           accessibilityLabel={label}
         >
           <View style={styles.icon}>
-            <Icon size={20} color={Colors.light.accent} />
+            <Icon size={20} color={colors.accent} />
           </View>
           <Text style={styles.label}>{label}</Text>
         </Pressable>
@@ -61,7 +64,7 @@ export function NavMenu({ visible, onDismiss }: NavMenuProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two + 2, paddingVertical: 2 },
   icon: {
     width: 36,
@@ -69,8 +72,8 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.light.accentSoft,
+    backgroundColor: colors.accentSoft,
   },
-  label: { flex: 1, fontFamily: Fonts.bold, fontSize: 16, color: Colors.light.ink },
+  label: { flex: 1, fontFamily: Fonts.bold, fontSize: 16, color: colors.ink },
   pressed: { opacity: 0.6 },
-});
+}));

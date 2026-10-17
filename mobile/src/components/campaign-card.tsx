@@ -5,7 +5,8 @@ import type { Campaign, UserCampaignParticipation } from '@/api/backend';
 import { claimCampaignReward, joinCampaign, verifyCampaignTasks } from '@/api/backend';
 import { ApiError } from '@/api/client';
 import { IconList } from '@/components/icons';
-import { CardShadow, Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { formatDate, formatTokenAmount } from '@/lib/format';
 import { getSessionToken } from '@/lib/session';
 import { usePrivyWallet } from '@/lib/wallet';
@@ -80,6 +81,8 @@ export function CampaignCard({
   participation,
   onChanged,
 }: CampaignCardProps) {
+  const colors = useTheme();
+  const styles = useStyles();
   // `completed_participants` conta **todo mundo inscrito**, não quem concluiu:
   // o backend preenche esse campo com um `count` de `CampaignParticipant` sem
   // filtrar por status (`campaigns_routes.py::list_campaigns`). O rótulo segue
@@ -218,7 +221,7 @@ export function CampaignCard({
         {hasTasks ? (
           <View style={styles.tasksBox}>
             <View style={styles.tasksHeader}>
-              <IconList size={13} color={Colors.light.ink2} />
+              <IconList size={13} color={colors.ink2} />
               <Text style={styles.tasksTitle}>Required tasks</Text>
             </View>
 
@@ -267,6 +270,7 @@ export function CampaignCard({
 }
 
 function Stat({ label, value, alert }: { label: string; value: string; alert?: boolean }) {
+  const styles = useStyles();
   return (
     <View style={styles.stat}>
       <Text style={styles.statLabel}>{label}</Text>
@@ -279,6 +283,7 @@ function Stat({ label, value, alert }: { label: string; value: string; alert?: b
 
 /** Tarefa exigida. Abre no navegador — o alvo é sempre um link do X. */
 function Task({ label, value, url }: { label: string; value: string; url: string }) {
+  const styles = useStyles();
   return (
     <View style={styles.task}>
       <Text style={styles.taskLabel}>{label}</Text>
@@ -318,6 +323,7 @@ const STEPS = ['Join', 'Verify', 'Claim'] as const;
 const STEP_INDEX: Record<Step, number> = { join: 0, verify: 1, claim: 2, done: 3 };
 
 function StepRail({ step }: { step: Step }) {
+  const styles = useStyles();
   const current = STEP_INDEX[step];
 
   return (
@@ -376,6 +382,8 @@ function Action({
   busy?: boolean;
   onPress?: () => void;
 }) {
+  const colors = useTheme();
+  const styles = useStyles();
   // Durante a chamada o botão fica inerte: dois toques em `Join` renderiam um
   // 409 do backend como erro na tela, sendo que o primeiro deu certo.
   const blocked = Boolean(disabled) || Boolean(busy);
@@ -393,7 +401,7 @@ function Action({
       accessibilityState={{ disabled: blocked, busy: Boolean(busy) }}
     >
       {busy ? (
-        <ActivityIndicator size="small" color={Colors.light.card} />
+        <ActivityIndicator size="small" color={colors.onAccent} />
       ) : (
         <Text style={styles.actionText}>{label}</Text>
       )}
@@ -401,12 +409,12 @@ function Action({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   card: {
     borderRadius: Radius.lg,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
     overflow: 'hidden',
     ...CardShadow,
   },
@@ -418,36 +426,36 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three - 2,
     paddingVertical: Spacing.two + 2,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Colors.light.border,
+    borderBottomColor: colors.border,
   },
-  name: { fontFamily: Fonts.bold, fontSize: 15, lineHeight: 21, color: Colors.light.ink },
+  name: { fontFamily: Fonts.bold, fontSize: 15, lineHeight: 21, color: colors.ink },
   typeChip: {
     paddingHorizontal: Spacing.two + 2,
     paddingVertical: 2,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.accentSoft,
+    backgroundColor: colors.accentSoft,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
   typeText: {
     fontFamily: Fonts.bold,
     fontSize: 9,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
-    color: Colors.light.accent,
+    color: colors.accent,
   },
 
   body: { padding: Spacing.three - 2, gap: Spacing.two + 2 },
-  description: { fontFamily: Fonts.sans, fontSize: 13, lineHeight: 20, color: Colors.light.ink2 },
+  description: { fontFamily: Fonts.sans, fontSize: 13, lineHeight: 20, color: colors.ink2 },
 
   // ── Números e progresso ────────────────────────────────────────────────
   statsBox: {
     gap: Spacing.two,
     padding: Spacing.two + 2,
     borderRadius: Radius.md,
-    backgroundColor: Colors.light.bg,
+    backgroundColor: colors.bg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
   // Duas colunas com `wrap`: os quatro números viram 2x2 sem grid.
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: Spacing.two - 2 },
@@ -457,26 +465,26 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingRight: Spacing.two,
   },
-  statLabel: { fontFamily: Fonts.medium, fontSize: 12, color: Colors.light.ink3 },
-  statValue: { fontFamily: Fonts.bold, fontSize: 12, color: Colors.light.ink, flexShrink: 1 },
-  statValueAlert: { color: Colors.light.danger },
+  statLabel: { fontFamily: Fonts.medium, fontSize: 12, color: colors.ink3 },
+  statValue: { fontFamily: Fonts.bold, fontSize: 12, color: colors.ink, flexShrink: 1 },
+  statValueAlert: { color: colors.danger },
 
   progressHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: Spacing.two - 2,
   },
-  progressLabel: { fontFamily: Fonts.medium, fontSize: 11, color: Colors.light.ink3 },
-  progressPct: { fontFamily: Fonts.bold, fontSize: 11, color: Colors.light.ink2 },
+  progressLabel: { fontFamily: Fonts.medium, fontSize: 11, color: colors.ink3 },
+  progressPct: { fontFamily: Fonts.bold, fontSize: 11, color: colors.ink2 },
   progressTrack: {
     height: 6,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.border,
+    backgroundColor: colors.border,
     overflow: 'hidden',
   },
-  progressFill: { height: '100%', borderRadius: Radius.pill, backgroundColor: Colors.light.success },
-  progressFillFilling: { backgroundColor: Colors.light.warn },
-  progressFillFull: { backgroundColor: Colors.light.danger },
+  progressFill: { height: '100%', borderRadius: Radius.pill, backgroundColor: colors.success },
+  progressFillFilling: { backgroundColor: colors.warn },
+  progressFillFull: { backgroundColor: colors.danger },
 
   // ── Recompensa ─────────────────────────────────────────────────────────
   rewardBox: {
@@ -487,23 +495,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three - 2,
     paddingVertical: Spacing.two + 2,
     borderRadius: Radius.md,
-    backgroundColor: Colors.light.accentSoft,
+    backgroundColor: colors.accentSoft,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
-  rewardLabel: { flex: 1, fontFamily: Fonts.semibold, fontSize: 12, color: Colors.light.ink2 },
+  rewardLabel: { flex: 1, fontFamily: Fonts.semibold, fontSize: 12, color: colors.ink2 },
   rewardValue: { flexDirection: 'row', alignItems: 'baseline', gap: Spacing.two - 2 },
-  rewardAmount: { fontFamily: Fonts.bold, fontSize: 18, color: Colors.light.accent },
-  rewardToken: { fontFamily: Fonts.bold, fontSize: 12, color: Colors.light.accent },
+  rewardAmount: { fontFamily: Fonts.bold, fontSize: 18, color: colors.accent },
+  rewardToken: { fontFamily: Fonts.bold, fontSize: 12, color: colors.accent },
 
   // ── Tarefas ────────────────────────────────────────────────────────────
   tasksBox: {
     gap: Spacing.two - 2,
     padding: Spacing.two + 2,
     borderRadius: Radius.md,
-    backgroundColor: Colors.light.bg,
+    backgroundColor: colors.bg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
   tasksHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two - 2 },
   tasksTitle: {
@@ -511,15 +519,15 @@ const styles = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
-    color: Colors.light.ink2,
+    color: colors.ink2,
   },
   task: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two - 2 },
-  taskLabel: { fontFamily: Fonts.sans, fontSize: 12, color: Colors.light.ink2 },
+  taskLabel: { fontFamily: Fonts.sans, fontSize: 12, color: colors.ink2 },
   taskLinkWrap: { flex: 1 },
   taskLink: {
     fontFamily: Fonts.medium,
     fontSize: 12,
-    color: Colors.light.accent,
+    color: colors.accent,
     textDecorationLine: 'underline',
   },
 
@@ -529,23 +537,23 @@ const styles = StyleSheet.create({
   railStep: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two - 3 },
   // `flex: 1` no conector: são as linhas que absorvem a sobra, então os três
   // passos ficam distribuídos sem conta de largura.
-  railLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: Colors.light.border },
+  railLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
   railDot: {
     width: 18,
     height: 18,
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.light.bg,
+    backgroundColor: colors.bg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
-  railDotText: { fontFamily: Fonts.bold, fontSize: 9, color: Colors.light.ink3 },
-  railDotDone: { backgroundColor: Colors.light.success, borderColor: Colors.light.success },
-  railDotActive: { backgroundColor: Colors.light.accent, borderColor: Colors.light.accent },
-  railDotTextOn: { color: Colors.light.card },
-  railLineDone: { backgroundColor: Colors.light.success },
-  railLabelActive: { color: Colors.light.accent },
+  railDotText: { fontFamily: Fonts.bold, fontSize: 9, color: colors.ink3 },
+  railDotDone: { backgroundColor: colors.successFill, borderColor: colors.successFill },
+  railDotActive: { backgroundColor: colors.accentFill, borderColor: colors.accentFill },
+  railDotTextOn: { color: colors.onAccent },
+  railLineDone: { backgroundColor: colors.success },
+  railLabelActive: { color: colors.accent },
   // Uma linha de retorno entre o trilho e o botão. `info` herda o cinza do
   // corpo; só o erro puxa cor, para não pintar de vermelho uma verificação que
   // apenas ainda não passou.
@@ -553,26 +561,26 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.sans,
     fontSize: 12,
     lineHeight: 17,
-    color: Colors.light.ink2,
+    color: colors.ink2,
     marginBottom: Spacing.two,
   },
-  noticeError: { color: Colors.light.danger },
+  noticeError: { color: colors.danger },
   railLabel: {
     fontFamily: Fonts.bold,
     fontSize: 10,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
-    color: Colors.light.ink3,
+    color: colors.ink3,
   },
   action: {
     height: 42,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: Radius.md,
-    backgroundColor: Colors.light.accent,
+    backgroundColor: colors.accentFill,
   },
   actionDisabled: { opacity: 0.45 },
-  actionText: { fontFamily: Fonts.semibold, fontSize: 13, color: Colors.light.card },
+  actionText: { fontFamily: Fonts.semibold, fontSize: 13, color: colors.onAccent },
   pressed: { opacity: 0.7 },
 
   // ── Rodapé ─────────────────────────────────────────────────────────────
@@ -582,7 +590,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three - 2,
     paddingVertical: Spacing.two + 2,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Colors.light.border,
+    borderTopColor: colors.border,
   },
-  footerText: { fontFamily: Fonts.sans, fontSize: 11, color: Colors.light.ink3 },
-});
+  footerText: { fontFamily: Fonts.sans, fontSize: 11, color: colors.ink3 },
+}));

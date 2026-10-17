@@ -1,7 +1,7 @@
 import { usePathname, useRouter } from 'expo-router';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ConnectWalletSheet } from '@/components/connect-wallet-sheet';
@@ -10,7 +10,8 @@ import { IconChat } from '@/components/icons';
 import { NavMenu } from '@/components/nav-menu';
 import { ProfileMenu } from '@/components/profile-menu';
 import { ShareProfileSheet } from '@/components/share-profile-sheet';
-import { CardShadow, Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useUnreadNotificationsCount } from '@/hooks/use-unread-notifications';
 import { useWallet } from '@/hooks/use-wallet';
 
@@ -29,6 +30,7 @@ import { useWallet } from '@/hooks/use-wallet';
 type OpenPanel = 'none' | 'menu' | 'profile';
 
 export function ScreenShell({ children }: { children: ReactNode }) {
+  const styles = useStyles();
   const [panel, setPanel] = useState<OpenPanel>('none');
   const [walletSheet, setWalletSheet] = useState(false);
   const [shareSheet, setShareSheet] = useState(false);
@@ -97,6 +99,8 @@ export function ScreenShell({ children }: { children: ReactNode }) {
  * compartilham: uma cópia por tela seria oito lugares para esquecer de mexer.
  */
 function BackToChat() {
+  const colors = useTheme();
+  const styles = useStyles();
   const router = useRouter();
   const pathname = usePathname();
   // A barra de gestos do Android comeria o botão sem este inset.
@@ -120,7 +124,7 @@ function BackToChat() {
       accessibilityRole="button"
       accessibilityLabel="Voltar para o chat"
     >
-      <IconChat size={17} color={Colors.light.card} />
+      <IconChat size={17} color={colors.onAccent} />
       <Text style={styles.backToChatText}>Chat</Text>
     </Pressable>
   );
@@ -131,6 +135,7 @@ function BackToChat() {
  * web repete em Traction, Campaigns, Dashboard e Notifications.
  */
 export function PageHeading({ title, subtitle }: { title: string; subtitle: string }) {
+  const styles = useStyles();
   return (
     <View style={styles.heading}>
       <Text style={styles.title}>{title}</Text>
@@ -139,8 +144,8 @@ export function PageHeading({ title, subtitle }: { title: string; subtitle: stri
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Colors.light.bg },
+const useStyles = makeStyles((colors) => ({
+  screen: { flex: 1, backgroundColor: colors.bg },
   backToChat: {
     ...CardShadow,
     position: 'absolute',
@@ -153,17 +158,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     height: 44,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.accent,
+    backgroundColor: colors.accentFill,
   },
   backToChatPressed: { opacity: 0.85 },
-  backToChatText: { fontFamily: Fonts.bold, fontSize: 14, color: Colors.light.card },
+  backToChatText: { fontFamily: Fonts.bold, fontSize: 14, color: colors.onAccent },
   heading: { alignItems: 'center', gap: Spacing.two - 2 },
-  title: { fontFamily: Fonts.bold, fontSize: 24, color: Colors.light.ink },
+  title: { fontFamily: Fonts.bold, fontSize: 24, color: colors.ink },
   subtitle: {
     fontFamily: Fonts.sans,
     fontSize: 14,
     lineHeight: 21,
-    color: Colors.light.ink2,
+    color: colors.ink2,
     textAlign: 'center',
   },
-});
+}));

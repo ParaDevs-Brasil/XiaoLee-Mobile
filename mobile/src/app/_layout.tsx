@@ -17,7 +17,12 @@ import {
   useFonts,
 } from '@expo-google-fonts/quicksand';
 import { PrivyProvider } from '@privy-io/expo';
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import {
+  DarkTheme,
+  DefaultTheme,
+  Stack,
+  ThemeProvider as NavigationThemeProvider,
+} from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import * as WebBrowser from 'expo-web-browser';
@@ -27,8 +32,9 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { FadeOutOverlay } from '@/components/fade-out-overlay';
 import { IntroVideo } from '@/components/intro-video';
 import { LoadingScreen } from '@/components/loading-screen';
-import { Colors, DARK_MODE } from '@/constants/theme';
 import { useAuthState } from '@/hooks/use-auth-state';
+import { useColorSchemeName, useTheme, useThemePreference } from '@/hooks/use-theme';
+import { ThemeProvider } from '@/lib/theme';
 import { arcChain, PRIVY_CONFIG, WalletProvider } from '@/lib/wallet';
 
 // Necessário para fechar o navegador e completar o fluxo OAuth de volta no app (Android/Web)
@@ -61,6 +67,7 @@ SplashScreen.preventAutoHideAsync();
 function RootNavigator() {
   const authState = useAuthState();
   const signedIn = authState === 'signedIn';
+  const colors = useTheme();
 
   if (authState === 'loading') {
     return null;
@@ -69,9 +76,13 @@ function RootNavigator() {
   return (
     <Stack
       screenOptions={{
-        headerStyle: { backgroundColor: Colors.light.card },
-        headerTitleStyle: { fontFamily: 'Quicksand_700Bold', color: Colors.light.ink },
-        contentStyle: { backgroundColor: Colors.light.bg },
+        headerStyle: { backgroundColor: colors.card },
+        headerTitleStyle: {
+          fontFamily: 'Quicksand_700Bold',
+          color: colors.ink,
+        },
+        headerTintColor: colors.accent,
+        contentStyle: { backgroundColor: colors.bg },
       }}
     >
       <Stack.Protected guard={!signedIn}>
@@ -154,72 +165,112 @@ export default function RootLayout() {
   }, []);
 
   return (
-    // Tema fixo, escolhido por `DARK_MODE` em `constants/theme.ts` (claro por
-    // padrão; a paleta escura está pronta atrás desse interruptor). Sem
-    // toggle e sem seguir o tema do aparelho.
     // SafeAreaProvider é obrigatório para `useSafeAreaInsets` devolver algo
     // diferente de zero — sem ele o header fica sob a status bar.
     <SafeAreaProvider>
-      {/* Relógio, wifi e bateria contrastando com a faixa da status bar.
-          O padrão de `style` é `auto`, que segue o tema **do aparelho**: num
-          celular em modo escuro os ícones sairiam brancos sobre o
-          `HeaderBar`, que pinta a faixa com `Colors.light.card` — branco no
-          claro, e o usuário perderia o relógio e as notificações. O app não
-          acompanha o aparelho, então a barra também não: ícones escuros no
-          tema claro, claros no escuro. */}
-      <StatusBar style={DARK_MODE ? 'light' : 'dark'} />
+      {/* Tema claro/escuro/sistema (XIAOLEEACE-13). Por fora de tudo porque a
+          animação de troca fotografa a tela inteira, intro inclusive. */}
+      <ThemeProvider>
+        <ThemedStatusBar />
 
-      {/*
-        `supportedChains` é prop irmã de `config`, não filha — e não existe
-        `defaultChain`: a wallet embutida nasce no primeiro item de
-        `supportedChains` automaticamente (conferido contra
-        `PrivyProviderProps`/`PrivyConfig` em
-        `node_modules/@privy-io/expo/dist/index.d.ts`).
-      */}
-      <PrivyProvider
-        appId={PRIVY_APP_ID}
-        clientId={PRIVY_CLIENT_ID}
-        supportedChains={[arcChain]}
-        config={PRIVY_CONFIG}
-      >
-        <WalletProvider>
-          <ThemeProvider value={DARK_MODE ? DarkTheme : DefaultTheme}>
-            {/*
-              Só monta o Stack depois que a intro termina — não por
-              performance, é correção. `AnimatedAvatar` (cabeçalho do chat) é
-              outro `VideoView`, e dois `VideoView` simultâneos no Android
-              competem no compositor nativo (SurfaceView) por fora da ordem
-              normal de camadas: um vazava por cima do outro, aparecendo como
-              o "rostinho" da Xiaolee dentro do balão "Hi" do vídeo de intro.
-              `PrivyProvider`/`WalletProvider` continuam montados o tempo
-              todo — só eles não usam vídeo, então hidratam a sessão em
-              paralelo à intro, sem esse conflito.
-            */}
-            {stage === 'ready' && (fontsLoaded || fontError) ? <RootNavigator /> : null}
-          </ThemeProvider>
-        </WalletProvider>
-      </PrivyProvider>
-
-      {/* Ordem de baixo pra cima: loading, depois vídeo — cada uma dissolve
-          revelando a de baixo, que já está montada e visível antes do fade
-          começar (ver `FadeOutOverlay`). O Stack (chat) já monta assim que
-          `stage` chega em 'ready', junto com o loading começar a sumir, pra
-          já estar pronto por baixo quando o fade dele terminar. */}
-      {!loadingGone && (stage === 'loading' || stage === 'ready') ? (
-        <FadeOutOverlay
-          zIndex={100}
-          fadeOut={stage === 'ready'}
-          onFadedOut={() => setLoadingGone(true)}
-          durationMs={700}
+        {/*
+          `supportedChains` é prop irmã de `config`, não filha — e não existe
+          `defaultChain`: a wallet embutida nasce no primeiro item de
+          `supportedChains` automaticamente (conferido contra
+          `PrivyProviderProps`/`PrivyConfig` em
+          `node_modules/@privy-io/expo/dist/index.d.ts`).
+        */}
+        <PrivyProvider
+          appId={PRIVY_APP_ID}
+          clientId={PRIVY_CLIENT_ID}
+          supportedChains={[arcChain]}
+          config={PRIVY_CONFIG}
         >
-          <LoadingScreen onFinish={() => setStage('ready')} />
-        </FadeOutOverlay>
-      ) : null}
-      {!videoGone ? (
-        <FadeOutOverlay zIndex={101} fadeOut={stage !== 'video'} onFadedOut={() => setVideoGone(true)}>
-          <IntroVideo onFinish={() => setStage('loading')} />
-        </FadeOutOverlay>
-      ) : null}
+          <WalletProvider>
+            <NavigationTheme>
+              {/*
+                Só monta o Stack depois que a intro termina — não por
+                performance, é correção. `AnimatedAvatar` (cabeçalho do chat) é
+                outro `VideoView`, e dois `VideoView` simultâneos no Android
+                competem no compositor nativo (SurfaceView) por fora da ordem
+                normal de camadas: um vazava por cima do outro, aparecendo como
+                o "rostinho" da Xiaolee dentro do balão "Hi" do vídeo de intro.
+                `PrivyProvider`/`WalletProvider` continuam montados o tempo
+                todo — só eles não usam vídeo, então hidratam a sessão em
+                paralelo à intro, sem esse conflito.
+              */}
+              {stage === 'ready' && (fontsLoaded || fontError) ? <RootNavigator /> : null}
+            </NavigationTheme>
+          </WalletProvider>
+        </PrivyProvider>
+
+        {/* Ordem de baixo pra cima: loading, depois vídeo — cada uma dissolve
+            revelando a de baixo, que já está montada e visível antes do fade
+            começar (ver `FadeOutOverlay`). O Stack (chat) já monta assim que
+            `stage` chega em 'ready', junto com o loading começar a sumir, pra
+            já estar pronto por baixo quando o fade dele terminar. */}
+        {!loadingGone && (stage === 'loading' || stage === 'ready') ? (
+          <FadeOutOverlay
+            zIndex={100}
+            fadeOut={stage === 'ready'}
+            onFadedOut={() => setLoadingGone(true)}
+            durationMs={700}
+          >
+            <LoadingScreen onFinish={() => setStage('ready')} />
+          </FadeOutOverlay>
+        ) : null}
+        {!videoGone ? (
+          <FadeOutOverlay
+            zIndex={101}
+            fadeOut={stage !== 'video'}
+            onFadedOut={() => setVideoGone(true)}
+          >
+            <IntroVideo onFinish={() => setStage('loading')} />
+          </FadeOutOverlay>
+        ) : null}
+      </ThemeProvider>
     </SafeAreaProvider>
+  );
+}
+
+/**
+ * Relógio, wifi e bateria contrastando com a faixa da status bar, que o
+ * `HeaderBar` pinta com `card`. Segue o tema **do app**, não o do aparelho
+ * (o padrão `auto` do expo-status-bar): com o app fixado no claro e o celular
+ * no escuro, `auto` deixaria os ícones brancos sobre o header branco.
+ */
+function ThemedStatusBar() {
+  return <StatusBar style={useColorSchemeName() === 'dark' ? 'light' : 'dark'} />;
+}
+
+/**
+ * Tema do React Navigation montado com os tokens do app, para o que ele
+ * desenha sozinho (header nativo das telas modais, fundo entre transições)
+ * bater com o resto. Espera a preferência salva para o Stack não montar num
+ * tema e trocar no frame seguinte.
+ */
+function NavigationTheme({ children }: { children: React.ReactNode }) {
+  const scheme = useColorSchemeName();
+  const colors = useTheme();
+  const { ready } = useThemePreference();
+  const base = scheme === 'dark' ? DarkTheme : DefaultTheme;
+
+  return (
+    <NavigationThemeProvider
+      value={{
+        ...base,
+        colors: {
+          ...base.colors,
+          primary: colors.accent,
+          background: colors.bg,
+          card: colors.card,
+          text: colors.ink,
+          border: colors.border,
+          notification: colors.danger,
+        },
+      }}
+    >
+      {ready ? children : null}
+    </NavigationThemeProvider>
   );
 }

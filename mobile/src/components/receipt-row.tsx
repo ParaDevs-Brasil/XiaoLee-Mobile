@@ -8,7 +8,8 @@ import {
   IconGift,
   type IconProps,
 } from '@/components/icons';
-import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { Fonts, Radius, Spacing, type ThemeColor } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 import type { ReceiptSource, WalletReceipt } from '@/lib/creator-wallet';
 import { isOnChainTx, txExplorerUrl } from '@/lib/explorer';
 import { formatUSDC, parseTimestamp, timeAgo } from '@/lib/format';
@@ -24,11 +25,11 @@ import { formatUSDC, parseTimestamp, timeAgo } from '@/lib/format';
 
 export const SOURCE_META: Record<
   ReceiptSource,
-  { label: string; plural: string; color: string; Icon: (p: IconProps) => React.ReactElement }
+  { label: string; plural: string; colorKey: ThemeColor; Icon: (p: IconProps) => React.ReactElement }
 > = {
-  campaign: { label: 'Campaign', plural: 'Campaigns', color: Colors.light.chartCampaign, Icon: IconGift },
-  purchase: { label: 'Purchase', plural: 'Purchases', color: Colors.light.chartPurchase, Icon: IconBag },
-  transfer: { label: 'Transfer', plural: 'Transfers', color: Colors.light.chartTransfer, Icon: IconArrowDownLeft },
+  campaign: { label: 'Campaign', plural: 'Campaigns', colorKey: 'chartCampaign', Icon: IconGift },
+  purchase: { label: 'Purchase', plural: 'Purchases', colorKey: 'chartPurchase', Icon: IconBag },
+  transfer: { label: 'Transfer', plural: 'Transfers', colorKey: 'chartTransfer', Icon: IconArrowDownLeft },
 };
 
 function clockTime(iso: string): string {
@@ -45,6 +46,8 @@ export function ReceiptRow({
   /** `time` dentro de um grupo por dia (o dia já está no rótulo); `relative` solto. */
   when?: 'relative' | 'time';
 }) {
+  const colors = useTheme();
+  const styles = useStyles();
   const meta = SOURCE_META[receipt.source];
   const tx = receipt.txHash && isOnChainTx(receipt.txHash) ? receipt.txHash : null;
   const pending = receipt.status === 'pending';
@@ -65,7 +68,7 @@ export function ReceiptRow({
       accessibilityLabel={a11y}
     >
       <View style={styles.mark}>
-        <meta.Icon size={17} color={meta.color} />
+        <meta.Icon size={17} color={colors[meta.colorKey]} />
       </View>
 
       <View style={styles.flex}>
@@ -86,7 +89,7 @@ export function ReceiptRow({
         ) : (
           <View style={styles.unitRow}>
             <Text style={styles.unit}>USDC</Text>
-            {tx ? <IconExternal size={10} sw={2} color={Colors.light.ink3} /> : null}
+            {tx ? <IconExternal size={10} sw={2} color={colors.ink3} /> : null}
           </View>
         )}
       </View>
@@ -94,7 +97,7 @@ export function ReceiptRow({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   flex: { flex: 1 },
   row: {
     flexDirection: 'row',
@@ -110,34 +113,34 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.light.bg,
+    backgroundColor: colors.bg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
-  title: { fontFamily: Fonts.semibold, fontSize: 14, color: Colors.light.ink },
-  detail: { fontFamily: Fonts.medium, fontSize: 12, color: Colors.light.ink3, marginTop: 2 },
+  title: { fontFamily: Fonts.semibold, fontSize: 14, color: colors.ink },
+  detail: { fontFamily: Fonts.medium, fontSize: 12, color: colors.ink3, marginTop: 2 },
   right: { alignItems: 'flex-end', gap: 3 },
   amount: {
     fontFamily: Fonts.bold,
     fontSize: 15,
-    color: Colors.light.ink,
+    color: colors.ink,
     fontVariant: ['tabular-nums'],
   },
-  amountPending: { color: Colors.light.ink3 },
+  amountPending: { color: colors.ink3 },
   unitRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   unit: {
     fontFamily: Fonts.bold,
     fontSize: 9,
     letterSpacing: 0.6,
-    color: Colors.light.ink3,
+    color: colors.ink3,
   },
   pendingPill: {
     paddingHorizontal: Spacing.two - 2,
     paddingVertical: 1,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.warnSoft,
+    backgroundColor: colors.warnSoft,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.warnBorder,
+    borderColor: colors.warnBorder,
   },
-  pendingText: { fontFamily: Fonts.bold, fontSize: 9, letterSpacing: 0.4, color: Colors.light.warn },
-});
+  pendingText: { fontFamily: Fonts.bold, fontSize: 9, letterSpacing: 0.4, color: colors.warn },
+}));

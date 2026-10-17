@@ -4,7 +4,6 @@ import {
   KeyboardAvoidingView,
   Modal,
   Pressable,
-  StyleSheet,
   Text,
   TextInput,
   View,
@@ -13,7 +12,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ApiError } from '@/api/client';
 import { TITLE_MAX_LENGTH } from '@/api/backend';
-import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 
 /**
  * Sheet para renomear um corte ou um vídeo.
@@ -38,6 +38,8 @@ export function RenameSheet({
   onSave: (title: string) => Promise<void>;
   onClose: () => void;
 }) {
+  const colors = useTheme();
+  const styles = useStyles();
   const insets = useSafeAreaInsets();
   const [draft, setDraft] = useState(initial);
   const [saving, setSaving] = useState(false);
@@ -83,7 +85,7 @@ export function RenameSheet({
                 submitBehavior="blurAndSubmit"
                 onSubmitEditing={save}
                 placeholder="Give it a name"
-                placeholderTextColor={Colors.light.ink3}
+                placeholderTextColor={colors.ink3}
                 style={styles.input}
                 accessibilityLabel={heading}
               />
@@ -110,7 +112,7 @@ export function RenameSheet({
                 accessibilityRole="button"
                 accessibilityState={{ disabled: !canSave, busy: saving }}
               >
-                {saving ? <ActivityIndicator size="small" color={Colors.light.card} /> : null}
+                {saving ? <ActivityIndicator size="small" color={colors.onAccent} /> : null}
                 <Text style={styles.saveText}>Save</Text>
               </Pressable>
             </View>
@@ -121,31 +123,31 @@ export function RenameSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   fill: { flex: 1 },
-  backdrop: { flex: 1, backgroundColor: 'rgba(26,25,23,0.35)', justifyContent: 'flex-end' },
+  backdrop: { flex: 1, backgroundColor: colors.scrim, justifyContent: 'flex-end' },
   sheet: {
     gap: Spacing.three - 4,
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.two,
     borderTopLeftRadius: Radius.xl,
     borderTopRightRadius: Radius.xl,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
   },
   handle: {
     alignSelf: 'center',
     width: 36,
     height: 4,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.border,
+    backgroundColor: colors.border,
     marginBottom: Spacing.one,
   },
-  heading: { fontFamily: Fonts.bold, fontSize: 18, color: Colors.light.ink },
+  heading: { fontFamily: Fonts.bold, fontSize: 18, color: colors.ink },
   field: {
     borderRadius: Radius.md,
     borderWidth: 1,
-    borderColor: Colors.light.accent,
-    backgroundColor: Colors.light.bg,
+    borderColor: colors.accent,
+    backgroundColor: colors.bg,
     paddingHorizontal: Spacing.three - 4,
     paddingTop: Spacing.two,
     paddingBottom: Spacing.two,
@@ -157,15 +159,15 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.semibold,
     fontSize: 16,
     lineHeight: 22,
-    color: Colors.light.ink,
+    color: colors.ink,
     textAlignVertical: 'top',
   },
-  counter: { alignSelf: 'flex-end', fontFamily: Fonts.medium, fontSize: 12, color: Colors.light.ink3 },
-  counterFull: { color: Colors.light.danger },
-  error: { fontFamily: Fonts.semibold, fontSize: 13, lineHeight: 19, color: Colors.light.danger },
+  counter: { alignSelf: 'flex-end', fontFamily: Fonts.medium, fontSize: 12, color: colors.ink3 },
+  counterFull: { color: colors.danger },
+  error: { fontFamily: Fonts.semibold, fontSize: 13, lineHeight: 19, color: colors.danger },
   actions: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: Spacing.three },
   cancel: { minHeight: 48, justifyContent: 'center', paddingHorizontal: Spacing.two },
-  cancelText: { fontFamily: Fonts.bold, fontSize: 14, color: Colors.light.ink2 },
+  cancelText: { fontFamily: Fonts.bold, fontSize: 14, color: colors.ink2 },
   save: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -175,9 +177,9 @@ const styles = StyleSheet.create({
     minWidth: 112,
     paddingHorizontal: Spacing.four,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.accent,
+    backgroundColor: colors.accentFill,
   },
   saveOff: { opacity: 0.4 },
-  saveText: { fontFamily: Fonts.bold, fontSize: 14, color: Colors.light.card },
+  saveText: { fontFamily: Fonts.bold, fontSize: 14, color: colors.onAccent },
   pressed: { opacity: 0.7 },
-});
+}));
