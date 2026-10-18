@@ -418,9 +418,41 @@ def _words_of(seg: dict) -> list[tuple[str, float, float]]:
     return out
 
 
-def caption_groups(segments: list[dict], start: float, end: float) -> list[tuple[float, float, list[tuple[str, float, float]]]]:
+FIX_MAX = 20  # correções de legenda por corte
+FIX_LEN = 60  # tamanho máximo de cada lado
+
+
+def clean_fixes(raw: dict) -> dict[str, str]:
+    """Correções de legenda (palavra errada → certa) normalizadas; levanta ValueError se não valem. `de` é uma
+    palavra só (sem espaço), comparada sem caixa e sem a pontuação em volta; `para` é o texto que entra no lugar."""
+    if len(raw) > FIX_MAX:
+        raise ValueError(f"at most {FIX_MAX} caption fixes")
+    out: dict[str, str] = {}
+    for k, v in raw.items():
+        k, v = _ass_text(str(k)), _ass_text(str(v))
+        if not k or not v or len(k) > FIX_LEN or len(v) > FIX_LEN or any(c.isspace() for c in k):
+            raise ValueError("each fix needs a single word to find and a replacement (up to 60 characters)")
+        out[k] = v
+    return out
+
+
+def _fix_word(text: str, fixes: dict[str, str] | None) -> str:
+    """Troca a palavra pela correção mantendo a pontuação em volta ("vetto," → "Vetto,")."""
+    if not fixes:
+        return text
+    m = re.match(r"^(\W*)(.*?)(\W*)$", text, re.S)
+    lead, core, tail = m.groups()
+    for wrong, right in fixes.items():
+        if core.casefold() == wrong.casefold():
+            return f"{lead}{right}{tail}"
+    return text
+
+
+def caption_groups(segments: list[dict], start: float, end: float,
+                   fixes: dict[str, str] | None = None) -> list[tuple[float, float, list[tuple[str, float, float]]]]:
     """Fala em [start, end] → grupos (t0, t1, [(palavra, t0, t1)]) com tempos relativos ao corte.
-    Um grupo fecha com CAPTION_WORDS palavras, fim de frase (. ? ! …) ou pausa longa."""
+    Um grupo fecha com CAPTION_WORDS palavras, fim de frase (. ? ! …) ou pausa longa.
+    `fixes` troca palavras mal transcritas sem mexer nos tempos."""
     dur = end - start
     groups, cur = [], []
 
@@ -433,6 +465,7 @@ def caption_groups(segments: list[dict], start: float, end: float) -> list[tuple
         for text, w0, w1 in _words_of(seg):
             if w1 <= start or w0 >= end:
                 continue
+            text = _fix_word(text, fixes)
             w0, w1 = max(w0 - start, 0.0), min(w1 - start, dur)
             if cur and w0 - cur[-1][2] > CAPTION_PAUSE_S:
                 close()
@@ -450,7 +483,7 @@ def caption_groups(segments: list[dict], start: float, end: float) -> list[tuple
     return out
 
 
-def build_ass(segments: list[dict], start: float, end: float) -> str:
+def build_ass(segments: list[dict], start: float, end: float, fixes: dict[str, str] | None = None) -> str:
     head = (
         "[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\nWrapStyle: 0\n\n"
         "[V4+ Styles]\n"
@@ -462,7 +495,7 @@ def build_ass(segments: list[dict], start: float, end: float) -> str:
         "[Events]\nFormat: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text\n"
     )
     lines = []
-    for t0, t1, words in caption_groups(segments, start, end):
+    for t0, t1, words in caption_groups(segments, start, end, fixes):
         parts = []
         for i, (text, w0, _) in enumerate(words):
             until = words[i + 1][1] if i + 1 < len(words) else t1

@@ -545,3 +545,23 @@ def test_length_error_rules():
     assert clipper.length_error(20, 75) is None and clipper.length_error(10, 90) is None
     assert clipper.length_error(9, 40) and clipper.length_error(20, 91)                      # fora de 10-90 s
     assert clipper.length_error(30, 33) and clipper.length_error(40, 30)                     # folga < 5 s / invertido
+
+
+def test_caption_fixes_replace_words_keep_punctuation_and_timing():
+    fix = clipper._fix_word
+    assert fix("vetto,", {"Vetto": "VETTO"}) == "VETTO," and fix("(arc)", {"arc": "Arc"}) == "(Arc)"
+    assert fix("outro", {"arc": "Arc"}) == "outro" and fix("arco", {"arc": "Arc"}) == "arco"   # palavra inteira, não pedaço
+    segs = [{"start": 0.0, "end": 4.0, "text": "o vetto falou, vetto de novo",
+             "words": [{"text": t, "start": i * 0.8, "end": i * 0.8 + 0.7} for i, t in enumerate(["o", "vetto", "falou,", "vetto", "de"])]}]
+    plain = clipper.caption_groups(segs, 0.0, 4.0)
+    fixed = clipper.caption_groups(segs, 0.0, 4.0, {"vetto": "Vetto"})
+    assert [w[0] for _, _, g in fixed for w in g] == ["o", "Vetto", "falou,", "Vetto", "de"]
+    assert [(t0, t1, [(w[1], w[2]) for w in g]) for t0, t1, g in fixed] == [(t0, t1, [(w[1], w[2]) for w in g]) for t0, t1, g in plain]
+    assert "Vetto" in clipper.build_ass(segs, 0.0, 4.0, {"vetto": "Vetto"}) and "Vetto" not in clipper.build_ass(segs, 0.0, 4.0)
+
+
+def test_clean_fixes_rules():
+    assert clipper.clean_fixes({" vetto ": " {Vetto} "}) == {"vetto": "Vetto"}                # normaliza e tira chaves do ASS
+    for bad in ({"duas palavras": "x"}, {"": "x"}, {"a": ""}, {"a": "x" * 61}, {f"w{i}": "x" for i in range(21)}):
+        with pytest.raises(ValueError):
+            clipper.clean_fixes(bad)

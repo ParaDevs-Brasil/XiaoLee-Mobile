@@ -130,6 +130,7 @@ class ClipOut(BaseModel):
     thumbnail_url: Optional[str] = None  # quadro do corte renderizado; URL temporária (1 h)
     updated_at: Optional[str] = None  # idem MediaOut: corte preso em pending/rendering vira "gerar de novo" no app
     layout: Optional[str] = None  # crop | fit com que foi renderizado; None = corte antigo, de antes do campo
+    caption_fixes: dict[str, str] = Field(default_factory=dict)  # {palavra errada: certa} aplicadas à legenda
 
 
 class TitleUpdate(BaseModel):
@@ -142,6 +143,8 @@ class ClipUpdate(BaseModel):
     start_s: Optional[float] = Field(default=None, ge=0)
     end_s: Optional[float] = Field(default=None, gt=0)
     layout: Optional[str] = None
+    # {palavra errada: certa}: SUBSTITUI as correções do corte ({} limpa). Troca a palavra na legenda, sem mexer nos tempos.
+    caption_fixes: Optional[dict[str, str]] = None
 
 
 class MediaUpload(BaseModel):
@@ -803,8 +806,15 @@ def _clip_out(c: MediaClip) -> ClipOut:
     return ClipOut(
         id=c.id, rank=c.rank, start_s=c.start_s, end_s=c.end_s, title=c.title, reason=c.reason,
         status=c.status, error=c.error, size_bytes=c.size_bytes, download_url=url, updated_at=_updated_at(c),
-        thumbnail_url=_thumb_url(c.thumb_key), layout=c.layout,
+        thumbnail_url=_thumb_url(c.thumb_key), layout=c.layout, caption_fixes=_fixes_of(c),
     )
+
+
+def _fixes_of(c: MediaClip) -> dict[str, str]:
+    try:
+        return json.loads(c.caption_fixes) if c.caption_fixes else {}
+    except ValueError:
+        return {}
 
 
 async def _clips_of(db: AsyncSession, asset_id: int) -> list[MediaClip]:
@@ -845,8 +855,12 @@ async def update_clip(
     já existem (sem nova chamada ao modelo). Enquanto isso o arquivo anterior segue no bucket; sai quando o novo fica pronto."""
     if body.layout is not None and body.layout not in clipper.LAYOUTS:
         raise HTTPException(422, f"layout must be one of {', '.join(clipper.LAYOUTS)}")
-    if all(v is None for v in (body.title, body.start_s, body.end_s, body.layout)):
-        raise HTTPException(422, "nothing to change: send title, start_s, end_s or layout")
+    if all(v is None for v in (body.title, body.start_s, body.end_s, body.layout, body.caption_fixes)):
+        raise HTTPException(422, "nothing to change: send title, start_s, end_s, layout or caption_fixes")
+    try:
+        fixes = clipper.clean_fixes(body.caption_fixes) if body.caption_fixes is not None else None
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
     asset = await _owned(db, authorization, asset_id)
     clip = (await db.execute(
         select(MediaClip).where(MediaClip.id == clip_id, MediaClip.media_id == asset.id)
@@ -858,7 +872,8 @@ async def update_clip(
     start = clip.start_s if body.start_s is None else body.start_s
     end = clip.end_s if body.end_s is None else body.end_s
     layout = body.layout or clip.layout or "fit"  # corte antigo sem layout registrado: `fit` nunca descarta conteúdo
-    changes_video = (start, end) != (clip.start_s, clip.end_s) or (body.layout is not None and body.layout != clip.layout)
+    changes_video = ((start, end) != (clip.start_s, clip.end_s) or (body.layout is not None and body.layout != clip.layout)
+                     or (fixes is not None and fixes != _fixes_of(clip)))
     if changes_video:
         lo, hi = clipper.LEN_BOUNDS_S
         if not (0 <= start < end) or not (lo <= end - start <= hi):
@@ -874,6 +889,8 @@ async def update_clip(
         clip.title = title
     if changes_video:
         clip.start_s, clip.end_s, clip.status, clip.error = start, end, "pending", None
+        if fixes is not None:
+            clip.caption_fixes = json.dumps(fixes, ensure_ascii=False) if fixes else None
     else:
         _keep_updated_at(clip)
     await db.commit()
@@ -1028,7 +1045,7 @@ async def _render_clips(asset_id: int, old_keys: list[str] | None, layout: str,
                 with tempfile.TemporaryDirectory() as tmp:
                     ass, out = os.path.join(tmp, "subs.ass"), os.path.join(tmp, "clip.mp4")
                     with open(ass, "w", encoding="utf-8") as f:
-                        f.write(clipper.build_ass(segments, clip.start_s, clip.end_s))
+                        f.write(clipper.build_ass(segments, clip.start_s, clip.end_s, _fixes_of(clip)))
                     await clipper.render_clip(media_storage.presign_get(asset.r2_key), ass, clip.start_s, clip.end_s, out, layout)
                     key = f"clips/{asset.user_id}/{asset.id}/{uuid.uuid4().hex}.mp4"
                     await media_storage.upload_file(out, key, "video/mp4")

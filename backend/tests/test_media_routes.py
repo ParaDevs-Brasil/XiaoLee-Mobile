@@ -1345,3 +1345,38 @@ async def test_edit_clip_trim_produces_a_real_vertical_video_of_the_new_length(c
          "format=duration", "-of", "json", str(out)], capture_output=True, text=True, check=True).stdout)
     assert (probe["streams"][0]["width"], probe["streams"][0]["height"]) == (1080, 1920)
     assert float(probe["format"]["duration"]) == pytest.approx(24.5, abs=0.7)           # a janela nova, não a antiga (30 s)
+
+
+@pytest.mark.asyncio
+async def test_edit_clip_caption_fixes_rerender_only_that_clip_with_the_corrected_text(clips_env, monkeypatch):
+    e = clips_env
+    calls = await _generate(e, monkeypatch)
+    ass_texts = []
+
+    async def _render_ass(source, ass, start, end, dest, layout="crop"):
+        calls.append((start, end, layout))
+        ass_texts.append(open(ass, encoding="utf-8").read())
+        open(dest, "wb").write(b"mp4")
+
+    monkeypatch.setattr(clipper, "render_clip", _render_ass)
+    clips = client.get(f"/v1/media/{e.aid}/clips", headers=e.h).json()
+    assert clips[0]["caption_fixes"] == {}
+    url = f"/v1/media/{e.aid}/clips/{clips[0]['id']}"
+
+    r = client.patch(url, json={"caption_fixes": {"varias": "VÁRIAS"}}, headers=e.h)
+    assert r.status_code == 200 and r.json()["status"] == "pending"
+    assert len(ass_texts) == 1 and "VÁRIAS" in ass_texts[0] and "varias" not in ass_texts[0]   # só este corte, texto corrigido
+    again = client.get(f"/v1/media/{e.aid}/clips", headers=e.h).json()
+    assert again[0]["caption_fixes"] == {"varias": "VÁRIAS"} and again[1]["caption_fixes"] == {}   # persistido, só neste corte
+    assert [c["status"] for c in again] == ["ready"] * 3
+
+    assert client.patch(url, json={"caption_fixes": {"varias": "VÁRIAS"}}, headers=e.h).status_code == 200
+    assert len(ass_texts) == 1                                                            # mesma correção: nada a refazer
+    assert client.patch(url, json={"caption_fixes": {}}, headers=e.h).status_code == 200  # {} limpa e volta ao texto original
+    assert len(ass_texts) == 2 and "varias" in ass_texts[1]
+    assert client.get(f"/v1/media/{e.aid}/clips", headers=e.h).json()[0]["caption_fixes"] == {}
+
+    before = len(ass_texts)
+    for bad in ({"duas palavras": "x"}, {"": "x"}, {"a": ""}, {f"w{i}": "x" for i in range(21)}):
+        assert client.patch(url, json={"caption_fixes": bad}, headers=e.h).status_code == 422, bad
+    assert len(ass_texts) == before
