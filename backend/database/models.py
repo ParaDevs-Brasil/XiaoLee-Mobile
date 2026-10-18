@@ -357,6 +357,8 @@ class MediaClip(Base):
     size_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     # JPEG de um quadro do corte já renderizado (com a legenda queimada).
     thumb_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # crop | fit com que o corte foi renderizado (a escolha do `auto` fica registrada); None = cortes antigos.
+    layout: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)
 
 
 class CreatorReport(Base):
