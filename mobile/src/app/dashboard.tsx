@@ -30,7 +30,8 @@ import {
 import { PageHeading, ScreenShell } from '@/components/screen-shell';
 import { SectionCard } from '@/components/section-card';
 import { MiniStat, StatCard } from '@/components/stat-card';
-import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useBackendData } from '@/hooks/use-backend-data';
 import { useSession } from '@/hooks/use-session';
 import { formatUSDC, shortHash } from '@/lib/format';
@@ -85,6 +86,8 @@ async function fetchDashboard(): Promise<DashboardData> {
 }
 
 export default function DashboardScreen() {
+  const colors = useTheme();
+  const styles = useStyles();
   // Barra de gestos do Android come o fim da lista sem este inset.
   const insets = useSafeAreaInsets();
   const { hasSession } = useSession();
@@ -99,8 +102,8 @@ export default function DashboardScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={reload}
-            tintColor={Colors.light.accent}
-            colors={[Colors.light.accent]}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
           />
         }
       >
@@ -199,6 +202,7 @@ function ChainsSection({ balances }: { balances: TreasuryBalance[] }) {
 }
 
 function ChainRow({ balance }: { balance: TreasuryBalance }) {
+  const styles = useStyles();
   const chain = CHAIN[balance.chain];
 
   return (
@@ -273,6 +277,8 @@ function ChainRow({ balance }: { balance: TreasuryBalance }) {
  * linha que resume e leva para lá guarda a informação sem repetir a tela.
  */
 function NetworkLink({ network }: { network: TractionSnapshot }) {
+  const colors = useTheme();
+  const styles = useStyles();
   const router = useRouter();
   const unit = network.total_payments === 1 ? 'payment' : 'payments';
 
@@ -284,7 +290,7 @@ function NetworkLink({ network }: { network: TractionSnapshot }) {
       accessibilityLabel="Network activity, open Traction"
     >
       <View style={styles.networkIcon}>
-        <IconActivity size={16} color={Colors.light.accent} />
+        <IconActivity size={16} color={colors.accent} />
       </View>
 
       <View style={styles.flex}>
@@ -296,7 +302,7 @@ function NetworkLink({ network }: { network: TractionSnapshot }) {
         </Text>
       </View>
 
-      <IconChevronRight size={16} color={Colors.light.ink3} />
+      <IconChevronRight size={16} color={colors.ink3} />
     </Pressable>
   );
 }
@@ -310,6 +316,8 @@ function MyCampaignsSection({
   campaigns: UserCampaignParticipation[] | null;
   hasSession: boolean;
 }) {
+  const colors = useTheme();
+  const styles = useStyles();
   const router = useRouter();
 
   if (!hasSession) {
@@ -385,7 +393,7 @@ function MyCampaignsSection({
         accessibilityRole="link"
       >
         <Text style={styles.linkText}>Go to campaigns</Text>
-        <IconChevronRight size={13} color={Colors.light.accent} />
+        <IconChevronRight size={13} color={colors.accent} />
       </Pressable>
     </SectionCard>
   );
@@ -402,6 +410,7 @@ const PROTOCOL = [
 ] as const;
 
 function ProtocolSection() {
+  const styles = useStyles();
   return (
     <SectionCard title="Payment protocol">
       {PROTOCOL.map(([label, value]) => (
@@ -427,6 +436,8 @@ const PILLARS: { Icon: (p: IconProps) => React.ReactElement; label: string }[] =
 ];
 
 function ArchitectureSection() {
+  const colors = useTheme();
+  const styles = useStyles();
   return (
     <SectionCard title="Decentralized architecture">
       <Text style={styles.archText}>
@@ -437,7 +448,7 @@ function ArchitectureSection() {
       <View style={styles.pillars}>
         {PILLARS.map(({ Icon, label }) => (
           <View key={label} style={styles.pillar}>
-            <Icon size={13} color={Colors.light.ink3} />
+            <Icon size={13} color={colors.ink3} />
             <Text style={styles.pillarText}>{label}</Text>
           </View>
         ))}
@@ -454,6 +465,7 @@ function ArchitectureSection() {
  * pula do mesmo jeito.
  */
 function DashboardSkeleton() {
+  const styles = useStyles();
   return (
     <View style={styles.skeleton} accessible accessibilityLabel="Loading dashboard">
       {SKELETON.map((height, index) => (
@@ -483,7 +495,7 @@ const SKELETON = [
   198, // arquitetura: texto + quatro pilares + rodapé
 ] as const;
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   flex: { flex: 1 },
   content: {
     paddingHorizontal: Spacing.three - 4,
@@ -501,9 +513,9 @@ const styles = StyleSheet.create({
     gap: Spacing.two + 2,
     padding: Spacing.three - 4,
     borderRadius: Radius.lg,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
   networkIcon: {
     width: 34,
@@ -511,10 +523,10 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.light.accentSoft,
+    backgroundColor: colors.accentSoft,
   },
-  networkValue: { fontFamily: Fonts.bold, fontSize: 13, color: Colors.light.ink },
-  networkSub: { fontFamily: Fonts.sans, fontSize: 11, color: Colors.light.ink2, marginTop: 1 },
+  networkValue: { fontFamily: Fonts.bold, fontSize: 13, color: colors.ink },
+  networkSub: { fontFamily: Fonts.sans, fontSize: 11, color: colors.ink2, marginTop: 1 },
 
   // ── Tesouraria ─────────────────────────────────────────────────────────
   chainRow: {
@@ -529,9 +541,9 @@ const styles = StyleSheet.create({
     borderRadius: Radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
   // Menor que o chip: a marca precisa de respiro dentro dele, senão encosta
   // na borda e parece recortada.
@@ -540,27 +552,27 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bold,
     fontSize: 9,
     letterSpacing: 0.5,
-    color: Colors.light.accent,
+    color: colors.accent,
   },
   chainNameRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two - 3 },
-  chainName: { fontFamily: Fonts.semibold, fontSize: 13, color: Colors.light.ink },
+  chainName: { fontFamily: Fonts.semibold, fontSize: 13, color: colors.ink },
   hub: {
     fontFamily: Fonts.bold,
     fontSize: 8,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
-    color: Colors.light.accent,
+    color: colors.accent,
   },
-  chainAddress: { fontFamily: Fonts.mono, fontSize: 10, color: Colors.light.ink3, marginTop: 1 },
+  chainAddress: { fontFamily: Fonts.mono, fontSize: 10, color: colors.ink3, marginTop: 1 },
   chainRight: { alignItems: 'flex-end' },
-  chainBalance: { fontFamily: Fonts.bold, fontSize: 13, color: Colors.light.ink },
-  chainUnreported: { fontFamily: Fonts.sans, fontSize: 11, color: Colors.light.ink3 },
+  chainBalance: { fontFamily: Fonts.bold, fontSize: 13, color: colors.ink },
+  chainUnreported: { fontFamily: Fonts.sans, fontSize: 11, color: colors.ink3 },
   sandbox: {
     fontFamily: Fonts.bold,
     fontSize: 8,
     letterSpacing: 0.6,
     textTransform: 'uppercase',
-    color: Colors.light.warn,
+    color: colors.warn,
     marginTop: 1,
   },
   chainBadge: {
@@ -568,16 +580,16 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: Radius.pill,
   },
-  chainBadgeOff: { backgroundColor: Colors.light.bg },
-  chainBadgeError: { backgroundColor: Colors.light.dangerSoft },
+  chainBadgeOff: { backgroundColor: colors.bg },
+  chainBadgeError: { backgroundColor: colors.dangerSoft },
   chainBadgeText: {
     fontFamily: Fonts.bold,
     fontSize: 9,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
-    color: Colors.light.ink3,
+    color: colors.ink3,
   },
-  chainBadgeTextError: { color: Colors.light.danger },
+  chainBadgeTextError: { color: colors.danger },
   total: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -585,10 +597,10 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.two,
     marginTop: Spacing.two - 2,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Colors.light.border,
+    borderTopColor: colors.border,
   },
-  totalLabel: { fontFamily: Fonts.semibold, fontSize: 12, color: Colors.light.ink2 },
-  totalValue: { fontFamily: Fonts.bold, fontSize: 15, color: Colors.light.accent },
+  totalLabel: { fontFamily: Fonts.semibold, fontSize: 12, color: colors.ink2 },
+  totalValue: { fontFamily: Fonts.bold, fontSize: 15, color: colors.accent },
 
   // ── Campanhas do usuário ───────────────────────────────────────────────
   mineRow: {
@@ -597,22 +609,22 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     padding: Spacing.two + 2,
     borderRadius: Radius.md,
-    backgroundColor: Colors.light.bg,
+    backgroundColor: colors.bg,
   },
-  mineName: { fontFamily: Fonts.semibold, fontSize: 13, color: Colors.light.ink },
+  mineName: { fontFamily: Fonts.semibold, fontSize: 13, color: colors.ink },
   mineStatus: {
     fontFamily: Fonts.bold,
     fontSize: 9,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
-    color: Colors.light.ink3,
+    color: colors.ink3,
     marginTop: 2,
   },
-  mineReward: { fontFamily: Fonts.bold, fontSize: 12, color: Colors.light.success },
+  mineReward: { fontFamily: Fonts.bold, fontSize: 12, color: colors.success },
   more: {
     fontFamily: Fonts.sans,
     fontSize: 11,
-    color: Colors.light.ink3,
+    color: colors.ink3,
     textAlign: 'center',
     paddingTop: Spacing.one,
   },
@@ -623,7 +635,7 @@ const styles = StyleSheet.create({
     gap: Spacing.two - 3,
     paddingVertical: Spacing.two,
   },
-  linkText: { fontFamily: Fonts.bold, fontSize: 12, color: Colors.light.accent },
+  linkText: { fontFamily: Fonts.bold, fontSize: 12, color: colors.accent },
 
   // ── Protocolo ──────────────────────────────────────────────────────────
   protocolRow: {
@@ -632,11 +644,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: Spacing.two,
   },
-  protocolLabel: { fontFamily: Fonts.sans, fontSize: 12, color: Colors.light.ink3 },
-  protocolValue: { fontFamily: Fonts.semibold, fontSize: 12, color: Colors.light.ink },
+  protocolLabel: { fontFamily: Fonts.sans, fontSize: 12, color: colors.ink3 },
+  protocolValue: { fontFamily: Fonts.semibold, fontSize: 12, color: colors.ink },
 
   // ── Arquitetura ────────────────────────────────────────────────────────
-  archText: { fontFamily: Fonts.sans, fontSize: 13, lineHeight: 20, color: Colors.light.ink2 },
+  archText: { fontFamily: Fonts.sans, fontSize: 13, lineHeight: 20, color: colors.ink2 },
   pillars: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two - 2 },
   pillar: {
     flexDirection: 'row',
@@ -647,21 +659,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.two,
     paddingVertical: Spacing.two - 2,
     borderRadius: Radius.md,
-    backgroundColor: Colors.light.bg,
+    backgroundColor: colors.bg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
-  pillarText: { fontFamily: Fonts.semibold, fontSize: 11, color: Colors.light.ink2 },
+  pillarText: { fontFamily: Fonts.semibold, fontSize: 11, color: colors.ink2 },
   footer: {
     fontFamily: Fonts.bold,
     fontSize: 9,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
-    color: Colors.light.ink3,
+    color: colors.ink3,
     textAlign: 'center',
     paddingTop: Spacing.two,
     marginTop: Spacing.two - 2,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Colors.light.border,
+    borderTopColor: colors.border,
   },
-});
+}));

@@ -4,7 +4,8 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { getFormatSuggestions, type FormatSuggestions } from '@/api/backend';
 import { ApiError } from '@/api/client';
 import { IconChevronDown, IconScissors } from '@/components/icons';
-import { CardShadow, Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { formatIdeaMeta, formatIdeasError, formatIdeasSource } from '@/lib/format-ideas';
 
 /**
@@ -24,6 +25,8 @@ type State =
   | { phase: 'error'; message: string; retry: boolean };
 
 export function FormatIdeasCard() {
+  const colors = useTheme();
+  const styles = useStyles();
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<State>({ phase: 'idle' });
   /** Descarta resposta de um pedido antigo (dois toques seguidos em "Try again"). */
@@ -58,7 +61,7 @@ export function FormatIdeasCard() {
         accessibilityHint={open ? 'Collapses the ideas' : 'Suggests content formats for you'}
       >
         <View style={styles.leadIcon}>
-          <IconScissors size={18} color={Colors.light.ink2} />
+          <IconScissors size={18} color={colors.ink2} />
         </View>
         <View style={styles.flex}>
           <Text style={styles.title}>Format ideas</Text>
@@ -69,7 +72,7 @@ export function FormatIdeasCard() {
           </Text>
         </View>
         <View style={open ? styles.chevronOpen : undefined}>
-          <IconChevronDown size={18} sw={2.2} color={Colors.light.ink3} />
+          <IconChevronDown size={18} sw={2.2} color={colors.ink3} />
         </View>
       </Pressable>
 
@@ -77,7 +80,7 @@ export function FormatIdeasCard() {
         <View style={styles.body}>
           {state.phase === 'loading' ? (
             <View style={styles.loading} accessibilityLiveRegion="polite">
-              <ActivityIndicator color={Colors.light.accent} />
+              <ActivityIndicator color={colors.accent} />
               <Text style={styles.helper}>Looking at your profile and videos…</Text>
             </View>
           ) : null}
@@ -120,14 +123,14 @@ export function FormatIdeasCard() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   flex: { flex: 1 },
   pressed: { opacity: 0.7 },
   card: {
     borderRadius: Radius.lg,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
     overflow: 'hidden',
     ...CardShadow,
   },
@@ -142,26 +145,26 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: Radius.md,
-    backgroundColor: Colors.light.bg,
+    backgroundColor: colors.bg,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  title: { fontFamily: Fonts.bold, fontSize: 15, color: Colors.light.ink },
-  subtitle: { fontFamily: Fonts.sans, fontSize: 12, lineHeight: 17, color: Colors.light.ink2, marginTop: 2 },
+  title: { fontFamily: Fonts.bold, fontSize: 15, color: colors.ink },
+  subtitle: { fontFamily: Fonts.sans, fontSize: 12, lineHeight: 17, color: colors.ink2, marginTop: 2 },
   chevronOpen: { transform: [{ rotate: '180deg' }] },
   body: { gap: Spacing.three - 4, paddingHorizontal: Spacing.three, paddingBottom: Spacing.three },
   loading: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, minHeight: 44 },
-  helper: { fontFamily: Fonts.sans, fontSize: 12, lineHeight: 17, color: Colors.light.ink2 },
+  helper: { fontFamily: Fonts.sans, fontSize: 12, lineHeight: 17, color: colors.ink2 },
   loadFailed: { gap: Spacing.two },
-  error: { fontFamily: Fonts.semibold, fontSize: 12, lineHeight: 17, color: Colors.light.danger },
-  retry: { fontFamily: Fonts.bold, fontSize: 13, color: Colors.light.accent },
+  error: { fontFamily: Fonts.semibold, fontSize: 12, lineHeight: 17, color: colors.danger },
+  retry: { fontFamily: Fonts.bold, fontSize: 13, color: colors.accent },
   idea: {
     gap: Spacing.two,
     padding: Spacing.three - 4,
     borderRadius: Radius.md,
-    backgroundColor: Colors.light.bg,
+    backgroundColor: colors.bg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
   ideaHead: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.two + 2 },
   ideaIndex: {
@@ -173,13 +176,13 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     fontFamily: Fonts.bold,
     fontSize: 12,
-    color: Colors.light.accent,
-    backgroundColor: Colors.light.accentSoft,
+    color: colors.accent,
+    backgroundColor: colors.accentSoft,
   },
-  ideaTitle: { fontFamily: Fonts.bold, fontSize: 14, lineHeight: 19, color: Colors.light.ink },
-  ideaMeta: { fontFamily: Fonts.semibold, fontSize: 12, color: Colors.light.ink3, marginTop: 1 },
-  ideaWhy: { fontFamily: Fonts.sans, fontSize: 13, lineHeight: 18, color: Colors.light.ink2 },
-  hook: { gap: 2, paddingLeft: Spacing.two + 2, borderLeftWidth: 2, borderLeftColor: Colors.light.accent },
-  hookLabel: { fontFamily: Fonts.semibold, fontSize: 11, color: Colors.light.ink3, textTransform: 'uppercase' },
-  hookText: { fontFamily: Fonts.medium, fontSize: 13, lineHeight: 18, color: Colors.light.ink },
-});
+  ideaTitle: { fontFamily: Fonts.bold, fontSize: 14, lineHeight: 19, color: colors.ink },
+  ideaMeta: { fontFamily: Fonts.semibold, fontSize: 12, color: colors.ink3, marginTop: 1 },
+  ideaWhy: { fontFamily: Fonts.sans, fontSize: 13, lineHeight: 18, color: colors.ink2 },
+  hook: { gap: 2, paddingLeft: Spacing.two + 2, borderLeftWidth: 2, borderLeftColor: colors.accent },
+  hookLabel: { fontFamily: Fonts.semibold, fontSize: 11, color: colors.ink3, textTransform: 'uppercase' },
+  hookText: { fontFamily: Fonts.medium, fontSize: 13, lineHeight: 18, color: colors.ink },
+}));

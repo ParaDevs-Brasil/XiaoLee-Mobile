@@ -13,7 +13,8 @@ import { PipelineSteps } from '@/components/pipeline-steps';
 import { RenameSheet } from '@/components/rename-sheet';
 import { PageHeading, ScreenShell } from '@/components/screen-shell';
 import { VideoRow } from '@/components/video-row';
-import { CardShadow, Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useBackendData } from '@/hooks/use-backend-data';
 import { useKeyboard } from '@/hooks/use-keyboard';
 import { useMediaUpload } from '@/hooks/use-media-upload';
@@ -42,6 +43,8 @@ const FILTERS: { value: MediaFilter; label: string }[] = [
  * continuou com o app fechado.
  */
 export default function ClipsScreen() {
+  const colors = useTheme();
+  const styles = useStyles();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const upload = useMediaUpload();
@@ -86,8 +89,8 @@ export default function ClipsScreen() {
           <RefreshControl
             refreshing={media.refreshing}
             onRefresh={media.reload}
-            tintColor={Colors.light.accent}
-            colors={[Colors.light.accent]}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
           />
         }
       >
@@ -213,13 +216,15 @@ function UploadCard({
   onPick: () => void;
   onCancel: () => void;
 }) {
+  const colors = useTheme();
+  const styles = useStyles();
   if (state.phase === 'uploading') return <UploadingCard state={state} onCancel={onCancel} />;
 
   return (
     <View style={styles.card}>
       <View style={styles.cardHead}>
         <View style={styles.iconTile}>
-          <IconScissors size={24} sw={2} color={Colors.light.accent} />
+          <IconScissors size={24} sw={2} color={colors.accent} />
         </View>
         <View style={styles.flex}>
           <Text style={styles.cardTitle}>Create clips</Text>
@@ -232,7 +237,7 @@ function UploadCard({
         accessibilityRole="button"
         accessibilityLabel="Choose a video to turn into clips"
       >
-        <IconUpload size={18} sw={2.2} color={Colors.light.card} />
+        <IconUpload size={18} sw={2.2} color={colors.onAccent} />
         <Text style={styles.pickText}>Choose a video</Text>
       </Pressable>
     </View>
@@ -252,6 +257,8 @@ function UploadingCard({
   state: Extract<ReturnType<typeof useMediaUpload>['state'], { phase: 'uploading' }>;
   onCancel: () => void;
 }) {
+  const colors = useTheme();
+  const styles = useStyles();
   const [fill] = useState(() => new Animated.Value(state.percent));
   useEffect(() => {
     // O nativo avisa em saltos de 1%; a animação suaviza o enchimento entre eles.
@@ -277,7 +284,7 @@ function UploadingCard({
           <Animated.View
             style={[styles.uploadFill, { height: fill.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] }) }]}
           />
-          <IconScissors size={20} sw={2} color={Colors.light.card} />
+          <IconScissors size={20} sw={2} color={colors.onMedia} />
           <Text style={styles.uploadPercent}>{state.percent}%</Text>
         </View>
 
@@ -314,7 +321,7 @@ function UploadingCard({
 /** Altura do atalho "Chat" flutuante (44) + a margem dele (16) + respiro: a última linha não pode ficar debaixo dele. */
 const FAB_CLEARANCE = 44 + Spacing.three + Spacing.four;
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   flex: { flex: 1 },
   content: { paddingHorizontal: Spacing.three - 4, paddingTop: Spacing.three, gap: Spacing.three - 4 },
   pressed: { opacity: 0.7 },
@@ -322,9 +329,9 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
     padding: Spacing.three,
     borderRadius: Radius.lg,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
     ...CardShadow,
   },
   cardHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three - 4 },
@@ -332,12 +339,12 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: Radius.lg,
-    backgroundColor: Colors.light.accentSoft,
+    backgroundColor: colors.accentSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cardTitle: { fontFamily: Fonts.bold, fontSize: 18, lineHeight: 24, color: Colors.light.ink },
-  hint: { fontFamily: Fonts.sans, fontSize: 13, lineHeight: 19, color: Colors.light.ink2 },
+  cardTitle: { fontFamily: Fonts.bold, fontSize: 18, lineHeight: 24, color: colors.ink },
+  hint: { fontFamily: Fonts.sans, fontSize: 13, lineHeight: 19, color: colors.ink2 },
   pick: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -345,24 +352,24 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     minHeight: 52,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.accent,
+    backgroundColor: colors.accentFill,
   },
-  pickText: { fontFamily: Fonts.bold, fontSize: 15, color: Colors.light.card },
+  pickText: { fontFamily: Fonts.bold, fontSize: 15, color: colors.onAccent },
   uploadTop: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
   uploadTile: {
     width: 72,
     aspectRatio: 9 / 16,
     borderRadius: Radius.lg,
-    backgroundColor: Colors.light.ink,
+    backgroundColor: colors.media,
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.one,
     overflow: 'hidden',
   },
-  uploadFill: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: Colors.light.accent },
-  uploadPercent: { fontFamily: Fonts.bold, fontSize: 18, color: Colors.light.card },
-  uploadName: { fontFamily: Fonts.semibold, fontSize: 13, lineHeight: 19, color: Colors.light.ink2 },
-  uploadMeta: { fontFamily: Fonts.medium, fontSize: 13, lineHeight: 19, color: Colors.light.ink2 },
+  uploadFill: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: colors.accentFill },
+  uploadPercent: { fontFamily: Fonts.bold, fontSize: 18, color: colors.onMedia },
+  uploadName: { fontFamily: Fonts.semibold, fontSize: 13, lineHeight: 19, color: colors.ink2 },
+  uploadMeta: { fontFamily: Fonts.medium, fontSize: 13, lineHeight: 19, color: colors.ink2 },
   uploadFooter: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
   cancel: {
     minHeight: 36,
@@ -370,9 +377,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     borderRadius: Radius.pill,
     borderWidth: 1,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
-  cancelText: { fontFamily: Fonts.bold, fontSize: 13, color: Colors.light.ink2 },
+  cancelText: { fontFamily: Fonts.bold, fontSize: 13, color: colors.ink2 },
   sectionHead: {
     flexDirection: 'row',
     alignItems: 'baseline',
@@ -380,20 +387,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.one,
     marginTop: Spacing.three,
   },
-  sectionTitle: { fontFamily: Fonts.bold, fontSize: 18, color: Colors.light.ink },
-  sectionCount: { fontFamily: Fonts.medium, fontSize: 13, color: Colors.light.ink3 },
+  sectionTitle: { fontFamily: Fonts.bold, fontSize: 18, color: colors.ink },
+  sectionCount: { fontFamily: Fonts.medium, fontSize: 13, color: colors.ink3 },
   filters: { gap: Spacing.two, paddingHorizontal: Spacing.one },
   filter: {
     minHeight: 36,
     justifyContent: 'center',
     paddingHorizontal: Spacing.three - 4,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
-  filterSelected: { backgroundColor: Colors.light.ink, borderColor: Colors.light.ink },
-  filterText: { fontFamily: Fonts.semibold, fontSize: 13, color: Colors.light.ink2 },
-  filterTextSelected: { color: Colors.light.card },
+  filterSelected: { backgroundColor: colors.ink, borderColor: colors.ink },
+  filterText: { fontFamily: Fonts.semibold, fontSize: 13, color: colors.ink2 },
+  filterTextSelected: { color: colors.card },
   list: { gap: Spacing.two + 2 },
-});
+}));

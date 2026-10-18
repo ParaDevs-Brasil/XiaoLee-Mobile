@@ -7,7 +7,8 @@ import { IconBag, IconChevronLeft, IconGift, IconInbox, type IconProps } from '@
 import { NETWORK_LABEL, NetworkMismatchCard } from '@/components/network-badge';
 import { ReceiptRow } from '@/components/receipt-row';
 import { WalletMockSwitcher } from '@/components/wallet-mock-switcher';
-import { CardShadow, Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 import type { CreatorWallet } from '@/hooks/use-creator-wallet';
 import { ARC_NETWORK } from '@/lib/arc-network';
 import {
@@ -62,6 +63,8 @@ export function WalletReceiptsView({
   onBack: () => void;
   initialFilter?: ReceiptFilter;
 }) {
+  const colors = useTheme();
+  const styles = useStyles();
   const insets = useSafeAreaInsets();
   const [filter, setFilter] = useState<ReceiptFilter>(initialFilter);
   // Relógio lido uma vez: o React Compiler trata `Date.now()` no render como impuro.
@@ -83,8 +86,8 @@ export function WalletReceiptsView({
           <RefreshControl
             refreshing={wallet.refreshing}
             onRefresh={wallet.reload}
-            tintColor={Colors.light.accent}
-            colors={[Colors.light.accent]}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
           />
         }
       >
@@ -95,7 +98,7 @@ export function WalletReceiptsView({
             accessibilityRole="button"
             accessibilityLabel="Back to wallet"
           >
-            <IconChevronLeft size={20} sw={2.2} color={Colors.light.ink} />
+            <IconChevronLeft size={20} sw={2.2} color={colors.ink} />
           </Pressable>
           <View style={styles.flex}>
             <Text style={styles.title}>Payments</Text>
@@ -190,6 +193,7 @@ export function WalletReceiptsView({
 }
 
 function ListSkeleton() {
+  const styles = useStyles();
   return (
     <View style={styles.day} accessible accessibilityLabel="Loading payments">
       <Skeleton height={12} width={64} />
@@ -209,7 +213,7 @@ function ListSkeleton() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   flex: { flex: 1 },
   content: { paddingHorizontal: Spacing.three - 4, paddingTop: Spacing.three, gap: Spacing.three },
   pressed: { opacity: 0.7 },
@@ -222,17 +226,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  title: { fontFamily: Fonts.bold, fontSize: 22, lineHeight: 28, color: Colors.light.ink },
-  meta: { fontFamily: Fonts.medium, fontSize: 13, color: Colors.light.ink3, fontVariant: ['tabular-nums'] },
+  title: { fontFamily: Fonts.bold, fontSize: 22, lineHeight: 28, color: colors.ink },
+  meta: { fontFamily: Fonts.medium, fontSize: 13, color: colors.ink3, fontVariant: ['tabular-nums'] },
 
   filters: {
     flexDirection: 'row',
     gap: Spacing.one,
     padding: Spacing.one,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
   filter: {
     flex: 1,
@@ -243,16 +247,16 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: Radius.pill,
   },
-  filterActive: { backgroundColor: Colors.light.ink },
-  filterText: { fontFamily: Fonts.bold, fontSize: 13, color: Colors.light.ink2 },
-  filterTextActive: { color: Colors.light.bg },
+  filterActive: { backgroundColor: colors.ink },
+  filterText: { fontFamily: Fonts.bold, fontSize: 13, color: colors.ink2 },
+  filterTextActive: { color: colors.bg },
   filterCount: {
     fontFamily: Fonts.bold,
     fontSize: 11,
-    color: Colors.light.ink3,
+    color: colors.ink3,
     fontVariant: ['tabular-nums'],
   },
-  filterCountActive: { color: Colors.light.ink3 },
+  filterCountActive: { color: colors.ink3 },
 
   day: { gap: Spacing.two },
   dayLabel: {
@@ -260,28 +264,28 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
-    color: Colors.light.ink3,
+    color: colors.ink3,
     paddingHorizontal: Spacing.one,
   },
   card: {
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.one,
     borderRadius: Radius.lg,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
     ...CardShadow,
   },
-  divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Colors.light.border },
+  divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
   note: {
     fontFamily: Fonts.medium,
     fontSize: 12,
     lineHeight: 18,
-    color: Colors.light.ink3,
+    color: colors.ink3,
     textAlign: 'center',
     paddingHorizontal: Spacing.three,
   },
 
   skeletonRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three - 4, paddingVertical: Spacing.two + 2 },
   skeletonText: { flex: 1, gap: Spacing.two - 2 },
-});
+}));

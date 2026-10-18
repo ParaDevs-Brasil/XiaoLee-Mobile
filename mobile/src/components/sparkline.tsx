@@ -1,6 +1,7 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
-import { Colors, Fonts, Spacing } from '@/constants/theme';
+import { Fonts, Spacing } from '@/constants/theme';
+import { makeStyles } from '@/hooks/use-theme';
 
 /**
  * Sparkline de barras para o rodapé de um `StatCard` — o "trend" do contrato de
@@ -33,6 +34,7 @@ interface SparklineProps {
 }
 
 export function Sparkline({ values, caption }: SparklineProps) {
+  const styles = useStyles();
   const max = Math.max(...values);
 
   return (
@@ -66,7 +68,7 @@ export function Sparkline({ values, caption }: SparklineProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   wrap: { gap: Spacing.one + 2 },
   // `flex-end` ancora tudo numa linha de base só, que é o que torna as alturas
   // comparáveis entre si.
@@ -78,9 +80,9 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 2,
     borderTopRightRadius: 2,
   },
-  barContext: { backgroundColor: Colors.light.ink3 },
-  barLatest: { backgroundColor: Colors.light.accent },
+  barContext: { backgroundColor: colors.ink3 },
+  barLatest: { backgroundColor: colors.accentFill },
   // O rótulo usa token de texto, nunca a cor da série: cor de dado em texto
   // fica ilegível e rouba a identidade da barra que está do lado.
-  caption: { fontFamily: Fonts.sans, fontSize: 10, color: Colors.light.ink3 },
-});
+  caption: { fontFamily: Fonts.sans, fontSize: 10, color: colors.ink3 },
+}));

@@ -1,6 +1,21 @@
 import { StyleSheet, View } from 'react-native';
 import { Circle, Defs, G, Line, LinearGradient, Path, Rect, Stop, Svg } from 'react-native-svg';
 
+import { useColorSchemeName, useTheme } from '@/hooks/use-theme';
+
+/**
+ * Tons dos brilhos de fundo (atrás da tela e das ilustrações). No claro são
+ * rosas pastel sobre o fundo creme; no escuro o mesmo pastel vira mancha
+ * clara sobre fundo escuro, então os brilhos usam o rosa fechado do
+ * `accentSoft` escuro e esmaecem para o próprio `bg`.
+ */
+function useGlowColors() {
+  const colors = useTheme();
+  return useColorSchemeName() === 'dark'
+    ? { top: '#4a1834', strong: '#4a1834', mid: '#2e1222', fade: colors.bg }
+    : { top: '#FDE2EE', strong: '#FCE7F3', mid: '#FDF2F7', fade: '#FFFFFF' };
+}
+
 /**
  * Estrela brilhante de 4 pontas com concavidade suave.
  */
@@ -29,6 +44,7 @@ export function SparkleStar({
  * Manchas orgânicas suaves em degradê no fundo da tela (canto superior e cantos inferiores).
  */
 export function BackgroundGlow() {
+  const glow = useGlowColors();
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       {/* Glow topo esquerdo */}
@@ -40,9 +56,9 @@ export function BackgroundGlow() {
       >
         <Defs>
           <LinearGradient id="topGlow" x1="0" y1="0" x2="1" y2="1">
-            <Stop offset="0" stopColor="#FDE2EE" stopOpacity="0.85" />
-            <Stop offset="0.6" stopColor="#FDF2F7" stopOpacity="0.4" />
-            <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0" />
+            <Stop offset="0" stopColor={glow.top} stopOpacity="0.85" />
+            <Stop offset="0.6" stopColor={glow.mid} stopOpacity="0.4" />
+            <Stop offset="1" stopColor={glow.fade} stopOpacity="0" />
           </LinearGradient>
         </Defs>
         <Path d="M0 0 L220 0 C160 80 120 180 0 220 Z" fill="url(#topGlow)" />
@@ -57,9 +73,9 @@ export function BackgroundGlow() {
       >
         <Defs>
           <LinearGradient id="botLeftGlow" x1="0" y1="1" x2="1" y2="0">
-            <Stop offset="0" stopColor="#FCE7F3" stopOpacity="0.75" />
-            <Stop offset="0.7" stopColor="#FDF2F7" stopOpacity="0.3" />
-            <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0" />
+            <Stop offset="0" stopColor={glow.strong} stopOpacity="0.75" />
+            <Stop offset="0.7" stopColor={glow.mid} stopOpacity="0.3" />
+            <Stop offset="1" stopColor={glow.fade} stopOpacity="0" />
           </LinearGradient>
         </Defs>
         <Path d="M0 220 L0 50 C60 110 120 160 200 220 Z" fill="url(#botLeftGlow)" />
@@ -74,9 +90,9 @@ export function BackgroundGlow() {
       >
         <Defs>
           <LinearGradient id="botRightGlow" x1="1" y1="1" x2="0" y2="0">
-            <Stop offset="0" stopColor="#FCE7F3" stopOpacity="0.7" />
-            <Stop offset="0.7" stopColor="#FDF2F7" stopOpacity="0.25" />
-            <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0" />
+            <Stop offset="0" stopColor={glow.strong} stopOpacity="0.7" />
+            <Stop offset="0.7" stopColor={glow.mid} stopOpacity="0.25" />
+            <Stop offset="1" stopColor={glow.fade} stopOpacity="0" />
           </LinearGradient>
         </Defs>
         <Path d="M200 200 L60 200 C100 140 140 100 200 60 Z" fill="url(#botRightGlow)" />
@@ -152,13 +168,14 @@ export function IconArrowRight({
  * sobre blob orgânico suave (Tela "Setting up your account").
  */
 export function WalletIllustration() {
+  const glow = useGlowColors();
   return (
     <View style={illustrationStyles.container}>
       <Svg width="220" height="170" viewBox="0 0 220 170" fill="none">
         <Defs>
           <LinearGradient id="blobGrad" x1="0" y1="0" x2="1" y2="1">
-            <Stop offset="0" stopColor="#FCE7F3" stopOpacity="0.8" />
-            <Stop offset="1" stopColor="#FDF2F7" stopOpacity="0.4" />
+            <Stop offset="0" stopColor={glow.strong} stopOpacity="0.8" />
+            <Stop offset="1" stopColor={glow.mid} stopOpacity="0.4" />
           </LinearGradient>
           <LinearGradient id="walletMain" x1="0" y1="0" x2="1" y2="1">
             <Stop offset="0" stopColor="#F472B6" />
@@ -253,13 +270,14 @@ export function WalletIllustration() {
  * sobre blob orgânico (Tela "We couldn't finish signing you in").
  */
 export function SadBlockIllustration() {
+  const glow = useGlowColors();
   return (
     <View style={illustrationStyles.container}>
       <Svg width="200" height="170" viewBox="0 0 200 170" fill="none">
         <Defs>
           <LinearGradient id="sadBlob" x1="0" y1="0" x2="1" y2="1">
-            <Stop offset="0" stopColor="#FCE7F3" stopOpacity="0.8" />
-            <Stop offset="1" stopColor="#FDF2F7" stopOpacity="0.35" />
+            <Stop offset="0" stopColor={glow.strong} stopOpacity="0.8" />
+            <Stop offset="1" stopColor={glow.mid} stopOpacity="0.35" />
           </LinearGradient>
           <LinearGradient id="blockGrad" x1="0" y1="0" x2="1" y2="1">
             <Stop offset="0" stopColor="#FDF2F8" />

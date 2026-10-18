@@ -13,7 +13,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { GoogleLogo } from '@/components/google-logo';
 import { IconClose, IconWallet } from '@/components/icons';
-import { CardShadow, Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { usePrivyLogin } from '@/hooks/use-privy-login';
 import { usePrivyWallet } from '@/lib/wallet';
 
@@ -41,6 +42,8 @@ function short(address: string): string {
 }
 
 export function ConnectWalletSheet({ visible, onClose }: ConnectWalletSheetProps) {
+  const colors = useTheme();
+  const styles = useStyles();
   const insets = useSafeAreaInsets();
   const { isConnected, address } = usePrivyWallet();
   const login = usePrivyLogin();
@@ -81,14 +84,14 @@ export function ConnectWalletSheet({ visible, onClose }: ConnectWalletSheetProps
 
             <View style={styles.header}>
               <View style={styles.icon}>
-                <IconWallet size={20} color={Colors.light.accent} />
+                <IconWallet size={20} color={colors.accent} />
               </View>
               <View style={styles.headerText}>
                 <Text style={styles.title}>Connect Wallet</Text>
                 <Text style={styles.subtitle}>ARC · EVM · USDC</Text>
               </View>
               <Pressable onPress={onClose} hitSlop={Spacing.two} accessibilityLabel="Close">
-                <IconClose size={18} color={Colors.light.ink3} />
+                <IconClose size={18} color={colors.ink3} />
               </Pressable>
             </View>
 
@@ -98,7 +101,7 @@ export function ConnectWalletSheet({ visible, onClose }: ConnectWalletSheetProps
                   Connected. The address {short(address)} is linked to your account.
                 </Text>
                 <View style={styles.connectedBox}>
-                  <IconWallet size={16} color={Colors.light.success} />
+                  <IconWallet size={16} color={colors.success} />
                   <Text style={styles.connectedAddress}>{short(address)}</Text>
                 </View>
               </>
@@ -114,7 +117,7 @@ export function ConnectWalletSheet({ visible, onClose }: ConnectWalletSheetProps
                     value={login.email}
                     onChangeText={login.onChangeEmail}
                     placeholder="you@example.com"
-                    placeholderTextColor={Colors.light.ink3}
+                    placeholderTextColor={colors.ink3}
                     keyboardType="email-address"
                     autoCapitalize="none"
                     autoComplete="email"
@@ -128,7 +131,7 @@ export function ConnectWalletSheet({ visible, onClose }: ConnectWalletSheetProps
                       value={login.code}
                       onChangeText={login.onChangeCode}
                       placeholder="123456"
-                      placeholderTextColor={Colors.light.ink3}
+                      placeholderTextColor={colors.ink3}
                       keyboardType="number-pad"
                       editable={!login.busy}
                       style={styles.input}
@@ -145,7 +148,7 @@ export function ConnectWalletSheet({ visible, onClose }: ConnectWalletSheetProps
                   accessibilityRole="button"
                 >
                   {login.busy ? (
-                    <ActivityIndicator color={Colors.light.card} />
+                    <ActivityIndicator color={colors.onAccent} />
                   ) : (
                     <Text style={styles.buttonLabel}>
                       {login.showCodeStep ? 'Verify code' : 'Continue with email'}
@@ -184,11 +187,11 @@ export function ConnectWalletSheet({ visible, onClose }: ConnectWalletSheetProps
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   flexFill: { flex: 1 },
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(26,25,23,0.35)',
+    backgroundColor: colors.scrim,
     justifyContent: 'flex-end',
   },
   sheet: {
@@ -197,9 +200,9 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.two,
     borderTopLeftRadius: Radius.xl,
     borderTopRightRadius: Radius.xl,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
     ...CardShadow,
   },
   handle: {
@@ -207,7 +210,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: Colors.light.border,
+    backgroundColor: colors.border,
     marginBottom: Spacing.one,
   },
   header: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two + 2 },
@@ -217,51 +220,51 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.light.accentSoft,
+    backgroundColor: colors.accentSoft,
   },
   headerText: { flex: 1 },
-  title: { fontFamily: Fonts.bold, fontSize: 16, color: Colors.light.ink },
-  subtitle: { fontFamily: Fonts.sans, fontSize: 11, color: Colors.light.ink2, marginTop: 1 },
-  hint: { fontFamily: Fonts.sans, fontSize: 13, lineHeight: 19, color: Colors.light.ink2 },
-  codeHint: { fontFamily: Fonts.semibold, fontSize: 12, color: Colors.light.ink2 },
+  title: { fontFamily: Fonts.bold, fontSize: 16, color: colors.ink },
+  subtitle: { fontFamily: Fonts.sans, fontSize: 11, color: colors.ink2, marginTop: 1 },
+  hint: { fontFamily: Fonts.sans, fontSize: 13, lineHeight: 19, color: colors.ink2 },
+  codeHint: { fontFamily: Fonts.semibold, fontSize: 12, color: colors.ink2 },
   connectedBox: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
     padding: Spacing.three - 2,
     borderRadius: Radius.md,
-    backgroundColor: Colors.light.successSoft,
+    backgroundColor: colors.successSoft,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.successBorder,
+    borderColor: colors.successBorder,
   },
   connectedAddress: {
     fontFamily: Fonts.mono,
     fontSize: 14,
-    color: Colors.light.success,
+    color: colors.success,
   },
   input: {
     height: 46,
     paddingHorizontal: Spacing.three - 2,
     borderRadius: Radius.md,
-    backgroundColor: Colors.light.bg,
+    backgroundColor: colors.bg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
     fontFamily: Fonts.medium,
     fontSize: 14,
-    color: Colors.light.ink,
+    color: colors.ink,
   },
-  error: { fontFamily: Fonts.sans, fontSize: 12, color: Colors.light.danger },
+  error: { fontFamily: Fonts.sans, fontSize: 12, color: colors.danger },
   button: {
     height: 46,
     borderRadius: Radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.light.accent,
+    backgroundColor: colors.accentFill,
   },
-  buttonLabel: { fontFamily: Fonts.bold, fontSize: 14, color: Colors.light.card },
+  buttonLabel: { fontFamily: Fonts.bold, fontSize: 14, color: colors.onAccent },
   divider: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
-  dividerLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: Colors.light.border },
-  dividerLabel: { fontFamily: Fonts.sans, fontSize: 11, color: Colors.light.ink3 },
+  dividerLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
+  dividerLabel: { fontFamily: Fonts.sans, fontSize: 11, color: colors.ink3 },
   googleButton: {
     height: 46,
     flexDirection: 'row',
@@ -270,9 +273,9 @@ const styles = StyleSheet.create({
     gap: Spacing.two - 2,
     borderRadius: Radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
-    backgroundColor: Colors.light.card,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
   },
-  googleButtonLabel: { fontFamily: Fonts.semibold, fontSize: 14, color: Colors.light.ink },
+  googleButtonLabel: { fontFamily: Fonts.semibold, fontSize: 14, color: colors.ink },
   pressed: { opacity: 0.7 },
-});
+}));

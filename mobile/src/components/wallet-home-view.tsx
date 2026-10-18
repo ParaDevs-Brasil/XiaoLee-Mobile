@@ -15,7 +15,8 @@ import { SectionCard } from '@/components/section-card';
 import { WalletAddressCard } from '@/components/wallet-address-card';
 import { WalletBalanceCard } from '@/components/wallet-balance-card';
 import { WalletMockSwitcher } from '@/components/wallet-mock-switcher';
-import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 import type { CreatorWallet } from '@/hooks/use-creator-wallet';
 import { ARC_NETWORK } from '@/lib/arc-network';
 import { hasKnownSource, type WalletReceipt } from '@/lib/creator-wallet';
@@ -107,6 +108,8 @@ export function WalletHomeView({
   onSeeAllReceipts,
   onOpenBreakdown,
 }: WalletHomeViewProps) {
+  const colors = useTheme();
+  const styles = useStyles();
   // Barra de gestos do Android come o fim da lista sem este inset.
   const insets = useSafeAreaInsets();
   const [receiveOpen, setReceiveOpen] = useState(false);
@@ -131,8 +134,8 @@ export function WalletHomeView({
               wallet.reload();
               rewards.reload();
             }}
-            tintColor={Colors.light.accent}
-            colors={[Colors.light.accent]}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
           />
         }
       >
@@ -216,6 +219,8 @@ export function WalletHomeView({
 
 /** Os últimos recebimentos, com saída para a lista completa. */
 function RecentReceipts({ receipts, onSeeAll }: { receipts: WalletReceipt[] | null; onSeeAll: () => void }) {
+  const colors = useTheme();
+  const styles = useStyles();
   const recent = receipts?.slice(0, RECENT_COUNT) ?? [];
 
   return (
@@ -231,7 +236,7 @@ function RecentReceipts({ receipts, onSeeAll }: { receipts: WalletReceipt[] | nu
             accessibilityLabel="See all payments"
           >
             <Text style={styles.seeAllText}>See all</Text>
-            <IconChevronRight size={14} sw={2.2} color={Colors.light.ink2} />
+            <IconChevronRight size={14} sw={2.2} color={colors.ink2} />
           </Pressable>
         ) : undefined
       }
@@ -297,6 +302,7 @@ function CampaignRewards({
 }
 
 function TokenRow({ tally }: { tally: TokenTally }) {
+  const styles = useStyles();
   const total = tally.claimed + tally.claimable + tally.pending;
 
   return (
@@ -331,6 +337,7 @@ function TokenRow({ tally }: { tally: TokenTally }) {
  * abrimos o faucet já pronto pro usuário colar.
  */
 function FaucetButton({ address }: { address: string }) {
+  const styles = useStyles();
   const [copied, setCopied] = useState(false);
 
   async function openFaucet() {
@@ -358,6 +365,7 @@ function FaucetButton({ address }: { address: string }) {
  * sem isto uma sessão presa só sai limpando os dados do aplicativo.
  */
 function WalletFooter({ isConnected, onSignOut }: { isConnected: boolean; onSignOut: () => void }) {
+  const styles = useStyles();
   return (
     <View style={styles.footer}>
       {isConnected ? (
@@ -376,6 +384,7 @@ function WalletFooter({ isConnected, onSignOut }: { isConnected: boolean; onSign
 
 /** Mesma silhueta do cartão de saldo, para a tela não pular quando o dado chega. */
 function BalanceSkeleton() {
+  const styles = useStyles();
   return (
     <View style={styles.skeletonCard} accessible accessibilityLabel="Loading wallet">
       <Skeleton height={26} width={120} radius={Radius.pill} />
@@ -389,6 +398,7 @@ function BalanceSkeleton() {
 
 /** Sessão sem carteira — raro com o gate de login, mas não pode virar tela branca. */
 function NoWallet() {
+  const styles = useStyles();
   return (
     <SectionCard title="No wallet yet" subtitle="Where your USDC lands">
       <View style={styles.guest}>
@@ -406,11 +416,13 @@ function NoWallet() {
  * mandar para uma tela onde o botão de conectar também não está à vista.
  */
 function GuestState() {
+  const colors = useTheme();
+  const styles = useStyles();
   return (
     <SectionCard title="Your wallet" subtitle="Created when you sign in">
       <View style={styles.guest}>
         <View style={styles.guestIcon}>
-          <IconUser size={22} color={Colors.light.ink3} />
+          <IconUser size={22} color={colors.ink3} />
         </View>
         <Text style={styles.guestTitle}>You&apos;re not signed in</Text>
         <Text style={styles.guestText}>
@@ -422,7 +434,7 @@ function GuestState() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   flex: { flex: 1 },
   content: {
     paddingHorizontal: Spacing.three - 4,
@@ -430,25 +442,25 @@ const styles = StyleSheet.create({
     gap: Spacing.three - 4,
   },
   pressed: { opacity: 0.7 },
-  quiet: { fontFamily: Fonts.medium, fontSize: 13, color: Colors.light.ink3, paddingVertical: Spacing.two },
+  quiet: { fontFamily: Fonts.medium, fontSize: 13, color: colors.ink3, paddingVertical: Spacing.two },
   stale: {
     fontFamily: Fonts.semibold,
     fontSize: 12,
-    color: Colors.light.warn,
+    color: colors.warn,
     textAlign: 'center',
   },
-  divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Colors.light.border },
+  divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
 
   seeAll: { flexDirection: 'row', alignItems: 'center', gap: 2, minHeight: 32 },
-  seeAllText: { fontFamily: Fonts.bold, fontSize: 13, color: Colors.light.ink2 },
+  seeAllText: { fontFamily: Fonts.bold, fontSize: 13, color: colors.ink2 },
 
   skeletonCard: {
     gap: Spacing.three - 2,
     padding: Spacing.four - 4,
     borderRadius: Radius.xl,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
 
   // ── Linha de token ─────────────────────────────────────────────────────
@@ -458,7 +470,7 @@ const styles = StyleSheet.create({
     gap: Spacing.two + 2,
     padding: Spacing.two + 2,
     borderRadius: Radius.md,
-    backgroundColor: Colors.light.bg,
+    backgroundColor: colors.bg,
   },
   tokenMark: {
     width: 36,
@@ -466,26 +478,26 @@ const styles = StyleSheet.create({
     borderRadius: Radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.light.accentSoft,
+    backgroundColor: colors.accentSoft,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
   tokenMarkText: {
     fontFamily: Fonts.bold,
     fontSize: 9,
     letterSpacing: 0.4,
-    color: Colors.light.accent,
+    color: colors.accent,
   },
-  tokenName: { fontFamily: Fonts.semibold, fontSize: 13, color: Colors.light.ink },
-  tokenBreakdown: { fontFamily: Fonts.sans, fontSize: 11, color: Colors.light.ink2, marginTop: 2 },
+  tokenName: { fontFamily: Fonts.semibold, fontSize: 13, color: colors.ink },
+  tokenBreakdown: { fontFamily: Fonts.sans, fontSize: 11, color: colors.ink2, marginTop: 2 },
   tokenRight: { alignItems: 'flex-end' },
-  tokenTotal: { fontFamily: Fonts.bold, fontSize: 14, color: Colors.light.ink },
+  tokenTotal: { fontFamily: Fonts.bold, fontSize: 14, color: colors.ink },
   tokenTotalLabel: {
     fontFamily: Fonts.bold,
     fontSize: 8,
     letterSpacing: 0.6,
     textTransform: 'uppercase',
-    color: Colors.light.ink3,
+    color: colors.ink3,
     marginTop: 1,
   },
 
@@ -494,9 +506,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     height: 44,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.accentSoft,
+    backgroundColor: colors.accentSoft,
   },
-  faucetText: { fontFamily: Fonts.bold, fontSize: 13, color: Colors.light.accent },
+  faucetText: { fontFamily: Fonts.bold, fontSize: 13, color: colors.accent },
 
   // ── Rodapé ─────────────────────────────────────────────────────────────
   footer: { alignItems: 'center', gap: Spacing.three, paddingTop: Spacing.three },
@@ -507,15 +519,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.five,
     borderRadius: Radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
-  disconnectText: { fontFamily: Fonts.bold, fontSize: 13, color: Colors.light.ink2 },
+  disconnectText: { fontFamily: Fonts.bold, fontSize: 13, color: colors.ink2 },
   footerText: {
     fontFamily: Fonts.bold,
     fontSize: 9,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
-    color: Colors.light.ink3,
+    color: colors.ink3,
     textAlign: 'center',
   },
 
@@ -527,14 +539,14 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.light.bg,
+    backgroundColor: colors.bg,
   },
-  guestTitle: { fontFamily: Fonts.semibold, fontSize: 14, color: Colors.light.ink },
+  guestTitle: { fontFamily: Fonts.semibold, fontSize: 14, color: colors.ink },
   guestText: {
     fontFamily: Fonts.sans,
     fontSize: 13,
     lineHeight: 20,
-    color: Colors.light.ink2,
+    color: colors.ink2,
     textAlign: 'center',
   },
-});
+}));
