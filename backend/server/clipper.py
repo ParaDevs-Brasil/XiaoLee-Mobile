@@ -186,9 +186,21 @@ def validate_highlights(raw: list[dict], segments: list[dict], rejected: list | 
 async def _call_tool(system: str, tool: dict, content: str, max_tokens: int) -> dict:
     """Chamada ao modelo com uma ferramenta forçada; devolve os argumentos CRUS dela (não validados).
     `HIGHLIGHTS_PROVIDER=groq` troca o Claude pela Groq — só para testes locais sem custo (ver
-    `settings.highlights_provider`); mesmo prompt, mesma ferramenta, mesma validação depois."""
+    `settings.highlights_provider`); mesmo prompt, mesma ferramenta, mesma validação depois.
+    Se o Claude estiver indisponível do nosso lado (sem crédito, limite, fora do ar) e houver chave da Groq,
+    cai nela em vez de derrubar o clipper; sem chave da Groq o erro original segue para a rota (503)."""
     if settings.highlights_provider == "groq":
         return await _call_tool_groq(system, tool, content, max_tokens)
+    try:
+        return await _call_tool_claude(system, tool, content, max_tokens)
+    except ProviderUnavailable as exc:
+        if not settings.groq_api_key:
+            raise
+        log.warning("clipper: Claude indisponível (%s); usando a Groq", str(exc)[:200])
+        return await _call_tool_groq(system, tool, content, max_tokens)
+
+
+async def _call_tool_claude(system: str, tool: dict, content: str, max_tokens: int) -> dict:
     if not settings.anthropic_api_key:
         raise ProviderNotConfigured("ANTHROPIC_API_KEY não configurada")
     import anthropic
