@@ -956,3 +956,47 @@ export async function publishSocialPost(
     timeoutMs: 120_000,
   });
 }
+
+
+/** Conta de rede social conectada — `GET /v1/social/accounts` (`social_routes.py`). Sem credenciais. */
+export interface SocialAccount {
+  platform: string;
+  handle: string;
+  status: string;
+  connected_at: string;
+}
+
+export interface SocialAccounts {
+  accounts: SocialAccount[];
+  /** Redes que o backend sabe publicar hoje. */
+  available: string[];
+  /** Nome do bot da Xiaolee, que o creator adiciona como admin do canal do Telegram. */
+  hints: { telegram_bot: string };
+}
+
+/** Com `SOCIAL_TOOLS_ENABLED` desligado o backend responde 404 (`ApiError.status === 404`). */
+export async function listSocialAccounts(): Promise<SocialAccounts> {
+  const res = await apiFetch<Partial<SocialAccounts>>('/v1/social/accounts');
+  return {
+    accounts: res.accounts ?? [],
+    available: res.available ?? [],
+    hints: { telegram_bot: res.hints?.telegram_bot ?? '' },
+  };
+}
+
+/** Conecta e valida na própria rede (canal com o bot admin, app password do Bluesky); erro vem com o motivo. */
+export async function connectSocialAccount(
+  platform: string,
+  credentials: Record<string, string>,
+): Promise<SocialAccount> {
+  return apiFetch<SocialAccount>(`/v1/social/accounts/${platform}`, {
+    method: 'POST',
+    json: { credentials },
+    timeoutMs: 30_000,
+  });
+}
+
+/** Desconecta e apaga a credencial guardada. */
+export async function disconnectSocialAccount(platform: string): Promise<void> {
+  await apiFetch<{ ok: boolean }>(`/v1/social/accounts/${platform}`, { method: 'DELETE' });
+}

@@ -835,6 +835,9 @@ function ClaimButton({
   );
 }
 
+/** Como cada rede se escreve (o backend manda o id em minúsculas). */
+const NETWORK_NAMES: Record<string, string> = { telegram: 'Telegram', bluesky: 'Bluesky', x: 'X', tiktok: 'TikTok' };
+
 /**
  * Post preparado por `prepare_social_post`: a Xiaolee só deixou pronto, quem publica é o toque do creator
  * (`POST /v1/social/publish`, na conta dele). Falha da rede volta com o motivo e deixa tentar de novo.
@@ -861,7 +864,7 @@ function PostButton({
         accessibilityRole="link"
       >
         <IconCheck size={14} color={colors.success} />
-        <Text style={styles.txDoneText}>Posted on {post.platform}</Text>
+        <Text style={styles.txDoneText}>Posted on {NETWORK_NAMES[post.platform] ?? post.platform}</Text>
       </Pressable>
     );
   }
@@ -898,12 +901,11 @@ function PostButton({
         ) : (
           <>
             <IconSend size={15} color={colors.onAccent} />
-            <Text style={styles.signButtonText}>
-              Post to {post.platform}{post.handle ? ` · ${post.handle}` : ''}
-            </Text>
+            <Text style={styles.signButtonText}>Post to {NETWORK_NAMES[post.platform] ?? post.platform}</Text>
           </>
         )}
       </Pressable>
+      {post.handle ? <Text style={styles.txHint}>as {post.handle}</Text> : null}
       {error ? <Text style={styles.txError}>{error}</Text> : null}
     </>
   );

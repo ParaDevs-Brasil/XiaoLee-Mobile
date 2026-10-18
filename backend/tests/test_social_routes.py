@@ -115,7 +115,9 @@ async def test_connect_encrypts_and_never_returns_credentials(db):
     assert r.json()["handle"] == "ana.bsky.social" and "abcd-efgh" not in r.text
     row = (await db.execute(select(SocialAccount))).scalars().one()
     assert "abcd-efgh" not in row.credentials_enc
-    assert "abcd-efgh" not in client.get("/v1/social/accounts", headers=h).text
+    listing = client.get("/v1/social/accounts", headers=h)
+    assert "abcd-efgh" not in listing.text
+    assert listing.json()["available"] == ["bluesky"] and "telegram_bot" in listing.json()["hints"]
 
 
 @pytest.mark.asyncio

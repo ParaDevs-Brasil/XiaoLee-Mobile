@@ -85,7 +85,9 @@ async def list_accounts(authorization: Optional[str] = Header(None), db: AsyncSe
     _enabled()
     user = await _resolve_user(db, authorization, strict=True)
     rows = (await db.execute(select(SocialAccount).where(SocialAccount.user_id == user.id))).scalars().all()
-    return {"accounts": [_account_out(a) for a in rows], "available": list(ADAPTERS)}
+    # `hints`: o que a tela precisa mostrar para o creator conectar (bot que ele adiciona como admin do canal).
+    return {"accounts": [_account_out(a) for a in rows], "available": list(ADAPTERS),
+            "hints": {"telegram_bot": settings.telegram_bot_name}}
 
 
 @router.post("/accounts/{platform}")
