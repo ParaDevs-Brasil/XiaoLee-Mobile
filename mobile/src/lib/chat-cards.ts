@@ -26,6 +26,14 @@ export interface CardSwap {
   amountIn: string;
 }
 
+/** Post preparado pela Xiaolee (`prepare_social_post`); quem publica é o toque do creator. */
+export interface CardPost {
+  platform: string;
+  handle: string;
+  text: string;
+  clipId?: number;
+}
+
 /** Estado de card que acompanha uma mensagem da Xiaolee. */
 export interface ChatCards {
   transfer?: CardTransfer;
@@ -36,6 +44,9 @@ export interface ChatCards {
   /** Hash do swap, quando já assinado; `swapAmountOut` é o que o SDK diz que entrou na carteira. */
   swapTxHash?: string;
   swapAmountOut?: string;
+  post?: CardPost;
+  /** Link do post, quando já publicado (some o botão, fica o link). */
+  postUrl?: string;
 }
 
 export interface SessionEntry {
@@ -50,7 +61,7 @@ export interface StoredWithCards extends ChatCards {
 }
 
 export function hasCards(c: ChatCards): boolean {
-  return Boolean(c.transfer || c.claim || c.swap);
+  return Boolean(c.transfer || c.claim || c.swap || c.post);
 }
 
 /**
@@ -73,7 +84,7 @@ export function matchCards(
     const i = pool.findIndex((s, idx) => !used.has(idx) && s.content.trim() === text);
     if (i === -1) return undefined;
     used.add(i);
-    const { transfer, txHash, claim, claimReceiptId, swap, swapTxHash, swapAmountOut, at } = pool[i];
-    return { at, transfer, txHash, claim, claimReceiptId, swap, swapTxHash, swapAmountOut };
+    const { transfer, txHash, claim, claimReceiptId, swap, swapTxHash, swapAmountOut, post, postUrl, at } = pool[i];
+    return { at, transfer, txHash, claim, claimReceiptId, swap, swapTxHash, swapAmountOut, post, postUrl };
   });
 }

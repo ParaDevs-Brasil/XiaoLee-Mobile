@@ -66,3 +66,13 @@ test('card de swap (pendente e assinado) também volta', () => {
   assert.equal(m?.swapTxHash, '0xfeed');
   assert.equal(m?.swapAmountOut, '1.25');
 });
+
+test('o card de post e o link publicado sobrevivem a reabrir a conversa', () => {
+  const post = { platform: 'bluesky', handle: '@ana', text: 'oi', clipId: 3 };
+  const [m] = matchCards(
+    [{ role: 'assistant', content: 'Posto?' }],
+    [{ role: 'assistant', content: 'Posto?', at: '9', post, postUrl: 'https://bsky.app/x' }],
+  );
+  assert.deepEqual(m?.post, post);
+  assert.equal(m?.postUrl, 'https://bsky.app/x');
+});

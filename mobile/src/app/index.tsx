@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   claimCampaignReward,
+  publishSocialPost,
   getChatSessionMessages,
   getMyProfile,
   sendChatMessage,
@@ -28,7 +29,7 @@ import {
   avatarAnimation,
   type AnimationKey,
 } from '@/lib/avatar-animation';
-import { matchCards, type CardSwap, type ChatCards } from '@/lib/chat-cards';
+import { matchCards, type CardPost, type CardSwap, type ChatCards } from '@/lib/chat-cards';
 import { parseSwapRequest } from '@/lib/arc-swap-request';
 import { appendChatMessage, loadChatHistory, updateChatMessage } from '@/lib/chat-history';
 import { refreshChatSessions, setActiveChatSessionId } from '@/lib/chat-session';
@@ -153,6 +154,10 @@ interface Message {
   /** Hash do swap, quando já assinado, e o quanto o SDK diz que entrou na carteira. */
   swapTxHash?: string;
   swapAmountOut?: string;
+  /** Post que o backend preparou (`execution.post`, tool `prepare_social_post`); publica no toque do creator. */
+  post?: CardPost;
+  /** Link do post, quando já publicado. */
+  postUrl?: string;
   /** `at` da entrada correspondente no histórico local — é por ele que o comprovante é gravado depois de assinar. */
   storedAt?: string;
 }
@@ -207,6 +212,14 @@ function swapFrom(execution: Record<string, unknown> | undefined): CardSwap | un
   return parsed.ok ? parsed.request : undefined;
 }
 
+/** `execution.post` -> card de publicar, ou `undefined` se não é um post pronto. */
+function postFrom(execution: Record<string, unknown> | undefined): CardPost | undefined {
+  if (!execution || execution.status !== 'post_ready') return undefined;
+  const p = execution.post as { platform?: string; handle?: string; text?: string; clip_id?: number | null } | undefined;
+  if (!p?.platform || !p.text) return undefined;
+  return { platform: p.platform, handle: p.handle ?? '', text: p.text, ...(p.clip_id != null && { clipId: p.clip_id }) };
+}
+
 function now(): string {
   return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
@@ -228,7 +241,7 @@ function messageFromChatSession(
     time: new Date(entry.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     // O backend só guarda o texto; botões e comprovante vêm do histórico local
     // (`lib/chat-cards.ts`).
-    ...(cards && { storedAt: cards.at, transfer: cards.transfer, txHash: cards.txHash, claim: cards.claim, claimReceiptId: cards.claimReceiptId, swap: cards.swap, swapTxHash: cards.swapTxHash, swapAmountOut: cards.swapAmountOut }),
+    ...(cards && { storedAt: cards.at, transfer: cards.transfer, txHash: cards.txHash, claim: cards.claim, claimReceiptId: cards.claimReceiptId, swap: cards.swap, swapTxHash: cards.swapTxHash, swapAmountOut: cards.swapAmountOut, post: cards.post, postUrl: cards.postUrl }),
   };
 }
 
@@ -406,6 +419,13 @@ export default function ChatScreen() {
     );
   }
 
+  /** Mesmo acordo de `markSigned`, para o botão de publicar. */
+  function markPosted(id: string, url: string) {
+    const storedAt = messages.find((m) => m.id === id)?.storedAt;
+    if (storedAt) void updateChatMessage(storedAt, { postUrl: url });
+    setMessages((current) => current.map((m) => (m.id === id ? { ...m, postUrl: url } : m)));
+  }
+
   /** Mesmo acordo de `markSigned`, para o botão de swap. */
   function markSwapped(id: string, hash: string, amountOut?: string) {
     const storedAt = messages.find((m) => m.id === id)?.storedAt;
@@ -466,15 +486,16 @@ export default function ChatScreen() {
       const transfer = transferFrom(result.execution);
       const claim = claimFrom(result.execution);
       const swap = swapFrom(result.execution);
+      const post = postFrom(result.execution);
       const storedAt = new Date().toISOString();
       setMessages((current) => [
         ...current,
-        { id: `x${Date.now()}`, author: 'xiaolee', text: reply, time: now(), transfer, claim, swap, storedAt },
+        { id: `x${Date.now()}`, author: 'xiaolee', text: reply, time: now(), transfer, claim, swap, post, storedAt },
       ]);
       // O texto gravado é o mesmo que foi para a bolha, fallback incluído —
       // o histórico não deve divergir do que a tela mostrou. Os cards vão junto:
       // é o que os traz de volta quando a conversa é reaberta.
-      appendChatMessage('assistant', reply, { at: storedAt, cards: { transfer, claim, swap } });
+      appendChatMessage('assistant', reply, { at: storedAt, cards: { transfer, claim, swap, post } });
 
       // O agente escolhe a emoção; nome desconhecido volta para o idle.
       const animation = animationFromBackend(result.animations);
@@ -595,6 +616,7 @@ export default function ChatScreen() {
                     onSigned={markSigned}
                     onClaimed={markClaimed}
                     onSwapped={markSwapped}
+                    onPosted={markPosted}
                   />
                 ))}
                 {sending ? <Typing /> : null}
@@ -813,6 +835,80 @@ function ClaimButton({
   );
 }
 
+/**
+ * Post preparado por `prepare_social_post`: a Xiaolee só deixou pronto, quem publica é o toque do creator
+ * (`POST /v1/social/publish`, na conta dele). Falha da rede volta com o motivo e deixa tentar de novo.
+ */
+function PostButton({
+  message,
+  onPosted,
+}: {
+  message: Message;
+  onPosted: (id: string, url: string) => void;
+}) {
+  const colors = useTheme();
+  const styles = useStyles();
+  const [posting, setPosting] = useState(false);
+  const [error, setError] = useState<string>();
+  const post = message.post;
+  if (!post) return null;
+
+  if (message.postUrl) {
+    return (
+      <Pressable
+        onPress={() => message.postUrl && message.postUrl !== 'posted' && void WebBrowser.openBrowserAsync(message.postUrl)}
+        style={styles.txDone}
+        accessibilityRole="link"
+      >
+        <IconCheck size={14} color={colors.success} />
+        <Text style={styles.txDoneText}>Posted on {post.platform}</Text>
+      </Pressable>
+    );
+  }
+
+  async function publish() {
+    if (!post) return;
+    setPosting(true);
+    setError(undefined);
+    try {
+      const result = await publishSocialPost(post.platform, post.text, post.clipId);
+      if (result.status === 'published') {
+        onPosted(message.id, result.url ?? 'posted');
+        avatarAnimation.play('xiaolee_cheer');
+      } else {
+        setError(result.error ?? 'Could not post');
+      }
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : errorText(err));
+    } finally {
+      setPosting(false);
+    }
+  }
+
+  return (
+    <>
+      <Pressable
+        onPress={publish}
+        disabled={posting}
+        style={({ pressed }) => [styles.signButton, pressed && styles.signButtonPressed]}
+        accessibilityRole="button"
+      >
+        {posting ? (
+          <ActivityIndicator size="small" color={colors.onAccent} />
+        ) : (
+          <>
+            <IconSend size={15} color={colors.onAccent} />
+            <Text style={styles.signButtonText}>
+              Post to {post.platform}{post.handle ? ` · ${post.handle}` : ''}
+            </Text>
+          </>
+        )}
+      </Pressable>
+      {error ? <Text style={styles.txError}>{error}</Text> : null}
+    </>
+  );
+}
+
 /** "1.259119" -> "1.259119", "1.2000000" -> "1.2": só para exibir. */
 function fmtAmount(value: string | undefined): string {
   const n = Number(value);
@@ -959,11 +1055,13 @@ function Bubble({
   onSigned,
   onClaimed,
   onSwapped,
+  onPosted,
 }: {
   message: Message;
   onSigned: (id: string, hash: string) => void;
   onClaimed: (id: string, receiptId: string) => void;
   onSwapped: (id: string, hash: string, amountOut?: string) => void;
+  onPosted: (id: string, url: string) => void;
 }) {
   const styles = useStyles();
   const mine = message.author === 'user';
@@ -1000,6 +1098,7 @@ function Bubble({
             <ClaimButton message={message} onClaimed={onClaimed} />
           ) : null}
           {message.swap ? <SwapButton message={message} onSwapped={onSwapped} /> : null}
+          {message.post ? <PostButton message={message} onPosted={onPosted} /> : null}
         </View>
         <View style={styles.meta}>
           <Text style={styles.metaText}>Xiaolee{message.time ? ` · ${message.time}` : ''}</Text>

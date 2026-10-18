@@ -930,3 +930,29 @@ export async function claimCampaignReward(
     paidOnchain: result.paid_onchain ?? false,
   };
 }
+
+
+/** Post feito pela Xiaolee numa rede do creator — `POST /v1/social/publish` (`social_routes.py`). */
+export interface SocialPublication {
+  id: number;
+  platform: string;
+  status: 'pending' | 'published' | 'failed';
+  error: string | null;
+  url: string | null;
+}
+
+/**
+ * Publica o post que o chat preparou (`prepare_social_post`). O backend registra a tentativa
+ * antes de chamar a rede; falha da rede volta como `status: "failed"` com o motivo, não como erro HTTP.
+ */
+export async function publishSocialPost(
+  platform: string,
+  text: string,
+  clipId?: number,
+): Promise<SocialPublication> {
+  return apiFetch<SocialPublication>('/v1/social/publish', {
+    method: 'POST',
+    json: { platform, text, ...(clipId != null && { clip_id: clipId }) },
+    timeoutMs: 120_000,
+  });
+}
