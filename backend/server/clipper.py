@@ -23,6 +23,7 @@ import tempfile
 from dataclasses import dataclass
 from itertools import zip_longest
 
+from server import framing
 from server.settings import GROQ_BASE_URL, settings
 
 log = logging.getLogger(__name__)
@@ -548,7 +549,7 @@ LAYOUTS = ("crop", "fit")
 LAYOUT_CHOICES = LAYOUTS + ("auto",)  # auto: o Claude olha 3 quadros e escolhe (ver detect_layout)
 
 
-def video_filter(layout: str, ass_path: str) -> str:
+def video_filter(layout: str, ass_path: str, crop_x: str | None = None) -> str:
     """crop: preenche 9:16 cortando o centro — bom para quem fala para a câmera.
     fit: vídeo inteiro no meio sobre o próprio vídeo desfocado — para gravação de tela, gráficos e
     planos abertos, onde o corte central joga fora o conteúdo (visto num vídeo real de screencast)."""
@@ -559,6 +560,8 @@ def video_filter(layout: str, ass_path: str) -> str:
             # desfoque calculado em 1/4 da resolução e ampliado: ~4x mais barato que desfocar em 1080x1920
             f"[b]scale=1080:-2[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,{sub}"
         )
+    if crop_x:  # framing.follow_expr: o corte acompanha o rosto em vez de ficar no centro
+        return f"scale=-2:1920,crop=1080:1920:x='{crop_x}':y=0,{sub}"
     return f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,{sub}"
 
 
@@ -661,8 +664,9 @@ async def render_clip(source: str, ass_path: str, start: float, end: float, dest
     if layout not in LAYOUTS:
         raise ValueError(f"layout must be one of {LAYOUTS}")
     af = await measure_loudness(source, start, end)
+    crop_x = await framing.follow_expr(source, start, end) if layout == "crop" else None
     await run_ffmpeg(
-        ["-ss", f"{start:.3f}", "-t", f"{end - start:.3f}", "-i", source, "-vf", video_filter(layout, ass_path),
+        ["-ss", f"{start:.3f}", "-t", f"{end - start:.3f}", "-i", source, "-vf", video_filter(layout, ass_path, crop_x),
          *(["-af", af, "-ar", "48000"] if af else []),
          "-threads", str(FFMPEG_THREADS), "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
          "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", "-y", dest],
