@@ -68,6 +68,9 @@ class Settings:
     x_webhook_secret: str = os.getenv("X_WEBHOOK_SECRET", "")
     x_bearer_token: str = os.getenv("X_BEARER_TOKEN", "")
     x_dm_api_base_url: str = os.getenv("X_DM_API_BASE_URL", "https://api.x.com")
+    # Publicação nas redes do creator (server/social_routes.py). Desligado = rotas respondem 404.
+    social_tools_enabled: bool = os.getenv("SOCIAL_TOOLS_ENABLED", "false").lower() in ("true", "1", "yes")
+    social_max_posts_per_day: int = int(os.getenv("SOCIAL_MAX_POSTS_PER_DAY", "10"))
     inbound_rate_limit_per_minute: int = int(os.getenv("INBOUND_RATE_LIMIT_PER_MINUTE", "60"))
 
     # ── Guardas de criação de campanha ───────────────────────────────────────

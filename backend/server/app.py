@@ -56,6 +56,7 @@ from server.routes.chat_sessions_routes import router as chat_sessions_router
 from server import creator_report, media_maintenance
 from server.media_routes import router as media_router
 from server.creator_report_routes import router as creator_report_router
+from server.social_routes import router as social_router
 from server.traction_routes import router as traction_router
 
 
@@ -206,6 +207,7 @@ app.include_router(cctp_router)
 app.include_router(chat_sessions_router)
 app.include_router(media_router)
 app.include_router(creator_report_router)
+app.include_router(social_router)
 app.include_router(traction_router)
 
 request_hits: Dict[str, Deque[datetime]] = defaultdict(deque)
