@@ -54,4 +54,4 @@ dilithium-py>=1.0.0         # ML-DSA-87 (FIPS 204) — receipt signing pós-quâ
 python-dotenv==1.1.0
 
 # ─── Clipper: reenquadramento por rosto (YuNet, modelo em server/assets) ─────────
-opencv-python-headless==5.0.0
+opencv-python-headless==5.0.0.93

@@ -57,4 +57,4 @@ dilithium-py>=1.0.0        # ML-DSA-87 (FIPS 204) — receipt signing pós-quân
 
 # ─── Utilitários ──────────────────────────────────────────────────────────────
 python-dotenv==1.1.0       # Variáveis de ambiente (.env)
-opencv-python-headless==5.0.0  # Clipper: rosto para reenquadrar o corte 9:16 (YuNet)
+opencv-python-headless==5.0.0.93  # Clipper: rosto para reenquadrar o corte 9:16 (YuNet)
