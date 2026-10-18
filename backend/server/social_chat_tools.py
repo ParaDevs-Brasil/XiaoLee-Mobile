@@ -6,7 +6,8 @@ social_chat_tools.py — tools do chat para o creator postar nas redes (atrás d
                               ao toque do creator, chama POST /v1/social/publish.
 
 Sugerir e rascunhar legenda é o próprio modelo, em cima do contexto — sem tool a mais. A identidade nunca vem
-do modelo: o executor passa o `user_id` (session token), que aqui é resolvido em modo strict.
+do modelo: o executor passa o `user_id` do `/chat` (o `twitter_user_id` já resolvido; quem chega sem token do
+backend é barrado antes, por `unverified_caller`) — o mesmo acordo das tools de campanha.
 """
 
 from __future__ import annotations
@@ -66,7 +67,7 @@ SOCIAL_PROMPT = (
 
 async def run(tool_name: str, tool_input: Dict[str, Any], db, user_id: str) -> tuple[dict, Optional[dict]]:
     """Devolve (resultado para o modelo, `execution` para o app ou None)."""
-    user = await _resolve_user(db, f"Bearer {user_id}", strict=True)
+    user = await _resolve_user(db, f"Bearer {user_id}")
     accounts = {a.platform: a for a in (await db.execute(
         select(SocialAccount).where(SocialAccount.user_id == user.id, SocialAccount.status == "active")
     )).scalars().all()}

@@ -53,7 +53,8 @@ async def _user(db, name):
     u = User(twitter_user_id=f"privy_{name}", twitter_handle=name)
     db.add(u)
     await db.commit()
-    return f"privy_session_{name}", u.id
+    # O `/chat` entrega ao orquestrador o `twitter_user_id` já resolvido (não o token de sessão).
+    return f"privy_{name}", u.id
 
 
 async def _connect(db, uid, platform="bluesky"):
