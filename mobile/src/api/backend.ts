@@ -949,10 +949,17 @@ export async function publishSocialPost(
   platform: string,
   text: string,
   clipId?: number,
+  /** Até 4 fotos (base64 + mime); não vai junto com `clipId`. */
+  images?: { mime: string; base64: string }[],
 ): Promise<SocialPublication> {
   return apiFetch<SocialPublication>('/v1/social/publish', {
     method: 'POST',
-    json: { platform, text, ...(clipId != null && { clip_id: clipId }) },
+    json: {
+      platform,
+      text,
+      ...(clipId != null && { clip_id: clipId }),
+      ...(images?.length && { images: images.map((i) => ({ mime: i.mime, data: i.base64 })) }),
+    },
     timeoutMs: 120_000,
   });
 }
