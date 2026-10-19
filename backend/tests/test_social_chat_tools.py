@@ -189,3 +189,14 @@ def test_form_message_forces_options_and_personal_angle_cannot_invent_facts():
     p = tools.SOCIAL_PROMPT
     assert "Write post options" in p and "nunca com prepare_social_post" in p
     assert "não invente motivação, história, bastidor nem sentimento" in p
+
+
+@pytest.mark.asyncio
+async def test_post_options_with_ai_tells_are_sent_back_to_be_rewritten(db_session):
+    me, uid = await _user(db_session, "ana")
+    await _connect(db_session, uid, "bluesky")
+    for bad in ("a Xiaolee — feita pra criadores", "um game changer pra quem posta", "isso é incrível"):
+        out, card = await tools.run("suggest_post_options", {"platform": "bluesky", "options": ["ok", bad]}, db_session, me)
+        assert out["error"] == "bad_style" and "opção 2" in out["message"] and card is None
+    ok, card = await tools.run("suggest_post_options", {"platform": "bluesky", "options": ["a Xiaolee, feita pra criadores", "oi"]}, db_session, me)
+    assert card["status"] == "post_options"

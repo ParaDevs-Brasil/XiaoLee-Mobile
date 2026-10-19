@@ -27,6 +27,9 @@ SOCIAL_TOOL_NAMES = {"get_publishing_context", "prepare_social_post", "get_socia
 
 # Leitura de métricas custa crédito na rede (X cobra por item lido): repete a resposta por 10 min por creator+rede.
 # ponytail: cache em memória do processo; com mais de uma instância vira cache por instância (só custa uma leitura a mais).
+# O prompt pede voz humana, mas o modelo ainda escorrega: o que dá para checar por regra, barramos aqui e ele reescreve.
+BANNED_IN_OPTIONS = ("—", "–", "game changer", "game-changer", "revolucion", "incrível", "incrivel", "no mundo de hoje")
+
 INSIGHTS_TTL = 600
 _insights_cache: dict[tuple[int, str], tuple[float, dict]] = {}
 
@@ -201,6 +204,11 @@ async def run(tool_name: str, tool_input: Dict[str, Any], db, user_id: str) -> t
         texts = [str(t).strip() for t in raw if str(t).strip()] if isinstance(raw, list) else []
         if not 2 <= len(texts) <= 3:
             return {"error": "bad_options", "message": "Mande 2 ou 3 opções de texto."}, None
+        for i, t in enumerate(texts, 1):
+            hit = next((b for b in BANNED_IN_OPTIONS if b in t.lower()), None)
+            if hit:
+                return {"error": "bad_style", "message": f"A opção {i} tem '{hit}', que soa a IA/propaganda. Reescreva "
+                        "sem isso (sem travessão: use ponto ou vírgula) e chame suggest_post_options de novo."}, None
         limit = TEXT_LIMITS.get(platform, 4000)
         for i, t in enumerate(texts, 1):
             if len(t) > limit:
