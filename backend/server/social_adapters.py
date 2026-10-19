@@ -51,6 +51,21 @@ class SocialError(Exception):
     """Falha esperada de uma rede; `str(e)` é seguro para mostrar ao creator."""
 
 
+def _x_error(r: httpx.Response, body: dict, fallback: str) -> str:
+    """Turn an X API failure into a sentence a creator can act on."""
+    detail = str(body.get("detail") or body.get("title") or fallback)
+    if r.status_code == 402 or "credit" in detail.lower():
+        return "X is not accepting posts from Xiaolee right now. We are on it, try again later"
+    if r.status_code == 429:
+        return "X says too many requests. Wait a few minutes and try again"
+    if r.status_code in (401, 403) and "duplicate" not in detail.lower():
+        return "X refused this. Reconnect your X account in Accounts and try again"
+    if "duplicate" in detail.lower():
+        return "X blocks repeated posts. Change the text a bit and try again"
+    return f"X: {detail[:200]}"
+
+
+
 class TelegramAdapter:
     """Canal do creator; o bot da Xiaolee precisa ser admin com permissão de postar."""
 
@@ -235,7 +250,7 @@ class XAdapter:
         except Exception:
             raise SocialError("Could not reach X")
         if not r.is_success:
-            raise SocialError(f"X: {str(body.get('detail') or body.get('title') or 'error')[:200]}")
+            raise SocialError(_x_error(r, body, "error"))
         return body
 
     async def exchange(self, code: str, verifier: str) -> tuple[str, str, dict]:
@@ -263,7 +278,7 @@ class XAdapter:
         except Exception:
             raise SocialError("Could not reach X")
         if not r.is_success:
-            raise SocialError(f"X: {str(body.get('detail') or body.get('title') or 'refused the image')[:200]}")
+            raise SocialError(_x_error(r, body, "refused the image"))
         return str(body["data"]["id"])
 
     async def publish(self, stored: dict, text: str, video_url: Optional[str],
@@ -284,7 +299,7 @@ class XAdapter:
         except Exception:
             raise SocialError("Could not reach X")
         if not r.is_success:
-            raise SocialError(f"X: {str(body.get('detail') or body.get('title') or 'refused the post')[:200]}")
+            raise SocialError(_x_error(r, body, "refused the post"))
         tid = body["data"]["id"]
         return tid, f"https://x.com/i/status/{tid}"
 

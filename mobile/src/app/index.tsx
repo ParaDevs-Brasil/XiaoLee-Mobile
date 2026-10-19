@@ -651,6 +651,20 @@ export default function ChatScreen() {
                   </>
                 )}
 
+                {social?.connected === 0 ? (
+                  <Pressable
+                    onPress={() => router.push('/accounts')}
+                    style={({ pressed }) => [styles.startCard, pressed && styles.pressed]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Start posting. Step 1, connect a network. Step 2, ask Xiaolee for a post."
+                  >
+                    <Text style={styles.startTitle}>Start posting in 2 steps</Text>
+                    <Text style={styles.startStep}>1. Connect X, Telegram or Bluesky. Tap here.</Text>
+                    <Text style={styles.startStep}>2. Tell me your idea. I write it, you check it, you tap to post.</Text>
+                    <Text style={styles.startNote}>I never post without your tap.</Text>
+                  </Pressable>
+                ) : null}
+
                 <View style={styles.actions}>
                   {actions.map((action) => (
                     <ActionCard
@@ -1536,6 +1550,19 @@ const useStyles = makeStyles((colors) => ({
   },
 
   // ── Cards de ação ──────────────────────────────────────────────────────
+  startCard: {
+    alignSelf: 'stretch',
+    gap: 4,
+    marginTop: Spacing.four,
+    padding: Spacing.three,
+    borderRadius: Radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
+  },
+  startTitle: { fontFamily: Fonts.semibold, fontSize: 14, color: colors.ink },
+  startStep: { fontFamily: Fonts.sans, fontSize: 13, color: colors.ink2 },
+  startNote: { fontFamily: Fonts.sans, fontSize: 12, color: colors.ink3, marginTop: 2 },
   actions: { alignSelf: 'stretch', gap: 10, marginTop: Spacing.four + 2 },
   action: {
     height: 62,

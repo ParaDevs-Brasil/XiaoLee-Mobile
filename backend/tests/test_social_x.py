@@ -289,3 +289,17 @@ async def test_suggestions_route_is_scoped_cached_and_needs_a_connected_account(
     client.get("/v1/social/suggestions/x", headers=h)
     assert len([c for c in db.fake.calls if c[1] == "/2/tweets/search/recent"]) == n  # segunda vem do cache
     assert client.get("/v1/social/suggestions/telegram", headers=h).status_code == 422
+
+
+def test_x_error_is_plain_language():
+    import httpx
+    from server.social_adapters import _x_error
+
+    def err(status, body):
+        return _x_error(httpx.Response(status, json=body), body, "x")
+
+    assert "try again later" in err(402, {"title": "CreditsDepleted"})
+    assert "too many" in err(429, {})
+    assert "Reconnect" in err(403, {"detail": "forbidden"})
+    assert "repeated" in err(403, {"detail": "You are not allowed to create a Tweet with duplicate content."})
+    assert err(400, {"detail": "bad"}) == "X: bad"

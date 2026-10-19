@@ -67,7 +67,7 @@ export function PostDraftCard({ draft, onAsk }: { draft: CardDraft; onAsk: (mess
           <Text style={styles.label}>Network</Text>
           <View style={styles.chips}>
             {draft.networks.map((n) => (
-              <Chip key={n.platform} label={NETWORK_NAMES[n.platform] ?? n.platform} on={platform === n.platform} onPress={() => setPlatform(n.platform)}>
+              <Chip key={n.platform} label={n.platform === 'x' ? 'X (Twitter)' : (NETWORK_NAMES[n.platform] ?? n.platform)} on={platform === n.platform} onPress={() => setPlatform(n.platform)}>
                 <SocialLogo platform={n.platform} ink={colors.ink} size={14} />
               </Chip>
             ))}
