@@ -40,6 +40,8 @@ X_API = "https://api.x.com/2"
 X_SCOPES = "tweet.read tweet.write users.read offline.access media.write"
 X_IMAGE_MAX = 5 * 1024 * 1024  # upload simples de imagem do X
 X_TEXT_MAX = 280
+# Assunto do nicho cripto: de onde saem as hashtags que estão rodando (uma busca, até 30 posts = ~US$ 0,15).
+X_NICHE_QUERY = "(#bitcoin OR #crypto OR #web3 OR #stablecoin OR #defi OR #onchain) -is:retweet"
 
 
 Image = tuple[bytes, str]  # (bytes, mime)
@@ -316,6 +318,45 @@ class XAdapter:
             "engagement_rate": round(eng / imp * 100, 1) if imp else 0.0,
             "top_posts": sorted(posts, key=lambda p: -p["impressions"])[:3],
         }
+
+    async def fetch_suggestions(self, stored: dict, external_id: str) -> dict:
+        """Menções e hashtags para o creator tocar e inserir no post. Só dado real da conta/rede:
+        menções = quem já falou com ele + quem ele já marcou; hashtags = as dele e as do nicho cripto agora.
+        Custo por chamada: 3 leituras pequenas (~US$ 0,25), por isso a rota guarda em cache."""
+        token = await self._fresh(stored)
+        mine = await self._get(f"/users/{external_id}/tweets", token, max_results="20", exclude="retweets",
+                               **{"tweet.fields": "entities"})
+        inbox = await self._get(f"/users/{external_id}/mentions", token, max_results="15",
+                                expansions="author_id", **{"user.fields": "username,name"})
+        niche = await self._get("/tweets/search/recent", token, query=X_NICHE_QUERY, max_results="30",
+                                **{"tweet.fields": "entities"})
+        me = {u["username"].lower() for u in [(await self._get("/users/me", token))["data"]]}
+
+        mentions: dict[str, dict] = {}
+        for t in mine.get("data", []):
+            for m in t.get("entities", {}).get("mentions", []):
+                h = m["username"]
+                if h.lower() not in me:
+                    mentions.setdefault(h.lower(), {"handle": h, "name": "", "why": "you tagged them before", "n": 0})["n"] += 1
+        for u in inbox.get("includes", {}).get("users", []):
+            if u["username"].lower() not in me:
+                e = mentions.setdefault(u["username"].lower(), {"handle": u["username"], "name": u.get("name", ""), "why": "", "n": 0})
+                e["name"] = e["name"] or u.get("name", "")
+                e["why"] = "replied to you" if not e["why"] else "you tagged them and they replied"
+                e["n"] += 2
+
+        def tags(posts) -> dict[str, int]:
+            out: dict[str, int] = {}
+            for t in posts:
+                for h in t.get("entities", {}).get("hashtags", []):
+                    out[h["tag"]] = out.get(h["tag"], 0) + 1
+            return out
+
+        own, trending = tags(mine.get("data", [])), tags(niche.get("data", []))
+        hashtags = [{"tag": k, "why": "you use it", "n": v} for k, v in own.items()]
+        hashtags += [{"tag": k, "why": "trending in crypto now", "n": v} for k, v in trending.items() if k not in own]
+        top = lambda items, n: sorted(items, key=lambda x: -x["n"])[:n]  # noqa: E731
+        return {"mentions": top(list(mentions.values()), 8), "hashtags": top(hashtags, 10)}
 
     async def fetch_metrics(self, stored: dict, post_id: str) -> dict:
         m = (await self._get(f"/tweets/{post_id}", await self._fresh(stored), **{"tweet.fields": "public_metrics"}))["data"]["public_metrics"]

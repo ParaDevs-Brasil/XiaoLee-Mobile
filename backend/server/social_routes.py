@@ -19,6 +19,7 @@ import binascii
 import json
 import logging
 import secrets
+import time
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -280,6 +281,39 @@ async def publish(body: PublishBody, authorization: Optional[str] = Header(None)
     await db.commit()
     await db.refresh(pub)
     return _pub_out(pub)
+
+
+# Sugestões custam leitura na rede (X cobra por item): guarda por creator+rede por 6 h.
+# ponytail: cache em memória do processo; com várias instâncias vira um cache por instância (só uma leitura a mais).
+SUGGEST_TTL = 6 * 3600
+_suggest_cache: dict[tuple[int, str], tuple[float, dict]] = {}
+
+
+@router.get("/suggestions/{platform}")
+async def suggestions(platform: str, authorization: Optional[str] = Header(None), db: AsyncSession = Depends(get_db_session)):
+    """Menções e hashtags reais (da conta e do nicho cripto) para o creator inserir no post."""
+    _enabled()
+    user = await _resolve_user(db, authorization, strict=True)
+    adapter = _adapter(platform)
+    if not hasattr(adapter, "fetch_suggestions"):
+        raise HTTPException(status_code=422, detail=f"No suggestions for {platform} yet")
+    acc = await _account(db, user.id, platform)
+    if not acc or acc.status != "active":
+        raise HTTPException(status_code=409, detail=f"Connect your {platform} account first")
+    hit = _suggest_cache.get((user.id, platform))
+    if hit and time.time() - hit[0] < SUGGEST_TTL:
+        return hit[1]
+    creds = json.loads(_crypto.decrypt(acc.credentials_enc))
+    before = dict(creds)
+    try:
+        data = await adapter.fetch_suggestions(creds, acc.external_id)
+    except SocialError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    if creds != before:
+        acc.credentials_enc = _crypto.encrypt(json.dumps(creds))
+        await db.commit()
+    _suggest_cache[(user.id, platform)] = (time.time(), data)
+    return data
 
 
 @router.get("/publications")

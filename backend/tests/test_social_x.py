@@ -58,6 +58,10 @@ class FakeX:
                 "followers_count": 91, "following_count": 156, "tweet_count": 169}}})
         if path == "/2/users/42/tweets":
             ts = "2026-10-15T21:10:57.000Z"
+            if "entities" in str(request.url) and "organic_metrics" not in str(request.url):
+                return httpx.Response(200, json={"data": [
+                    {"id": "1", "entities": {"mentions": [{"username": "Carlos"}, {"username": "ana"}], "hashtags": [{"tag": "Arc"}]}},
+                    {"id": "2", "entities": {"mentions": [{"username": "Carlos"}], "hashtags": []}}]})
             return httpx.Response(200, json={"data": [
                 {"id": "1", "text": "a", "created_at": ts, "public_metrics": {"impression_count": 10, "like_count": 1},
                  "organic_metrics": {"like_count": 1, "reply_count": 0, "retweet_count": 0},
@@ -68,6 +72,13 @@ class FakeX:
         if path == "/2/media/upload":
             self.uploaded = request.content
             return httpx.Response(200, json={"data": {"id": "m77", "media_key": "3_m77"}})
+        if path == "/2/users/42/mentions":
+            return httpx.Response(200, json={"data": [{"id": "9", "author_id": "7"}], "includes": {"users": [
+                {"id": "7", "username": "Bia", "name": "Bia Cripto"}, {"id": "42", "username": "ana", "name": "Ana"}]}})
+        if path == "/2/tweets/search/recent":
+            return httpx.Response(200, json={"data": [
+                {"id": "5", "entities": {"hashtags": [{"tag": "Bitcoin"}, {"tag": "Arc"}]}},
+                {"id": "6", "entities": {"hashtags": [{"tag": "Arc"}, {"tag": "USDC"}]}}]})
         if path == "/2/tweets" and request.method == "POST":
             self.tweet_body = request.content.decode()
             return httpx.Response(201, json={"data": {"id": "999", "text": "x"}})
@@ -249,3 +260,31 @@ async def test_telegram_sends_one_photo_or_an_album_and_guards_the_caption(db, m
     assert sent[-1][0] == "sendMediaGroup" and b"attach://p1" in sent[-1][1] and pid == "7"
     with pytest.raises(adapters.SocialError, match="1024"):
         await tg.publish(stored, "x" * 1025, None, images=[(b"\x89PNG-a", "image/png")])
+
+
+@pytest.mark.asyncio
+async def test_suggestions_come_only_from_real_account_and_niche_data(db):
+    stored = {"access_token": "AT", "refresh_token": "RT", "expires_at": int(time.time()) + 3600}
+    out = await adapters.XAdapter().fetch_suggestions(stored, "42")
+    handles = [m["handle"] for m in out["mentions"]]
+    assert handles == ["Bia", "Carlos"] or handles == ["Carlos", "Bia"]  # nunca ele mesmo (ana)
+    assert "ana" not in [h.lower() for h in handles]
+    bia = next(m for m in out["mentions"] if m["handle"] == "Bia")
+    assert bia["why"] == "replied to you" and bia["name"] == "Bia Cripto"
+    tags = {h["tag"]: h for h in out["hashtags"]}
+    assert tags["Arc"]["why"] == "you use it"  # a que ele já usa não aparece como "trend"
+    assert tags["Bitcoin"]["why"] == "trending in crypto now" and "USDC" in tags
+
+
+@pytest.mark.asyncio
+async def test_suggestions_route_is_scoped_cached_and_needs_a_connected_account(db):
+    social_routes._suggest_cache.clear()
+    h = await _login(db)
+    assert client.get("/v1/social/suggestions/x", headers=h).status_code == 409  # ainda sem X conectado
+    await _connect(db, h)
+    first = client.get("/v1/social/suggestions/x", headers=h)
+    assert first.status_code == 200 and first.json()["hashtags"]
+    n = len([c for c in db.fake.calls if c[1] == "/2/tweets/search/recent"])
+    client.get("/v1/social/suggestions/x", headers=h)
+    assert len([c for c in db.fake.calls if c[1] == "/2/tweets/search/recent"]) == n  # segunda vem do cache
+    assert client.get("/v1/social/suggestions/telegram", headers=h).status_code == 422
