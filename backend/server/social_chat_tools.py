@@ -23,7 +23,7 @@ from server.campaigns_routes import _resolve_user
 from server.social_adapters import ADAPTERS, BSKY_TEXT_MAX, TELEGRAM_CAPTION_MAX, X_TEXT_MAX, SocialError
 from server.social_routes import _crypto
 
-SOCIAL_TOOL_NAMES = {"get_publishing_context", "prepare_social_post", "get_social_insights"}
+SOCIAL_TOOL_NAMES = {"get_publishing_context", "prepare_social_post", "get_social_insights", "open_post_draft", "suggest_post_options"}
 
 # Leitura de métricas custa crédito na rede (X cobra por item lido): repete a resposta por 10 min por creator+rede.
 # ponytail: cache em memória do processo; com mais de uma instância vira cache por instância (só custa uma leitura a mais).
@@ -52,6 +52,32 @@ SOCIAL_TOOLS = [
             "nunca cite média de mercado, benchmark ou comparação com outras contas."
         ),
         "parameters": {"type": "object", "properties": {"platform": {"type": "string", "enum": ["x"]}}},
+    }},
+    {"type": "function", "function": {
+        "name": "open_post_draft",
+        "description": (
+            "Abre na conversa o formulário de rascunho (ideia, objetivo, tom, rede) quando o creator quer postar mas "
+            "ainda não disse o quê. NÃO escreve o post: quando ele enviar o formulário, escreva as opções com "
+            "suggest_post_options."
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    }},
+    {"type": "function", "function": {
+        "name": "suggest_post_options",
+        "description": (
+            "Mostra 2 ou 3 opções de post escritas por você, numa rede conectada; o creator escolhe uma, edita e "
+            "confirma. NÃO publica. Escreva no idioma da ideia dele, no tom pedido, para o público dele, dentro do "
+            "limite da rede, e use só fatos que ele deu ou que vieram das tools."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "platform": {"type": "string", "enum": list(ADAPTERS)},
+                "options": {"type": "array", "minItems": 2, "maxItems": 3, "items": {"type": "string"},
+                            "description": "Textos completos dos posts, diferentes entre si (ângulo ou gancho)"},
+            },
+            "required": ["platform", "options"],
+        },
     }},
     {"type": "function", "function": {
         "name": "prepare_social_post",
@@ -85,6 +111,12 @@ SOCIAL_PROMPT = (
     "afirme padrão nem diga o que funciona: descreva os números e diga que ainda são poucos posts para concluir. "
     "Sugira posts para o público do creator (cripto ou "
     "gente chegando agora em cripto): termo técnico só com uma explicação curta.\n"
+    "- open_post_draft: quando o creator quer postar mas não disse o quê ('quero postar', 'me ajuda com um post'), "
+    "abra o formulário e peça em uma frase para preencher e enviar. Não escreva post antes dele enviar.\n"
+    "- suggest_post_options: com a ideia (do formulário ou da conversa), escreva 2 ou 3 opções diferentes entre si "
+    "(outro ângulo ou gancho em cada), no idioma da ideia, no tom pedido, para o público dele. Se ainda não tiver os "
+    "números do perfil, chame get_social_insights antes. Use só fatos que o creator deu: não invente números, "
+    "parcerias nem promessas. Ele escolhe, edita e confirma; você NÃO publica e não repete as opções no texto.\n"
     "- prepare_social_post: prepara o post depois que o creator aprovar a legenda. Ela NÃO publica — só deixa "
     "um botão de confirmar na conversa. Nunca diga que já postou antes do toque dele.\n"
 )
@@ -138,6 +170,29 @@ async def run(tool_name: str, tool_input: Dict[str, Any], db, user_id: str) -> t
             _insights_cache[(user.id, platform)] = (time.time(), data)
         data = {**data, "platform": platform, "handle": acc.handle}
         return data, {"status": "insights_ready", "insights": data}
+
+    if tool_name == "open_post_draft":
+        if not accounts:
+            return {"error": "not_connected", "message": "Conecte uma rede em Contas conectadas primeiro."}, None
+        networks = [{"platform": p, "handle": a.handle} for p, a in accounts.items()]
+        return {"draft_open": True, "networks": networks}, {"status": "draft_open", "draft": {"networks": networks}}
+
+    if tool_name == "suggest_post_options":
+        platform = str(tool_input.get("platform", ""))
+        if platform not in accounts:
+            return {"error": "not_connected", "message": f"Conecte sua conta {platform} em Contas conectadas primeiro."}, None
+        raw = tool_input.get("options")
+        texts = [str(t).strip() for t in raw if str(t).strip()] if isinstance(raw, list) else []
+        if not 2 <= len(texts) <= 3:
+            return {"error": "bad_options", "message": "Mande 2 ou 3 opções de texto."}, None
+        limit = TEXT_LIMITS.get(platform, 4000)
+        for i, t in enumerate(texts, 1):
+            if len(t) > limit:
+                return {"error": "too_long", "message": f"A opção {i} passa de {limit} caracteres em {platform}: encurte."}, None
+        return (
+            {"options_shown": len(texts), "platform": platform},
+            {"status": "post_options", "options": {"platform": platform, "handle": accounts[platform].handle, "texts": texts}},
+        )
 
     # prepare_social_post
     platform, text = str(tool_input.get("platform", "")), str(tool_input.get("text", "")).strip()

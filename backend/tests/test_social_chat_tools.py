@@ -145,3 +145,31 @@ def test_insights_prompt_forbids_numbers_that_did_not_come_from_the_account():
     assert "Com menos de 5 posts" in tools.SOCIAL_PROMPT  # amostra pequena: descrever, não concluir
     desc = next(t["function"]["description"] for t in tools.SOCIAL_TOOLS if t["function"]["name"] == "get_social_insights")
     assert "nunca cite média de mercado" in desc
+
+
+@pytest.mark.asyncio
+async def test_draft_form_lists_only_the_callers_connected_networks(db_session):
+    me, uid = await _user(db_session, "ana")
+    lonely, _ = await _user(db_session, "bia")
+    await _connect(db_session, uid, "bluesky")
+    result, card = await tools.run("open_post_draft", {}, db_session, me)
+    assert card == {"status": "draft_open", "draft": {"networks": [{"platform": "bluesky", "handle": "@ana"}]}}
+    refused, no_card = await tools.run("open_post_draft", {}, db_session, lonely)
+    assert refused["error"] == "not_connected" and no_card is None
+
+
+@pytest.mark.asyncio
+async def test_post_options_card_validates_network_count_and_length_and_never_publishes(db_session):
+    me, uid = await _user(db_session, "ana")
+    await _connect(db_session, uid, "bluesky")
+    ok, card = await tools.run("suggest_post_options", {"platform": "bluesky", "options": ["a", " b "]}, db_session, me)
+    assert ok["options_shown"] == 2
+    assert card == {"status": "post_options", "options": {"platform": "bluesky", "handle": "@ana", "texts": ["a", "b"]}}
+    one, _ = await tools.run("suggest_post_options", {"platform": "bluesky", "options": ["só uma"]}, db_session, me)
+    assert one["error"] == "bad_options"
+    long, _ = await tools.run("suggest_post_options", {"platform": "bluesky", "options": ["ok", "x" * 301]}, db_session, me)
+    assert long["error"] == "too_long" and "opção 2" in long["message"]
+    other, _ = await tools.run("suggest_post_options", {"platform": "telegram", "options": ["a", "b"]}, db_session, me)
+    assert other["error"] == "not_connected"
+    pubs = (await db_session.execute(select(PostPublication))).scalars().all()
+    assert pubs == []  # escolher e publicar é do app, depois do toque
