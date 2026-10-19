@@ -80,6 +80,9 @@ class Settings:
     # Só com ARC_SANDBOX=false: lista (handle ou twitter_user_id, separados por vírgula) de quem pode criar.
     # Vazia = sem restrição; na mainnet, preencher no canário.
     campaign_creator_allowlist: str = os.getenv("CAMPAIGN_CREATOR_ALLOWLIST", "")
+    # Pagamentos de campanha (só valem com ARC_SANDBOX=false): kill switch e teto diário global em USDC.
+    payouts_enabled: bool = os.getenv("PAYOUTS_ENABLED", "true").lower() == "true"
+    payout_daily_budget_usdc: float = float(os.getenv("PAYOUT_DAILY_BUDGET_USDC", "20"))
     campaign_require_funds: bool = os.getenv("CAMPAIGN_REQUIRE_FUNDS", "true").lower() == "true"
     cors_allowed_origins: list[str] = None
     cors_allowed_origin_regex: str = ""
@@ -154,6 +157,9 @@ class Settings:
     # cada uma sai da conta do relay (~0.002 USDC), e a rota é autorizada por
     # assinatura, não por sessão — sem teto, a conta é drenável por repetição.
     arc_relay_rate_limit_per_hour: int = int(os.getenv("ARC_RELAY_RATE_LIMIT_PER_HOUR", "20"))
+    # Teto GLOBAL do relay (todas as origens somadas): o limite por endereço sozinho não para quem
+    # troca de endereço. 0 = sem teto. Em memória por processo se não houver Redis.
+    arc_relay_global_per_hour: int = int(os.getenv("ARC_RELAY_GLOBAL_PER_HOUR", "200"))
 
     # ── CCTP V2 — Solana (domain 5) ───────────────────────────────────────────────
     # Program IDs reais da Circle (devnet == mainnet, confirmado em developers.circle.com).

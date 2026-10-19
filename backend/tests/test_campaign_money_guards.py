@@ -23,7 +23,7 @@ os.environ.setdefault("JWT_SECRET", "route-test-jwt-secret-32-chars-ok")
 os.environ.setdefault("ENCRYPTION_KEY", "route-test-encryption-key-xxxxxx")
 
 from database.database import get_db_session
-from database.models import Campaign, User, Wallet, WebSession
+from database.models import Campaign, CampaignParticipant, User, Wallet, WebSession
 from server.caller_trust import unverified_caller
 
 app_module = importlib.import_module("server.app")
@@ -304,3 +304,83 @@ class TestStrictVerifier:
 
         assert (await verify_trading("addr", "", strict=True))[0] is False
         assert (await verify_trading("addr", ""))[0] is True
+
+
+class TestPayoutGuard:
+    """Travas de dinheiro nível 2: kill switch, 1 pagamento por carteira, teto diário global."""
+
+    async def _seed(self, db, reward=1.0):
+        camp = Campaign(
+            creator_twitter_user_id="privy_c", name=f"pg-{reward}", description="d", campaign_type="social",
+            reward_token="USDC", reward_per_participant=reward, max_participants=10, reward_pool=reward * 10,
+            status="active",
+        )
+        u1, u2 = User(twitter_user_id="privy_a", twitter_handle="a"), User(twitter_user_id="privy_b", twitter_handle="b")
+        db.add_all([camp, u1, u2])
+        await db.flush()
+        return camp, u1, u2
+
+    def _cfg(self, monkeypatch, **over):
+        monkeypatch.setattr(campaigns, "settings", dataclasses.replace(campaigns.settings, **over))
+
+    @pytest.mark.asyncio
+    async def test_kill_switch_blocks(self, db, monkeypatch):
+        camp, u1, _ = await self._seed(db)
+        self._cfg(monkeypatch, payouts_enabled=False)
+        assert "paused" in await campaigns._payout_guard(db, camp, u1.id, WALLET, 1.0)
+
+    @pytest.mark.asyncio
+    async def test_open_when_nothing_paid(self, db, monkeypatch):
+        camp, u1, _ = await self._seed(db)
+        self._cfg(monkeypatch, payouts_enabled=True, payout_daily_budget_usdc=20)
+        assert await campaigns._payout_guard(db, camp, u1.id, WALLET, 1.0) is None
+
+    @pytest.mark.asyncio
+    async def test_wallet_already_paid_by_another_account(self, db, monkeypatch):
+        from datetime import timezone
+
+        camp, u1, u2 = await self._seed(db)
+        self._cfg(monkeypatch, payouts_enabled=True, payout_daily_budget_usdc=20)
+        db.add(CampaignParticipant(
+            campaign_id=camp.id, user_id=u1.id, status="paid",
+            paid_at=datetime.now(timezone.utc), paid_wallet=WALLET.lower(),
+        ))
+        await db.flush()
+        assert "already received" in await campaigns._payout_guard(db, camp, u2.id, WALLET.upper().replace("X", "x"), 1.0)
+
+    @pytest.mark.asyncio
+    async def test_daily_budget(self, db, monkeypatch):
+        from datetime import timezone
+
+        camp, u1, u2 = await self._seed(db, reward=1.0)
+        self._cfg(monkeypatch, payouts_enabled=True, payout_daily_budget_usdc=1.5)
+        db.add(CampaignParticipant(
+            campaign_id=camp.id, user_id=u1.id, status="paid",
+            paid_at=datetime.now(timezone.utc), paid_wallet="0x" + "cd" * 20,
+        ))
+        await db.flush()
+        assert "daily" in await campaigns._payout_guard(db, camp, u2.id, WALLET, 1.0)  # 1 + 1 > 1.5
+        self._cfg(monkeypatch, payouts_enabled=True, payout_daily_budget_usdc=2.0)
+        assert await campaigns._payout_guard(db, camp, u2.id, WALLET, 1.0) is None
+
+
+@pytest.mark.asyncio
+async def test_relay_global_cap(monkeypatch):
+    from server.rate_limiter import InMemoryRateLimiter
+    from server.routes import arc_routes
+
+    limiter = InMemoryRateLimiter()
+
+    async def fake_limiter():
+        return limiter
+
+    monkeypatch.setattr(arc_routes, "get_rate_limiter", fake_limiter)
+    monkeypatch.setattr(arc_routes, "_arc_native", lambda: (_ for _ in ()).throw(RuntimeError("no network in tests")))
+    monkeypatch.setattr(arc_routes, "settings", dataclasses.replace(arc_routes.settings, arc_relay_global_per_hour=2, arc_relay_rate_limit_per_hour=100, arc_usdc_address="0x" + "11" * 20))
+    body = {"from_address": "0x" + "aa" * 20, "to_address": "0x" + "bb" * 20, "value": 1, "valid_after": 0,
+            "valid_before": 9999999999, "nonce": "0x" + "00" * 32, "signature": "0x" + "00" * 65}
+    codes = []
+    for i in range(3):
+        body["from_address"] = "0x" + f"{i + 1:02x}" * 20  # origens diferentes: só o teto global pega
+        codes.append(client.post("/v1/arc/usdc/relay-authorization", json=body).status_code)
+    assert codes[2] == 429 and codes[0] != 429

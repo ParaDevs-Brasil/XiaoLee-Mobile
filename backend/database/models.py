@@ -174,6 +174,9 @@ class CampaignParticipant(Base):
     has_quoted: Mapped[bool] = mapped_column(Boolean, default=False, server_default='false')
     tasks_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     claim_receipt_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Preenchidos quando o payout on-chain é aceito: base do teto diário e do "1 pagamento por carteira".
+    paid_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    paid_wallet: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     # ADR-006: suporte multi-chain
     chain: Mapped[str] = mapped_column(String(16), default='stellar', server_default='stellar')
     stellar_wallet: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)

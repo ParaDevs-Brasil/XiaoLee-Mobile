@@ -1263,6 +1263,35 @@ async def verify_tasks(
     }
 
 
+async def _payout_guard(
+    db: AsyncSession, campaign: CampaignModel, user_id: int, wallet: str, amount: float
+) -> Optional[str]:
+    """Travas de dinheiro real; devolve a mensagem de recusa ou None. Roda antes de qualquer transferência."""
+    if not settings.payouts_enabled:
+        return "Payouts are paused right now. Your claim is safe — try again later."
+    # Uma carteira só recebe uma vez por campanha, mesmo que contas diferentes a usem (sybil).
+    dup = await db.execute(
+        select(func.count()).select_from(CampaignParticipant).where(
+            CampaignParticipant.campaign_id == campaign.id,
+            CampaignParticipant.paid_wallet == wallet.lower(),
+            CampaignParticipant.user_id != user_id,
+        )
+    )
+    if (dup.scalar() or 0) > 0:
+        return "This wallet already received a reward in this campaign."
+    # Teto diário global (últimas 24h). ponytail: leitura+soma sem lock, duas claims simultâneas
+    # no limite podem passar por 1 recompensa; lock/linha de contador se o volume crescer.
+    spent = await db.execute(
+        select(func.coalesce(func.sum(CampaignModel.reward_per_participant), 0))
+        .select_from(CampaignParticipant)
+        .join(CampaignModel, CampaignModel.id == CampaignParticipant.campaign_id)
+        .where(CampaignParticipant.paid_at >= datetime.now(timezone.utc) - timedelta(hours=24))
+    )
+    if float(spent.scalar() or 0) + amount > settings.payout_daily_budget_usdc:
+        return "The daily payout budget was reached. Try claiming again tomorrow."
+    return None
+
+
 @router.post("/campaigns/claim")
 async def claim_reward(
     payload: CampaignActionRequest,
@@ -1302,6 +1331,10 @@ async def claim_reward(
     # resgate — pagar "USDC" para um endereço que não existe nessa rede seria
     # pior que não pagar.
     if wallet_address.startswith("0x") and campaign.reward_token.upper() == "USDC":
+        if not settings.arc_sandbox:
+            blocked = await _payout_guard(db, campaign, user.id, wallet_address, reward_amount)
+            if blocked:
+                return {"success": False, "error": blocked}
         # Determinístico por (campanha, usuário) — não por chamada: um retry de
         # rede antes do `commit` abaixo não deve virar um segundo pagamento.
         idempotency_key = str(
@@ -1340,6 +1373,9 @@ async def claim_reward(
 
     participant.status = "paid"
     participant.claim_receipt_id = receipt_id
+    if paid_onchain:
+        participant.paid_at = datetime.now(timezone.utc)
+        participant.paid_wallet = wallet_address.lower()
     db.add(
         NotificationEvent(
             user_id=user.id,
