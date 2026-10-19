@@ -189,11 +189,11 @@ async def test_x_rejects_long_text_and_enforces_monthly_cap(db):
 @pytest.mark.asyncio
 async def test_publish_with_image_uploads_then_attaches_media_id(db):
     stored = {"access_token": "AT", "refresh_token": "RT", "expires_at": int(time.time()) + 3600}
-    pid, url = await adapters.XAdapter().publish(stored, "oi", None, image=(b"\x89PNG-bytes", "image/png"))
+    pid, url = await adapters.XAdapter().publish(stored, "oi", None, images=[(b"\x89PNG-bytes", "image/png")])
     assert pid == "999" and b"PNG-bytes" in db.fake.uploaded and b"tweet_image" in db.fake.uploaded
     assert json.loads(db.fake.tweet_body)["media"] == {"media_ids": ["m77"]}
     with pytest.raises(adapters.SocialError, match="5 MB"):
-        await adapters.XAdapter().publish(stored, "oi", None, image=(b"x" * (5 * 1024 * 1024 + 1), "image/png"))
+        await adapters.XAdapter().publish(stored, "oi", None, images=[(b"x" * (5 * 1024 * 1024 + 1), "image/png")])
 
 
 @pytest.mark.asyncio
@@ -217,3 +217,35 @@ async def test_login_asks_for_the_media_write_scope(db):
 async def test_generic_connect_is_not_a_way_into_x(db):
     h = await _login(db)
     assert client.post("/v1/social/accounts/x", json={"credentials": {}}, headers=h).status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_x_attaches_every_uploaded_photo(db):
+    stored = {"access_token": "AT", "refresh_token": "RT", "expires_at": int(time.time()) + 3600}
+    await adapters.XAdapter().publish(stored, "oi", None, images=[(b"\x89PNG-a", "image/png"), (b"\xff\xd8\xff-b", "image/jpeg")])
+    uploads = [c for c in db.fake.calls if c[1] == "/2/media/upload"]
+    assert len(uploads) == 2
+    assert json.loads(db.fake.tweet_body)["media"] == {"media_ids": ["m77", "m77"]}
+
+
+@pytest.mark.asyncio
+async def test_telegram_sends_one_photo_or_an_album_and_guards_the_caption(db, monkeypatch):
+    sent = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        method = request.url.path.rsplit("/", 1)[-1]
+        sent.append((method, request.content))
+        result = [{"message_id": 7}, {"message_id": 8}] if method == "sendMediaGroup" else {"message_id": 7}
+        return httpx.Response(200, json={"ok": True, "result": result})
+
+    real = httpx._client.AsyncClient  # o fixture `db` já trocou `httpx.AsyncClient` pelo falso do X
+    monkeypatch.setattr(adapters.httpx, "AsyncClient", lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
+    monkeypatch.setattr(adapters, "settings", dataclasses.replace(adapters.settings, telegram_bot_token="123:tok"))
+    tg, stored = adapters.TelegramAdapter(), {"chat_id": -100, "username": "ch"}
+
+    pid, url = await tg.publish(stored, "legenda", None, images=[(b"\x89PNG-a", "image/png")])
+    assert sent[-1][0] == "sendPhoto" and b"legenda" in sent[-1][1] and (pid, url) == ("7", "https://t.me/ch/7")
+    pid, url = await tg.publish(stored, "legenda", None, images=[(b"\x89PNG-a", "image/png"), (b"\xff\xd8\xff-b", "image/jpeg")])
+    assert sent[-1][0] == "sendMediaGroup" and b"attach://p1" in sent[-1][1] and pid == "7"
+    with pytest.raises(adapters.SocialError, match="1024"):
+        await tg.publish(stored, "x" * 1025, None, images=[(b"\x89PNG-a", "image/png")])

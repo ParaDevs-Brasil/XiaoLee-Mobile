@@ -198,3 +198,49 @@ async def test_telegram_errors_never_leak_bot_token(monkeypatch):
     with pytest.raises(adapters.SocialError) as e:
         await adapters.TelegramAdapter()._call("getMe")
     assert "SECRET" not in str(e.value)
+
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"fake-image-bytes"
+
+
+def _b64(raw: bytes) -> str:
+    import base64
+    return base64.b64encode(raw).decode()
+
+
+@pytest.mark.asyncio
+async def test_publish_with_photos_passes_decoded_bytes_to_the_network(db):
+    h = await _login(db, "a")
+    client.post("/v1/social/accounts/bluesky", json=CRED, headers=h)
+    seen = {}
+
+    async def publish(stored, text, video_url, images=None):
+        seen["images"] = images
+        return "at://did:plc:1/app.bsky.feed.post/abc", "https://bsky.app/x"
+
+    db.fake.publish = publish
+    body = {"platform": "bluesky", "text": "oi", "images": [{"mime": "image/png", "data": _b64(PNG)}]}
+    r = client.post("/v1/social/publish", json=body, headers=h)
+    assert r.status_code == 200, r.text
+    assert seen["images"] == [(PNG, "image/png")]
+
+
+@pytest.mark.asyncio
+async def test_publish_rejects_fake_oversized_too_many_and_mixed_media(db):
+    h = await _login(db, "a")
+    client.post("/v1/social/accounts/bluesky", json=CRED, headers=h)
+    uid = (await db.execute(select(SocialAccount.user_id))).scalar()
+    cid = await _clip(db, uid)
+
+    def post(**kw):
+        return client.post("/v1/social/publish", json={"platform": "bluesky", "text": "oi", **kw}, headers=h)
+
+    # diz ser PNG mas o conteúdo não é: não confiamos no mime do app
+    assert post(images=[{"mime": "image/png", "data": _b64(b"MZ-not-an-image")}]).status_code == 422
+    assert post(images=[{"mime": "application/pdf", "data": _b64(PNG)}]).status_code == 422
+    assert post(images=[{"mime": "image/png", "data": "***not base64***"}]).status_code == 422
+    assert post(images=[{"mime": "image/png", "data": _b64(PNG + b"x" * (5 * 1024 * 1024))}]).status_code in (413, 422)
+    assert post(images=[{"mime": "image/png", "data": _b64(PNG)}] * 5).status_code == 422
+    assert post(clip_id=cid, images=[{"mime": "image/png", "data": _b64(PNG)}]).status_code == 422
+    # nada disso chegou a criar post
+    assert (await db.execute(select(PostPublication))).scalars().all() == []

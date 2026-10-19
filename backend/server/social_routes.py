@@ -14,6 +14,8 @@ Atrás de SOCIAL_TOOLS_ENABLED (desligado = 404). O dono vem SEMPRE do Bearer (s
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import logging
 import secrets
@@ -32,7 +34,7 @@ from database.repository import to_utc_iso
 from server import media_storage
 from server.campaigns_routes import _resolve_user
 from server.settings import settings
-from server.social_adapters import ADAPTERS, SocialError, XAdapter
+from server.social_adapters import ADAPTERS, IMAGE_MAX_BYTES, IMAGES_MAX, SocialError, XAdapter
 from user_management.encryption_service import EncryptionService
 
 logger = logging.getLogger(__name__)
@@ -72,10 +74,39 @@ class ConnectBody(BaseModel):
     credentials: dict = Field(default_factory=dict)
 
 
+class ImageIn(BaseModel):
+    mime: str
+    data: str = Field(max_length=IMAGE_MAX_BYTES * 4 // 3 + 16)  # base64 de até 5 MB
+
+
 class PublishBody(BaseModel):
     platform: str
     text: str = Field(min_length=1, max_length=4000)
     clip_id: Optional[int] = None
+    images: list[ImageIn] = Field(default_factory=list, max_length=IMAGES_MAX)
+
+
+# Conteúdo real da imagem (não confia no `mime` que o app diz): assinatura dos primeiros bytes.
+_IMAGE_MAGIC = {"image/jpeg": (b"\xff\xd8\xff",), "image/png": (b"\x89PNG\r\n\x1a\n",),
+                "image/gif": (b"GIF87a", b"GIF89a"), "image/webp": (b"RIFF",)}
+
+
+def _decode_images(items: list[ImageIn]) -> list[tuple[bytes, str]]:
+    out = []
+    for i, it in enumerate(items, 1):
+        magic = _IMAGE_MAGIC.get(it.mime)
+        if not magic:
+            raise HTTPException(status_code=422, detail=f"Image {i}: use JPG, PNG, WEBP or GIF")
+        try:
+            raw = base64.b64decode(it.data, validate=True)
+        except (binascii.Error, ValueError):
+            raise HTTPException(status_code=422, detail=f"Image {i} is not valid")
+        if not any(raw.startswith(m) for m in magic) or (it.mime == "image/webp" and raw[8:12] != b"WEBP"):
+            raise HTTPException(status_code=422, detail=f"Image {i} does not look like {it.mime}")
+        if len(raw) > IMAGE_MAX_BYTES:
+            raise HTTPException(status_code=413, detail=f"Image {i} is larger than 5 MB")
+        out.append((raw, it.mime))
+    return out
 
 
 async def _account(db: AsyncSession, user_id: int, platform: str) -> Optional[SocialAccount]:
@@ -211,6 +242,10 @@ async def publish(body: PublishBody, authorization: Optional[str] = Header(None)
         if month >= settings.social_x_max_posts_per_month:
             raise HTTPException(status_code=429, detail="Monthly post limit reached for X")
 
+    images = _decode_images(body.images)
+    if images and body.clip_id is not None:
+        raise HTTPException(status_code=422, detail="Post a video clip or photos, not both")
+
     video_url = None
     if body.clip_id is not None:
         clip = (await db.execute(
@@ -232,7 +267,7 @@ async def publish(body: PublishBody, authorization: Optional[str] = Header(None)
     creds = json.loads(_crypto.decrypt(acc.credentials_enc))
     before = dict(creds)
     try:
-        post_id, url = await adapter.publish(creds, body.text, video_url)
+        post_id, url = await adapter.publish(creds, body.text, video_url, **({"images": images} if images else {}))
     except SocialError as e:
         pub.status, pub.error = "failed", str(e)[:300]
     except Exception:

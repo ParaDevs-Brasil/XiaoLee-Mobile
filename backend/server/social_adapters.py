@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import logging
 import secrets
 import time
@@ -29,6 +30,8 @@ logger = logging.getLogger(__name__)
 
 TELEGRAM_VIDEO_MAX = 50 * 1024 * 1024  # limite do upload multipart da Bot API
 TELEGRAM_CAPTION_MAX = 1024
+IMAGE_MAX_BYTES = 5 * 1024 * 1024  # o menor limite entre as redes (X: 5 MB por imagem)
+IMAGES_MAX = 4  # X e Bluesky aceitam até 4 por post
 BSKY_PDS = "https://bsky.social"
 BSKY_PUBLIC = "https://public.api.bsky.app"
 BSKY_TEXT_MAX = 300
@@ -37,6 +40,9 @@ X_API = "https://api.x.com/2"
 X_SCOPES = "tweet.read tweet.write users.read offline.access media.write"
 X_IMAGE_MAX = 5 * 1024 * 1024  # upload simples de imagem do X
 X_TEXT_MAX = 280
+
+
+Image = tuple[bytes, str]  # (bytes, mime)
 
 
 class SocialError(Exception):
@@ -80,8 +86,20 @@ class TelegramAdapter:
         handle = f"@{chat['username']}" if chat.get("username") else chat.get("title", str(chat["id"]))
         return str(chat["id"]), handle, {"chat_id": chat["id"], "username": chat.get("username")}
 
-    async def publish(self, stored: dict, text: str, video_url: Optional[str]) -> tuple[str, Optional[str]]:
-        if video_url:
+    async def publish(self, stored: dict, text: str, video_url: Optional[str],
+                      images: Optional[list[Image]] = None) -> tuple[str, Optional[str]]:
+        if images:
+            if len(text) > TELEGRAM_CAPTION_MAX:
+                raise SocialError(f"Telegram photo captions are limited to {TELEGRAM_CAPTION_MAX} characters")
+            if len(images) == 1:
+                res = await self._call("sendPhoto", data={"chat_id": str(stored["chat_id"]), "caption": text},
+                                       files={"photo": ("photo", images[0][0], images[0][1])})
+            else:
+                media = [{"type": "photo", "media": f"attach://p{i}", **({"caption": text} if i == 0 else {})}
+                         for i in range(len(images))]
+                res = (await self._call("sendMediaGroup", data={"chat_id": str(stored["chat_id"]), "media": json.dumps(media)},
+                                        files={f"p{i}": (f"p{i}", b, m) for i, (b, m) in enumerate(images)}))[0]
+        elif video_url:
             try:
                 async with httpx.AsyncClient(timeout=120) as c:
                     v = await c.get(video_url)
@@ -134,8 +152,11 @@ class BlueskyAdapter:
             raise SocialError("Could not reach Bluesky")
         return s["did"], s["handle"], stored
 
-    async def publish(self, stored: dict, text: str, video_url: Optional[str]) -> tuple[str, Optional[str]]:
-        # ponytail: só texto. Vídeo = app.bsky.video.uploadVideo (limites de tamanho/duração a confirmar no D2).
+    async def publish(self, stored: dict, text: str, video_url: Optional[str],
+                      images: Optional[list[Image]] = None) -> tuple[str, Optional[str]]:
+        # ponytail: só texto. Imagem = com.atproto.repo.uploadBlob + embed; vídeo = app.bsky.video.uploadVideo.
+        if images:
+            raise SocialError("Photos on Bluesky are not supported yet")
         if len(text) > BSKY_TEXT_MAX:
             raise SocialError(f"Bluesky text is limited to {BSKY_TEXT_MAX} characters")
         from datetime import datetime, timezone
@@ -244,16 +265,16 @@ class XAdapter:
         return str(body["data"]["id"])
 
     async def publish(self, stored: dict, text: str, video_url: Optional[str],
-                      image: Optional[tuple[bytes, str]] = None) -> tuple[str, Optional[str]]:
-        # ponytail: texto (+ link) e uma imagem (bytes, mime). Vídeo nativo = upload em partes; o corte vai por link (/c/{id}).
+                      images: Optional[list[Image]] = None) -> tuple[str, Optional[str]]:
+        # ponytail: texto (+ link) e até 4 imagens. Vídeo nativo = upload em partes; o corte vai por link (/c/{id}).
         if video_url:
             raise SocialError("Clips on X go as a link, not as an upload")
         if len(text) > X_TEXT_MAX:
             raise SocialError(f"X text is limited to {X_TEXT_MAX} characters")
         token = await self._fresh(stored)
         payload: dict = {"text": text}
-        if image:
-            payload["media"] = {"media_ids": [await self._upload_image(token, *image)]}
+        if images:
+            payload["media"] = {"media_ids": [await self._upload_image(token, *img) for img in images[:IMAGES_MAX]]}
         try:
             async with httpx.AsyncClient(timeout=30) as c:
                 r = await c.post(f"{X_API}/tweets", json=payload, headers={"Authorization": f"Bearer {token}"})
