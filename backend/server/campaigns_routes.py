@@ -395,6 +395,8 @@ async def _resolve_user(db: AsyncSession, authorization: Optional[str], *, stric
 
 
 async def _seed_default_campaigns(db: AsyncSession) -> None:
+    if not settings.arc_sandbox:
+        return  # mainnet: sem campanhas de demonstração com dinheiro real
     count_res = await db.execute(select(func.count()).select_from(CampaignModel))
     existing_count = count_res.scalar() or 0
     if existing_count > 0:

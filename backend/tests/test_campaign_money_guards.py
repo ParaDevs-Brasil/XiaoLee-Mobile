@@ -423,3 +423,19 @@ class TestCreatorApproval:
     async def test_unknown_participant_is_404(self, db):
         creator, _, camp, _ = await self._setup(db)
         assert client.post(f"/campaigns/{camp.id}/participants/99999/approve", headers=creator).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_no_default_campaign_seed_on_mainnet(monkeypatch):
+    import dataclasses
+    from server import campaigns_routes as cr
+
+    monkeypatch.setattr(cr, "settings", dataclasses.replace(cr.settings, arc_sandbox=False))
+    called = []
+
+    class _DB:
+        async def execute(self, *a, **k):
+            called.append(1)
+
+    await cr._seed_default_campaigns(_DB())
+    assert not called
