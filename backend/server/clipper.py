@@ -15,6 +15,7 @@ import asyncio
 import base64
 import json
 import logging
+import math
 import os
 import re
 import subprocess
@@ -22,6 +23,7 @@ import tempfile
 from dataclasses import dataclass
 from itertools import zip_longest
 
+from server import framing
 from server.settings import GROQ_BASE_URL, settings
 
 log = logging.getLogger(__name__)
@@ -547,7 +549,7 @@ LAYOUTS = ("crop", "fit")
 LAYOUT_CHOICES = LAYOUTS + ("auto",)  # auto: o Claude olha 3 quadros e escolhe (ver detect_layout)
 
 
-def video_filter(layout: str, ass_path: str) -> str:
+def video_filter(layout: str, ass_path: str, crop_x: str | None = None) -> str:
     """crop: preenche 9:16 cortando o centro — bom para quem fala para a câmera.
     fit: vídeo inteiro no meio sobre o próprio vídeo desfocado — para gravação de tela, gráficos e
     planos abertos, onde o corte central joga fora o conteúdo (visto num vídeo real de screencast)."""
@@ -558,6 +560,8 @@ def video_filter(layout: str, ass_path: str) -> str:
             # desfoque calculado em 1/4 da resolução e ampliado: ~4x mais barato que desfocar em 1080x1920
             f"[b]scale=1080:-2[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,{sub}"
         )
+    if crop_x:  # framing.follow_expr: o corte acompanha o rosto em vez de ficar no centro
+        return f"scale=-2:1920,crop=1080:1920:x='{crop_x}':y=0,{sub}"
     return f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,{sub}"
 
 
@@ -622,13 +626,48 @@ async def detect_layout(source: str, start: float, end: float) -> str:
         return "fit"
 
 
+# Volume do corte: -16 LUFS é o nível de fala para short/reels; pico em -2 dBFS + limiter deixam folga para o AAC
+# (medido em fala real: 1 passada estourava +1.9 dBFS e achatava a dinâmica; 2 passadas fica em -16.3 LUFS / <= -1.4 dBFS).
+LOUDNORM = "I=-16:TP=-2:LRA=11"
+
+
+def loudnorm_filter(report: str) -> str | None:
+    """Filtro de 2ª passada a partir do JSON que o loudnorm imprime na 1ª; None se não há áudio útil (mudo, sem faixa)."""
+    try:
+        m = json.loads(report[report.rindex("{"):report.rindex("}") + 1])
+        i, tp, lra, thr, off = (float(m[k]) for k in ("input_i", "input_tp", "input_lra", "input_thresh", "target_offset"))
+    except (ValueError, KeyError):
+        return None
+    if not all(map(math.isfinite, (i, tp, lra, thr, off))):  # trecho mudo: -inf
+        return None
+    return (f"loudnorm={LOUDNORM}:measured_I={i}:measured_TP={tp}:measured_LRA={lra}:measured_thresh={thr}"
+            f":offset={off}:linear=true,alimiter=limit=0.84:level=disabled")
+
+
+async def measure_loudness(source: str, start: float, end: float) -> str | None:
+    """1ª passada (só áudio, sem render). Qualquer falha vira None: o corte sai sem normalizar em vez de falhar."""
+    try:
+        out = await run_ffmpeg(
+            ["-v", "info", "-ss", f"{start:.3f}", "-t", f"{end - start:.3f}", "-i", source, "-vn",
+             "-af", f"loudnorm={LOUDNORM}:print_format=json", "-f", "null", "-"],
+            source, FFMPEG_TIMEOUT_S,
+        )
+        return loudnorm_filter(out)
+    except Exception as exc:
+        log.warning("clipper: medição de volume falhou (%s), sem normalizar", str(exc)[:200])
+        return None
+
+
 async def render_clip(source: str, ass_path: str, start: float, end: float, dest: str, layout: str = "crop") -> None:
     """`source` é caminho local ou URL. -ss antes do -i: busca rápida e timestamps do corte começam em 0
     (por isso o .ass é relativo ao início)."""
     if layout not in LAYOUTS:
         raise ValueError(f"layout must be one of {LAYOUTS}")
+    af = await measure_loudness(source, start, end)
+    crop_x = await framing.follow_expr(source, start, end) if layout == "crop" else None
     await run_ffmpeg(
-        ["-ss", f"{start:.3f}", "-t", f"{end - start:.3f}", "-i", source, "-vf", video_filter(layout, ass_path),
+        ["-ss", f"{start:.3f}", "-t", f"{end - start:.3f}", "-i", source, "-vf", video_filter(layout, ass_path, crop_x),
+         *(["-af", af, "-ar", "48000"] if af else []),
          "-threads", str(FFMPEG_THREADS), "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
          "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", "-y", dest],
         source, FFMPEG_TIMEOUT_S,

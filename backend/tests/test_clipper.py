@@ -565,3 +565,52 @@ def test_clean_fixes_rules():
     for bad in ({"duas palavras": "x"}, {"": "x"}, {"a": ""}, {"a": "x" * 61}, {f"w{i}": "x" for i in range(21)}):
         with pytest.raises(ValueError):
             clipper.clean_fixes(bad)
+
+
+# ── volume do corte (loudnorm em 2 passadas) ───────────────────────────────────────────────────────────────
+
+def _loudness(path):
+    err = subprocess.run(["ffmpeg", "-nostdin", "-hide_banner", "-i", path, "-af", "ebur128=peak=true", "-f", "null", "-"],
+                         capture_output=True, text=True, check=True).stderr
+    tail = err[err.rindex("Summary"):]
+    return float(re.search(r"I:\s+(-?[\d.]+) LUFS", tail).group(1)), float(re.search(r"Peak:\s+(-?[\d.]+) dBFS", tail).group(1))
+
+
+def _src(tmp_path, name, audio):
+    p = str(tmp_path / name)
+    cmd = ["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc=size=640x360:rate=25:duration=12"]
+    if audio:
+        cmd += ["-f", "lavfi", "-i", audio, "-shortest"]
+    subprocess.run([*cmd, "-pix_fmt", "yuv420p", "-y", p], check=True)
+    return p
+
+
+def _render(tmp_path, src, out="o.mp4"):
+    ass = tmp_path / "s.ass"
+    ass.write_text(clipper.build_ass([], 0, 10), encoding="utf-8")
+    dest = str(tmp_path / out)
+    asyncio.run(clipper.render_clip(src, str(ass), 1.0, 11.0, dest))
+    return dest
+
+
+@pytest.mark.parametrize("gain", [0.02, 0.9])  # muito baixo e muito alto: os dois acabam no mesmo volume
+def test_render_normalizes_loudness_without_clipping(tmp_path, gain):
+    src = _src(tmp_path, "a.mp4", f"anoisesrc=color=pink:amplitude={gain}:duration=12")
+    lufs, peak = _loudness(_render(tmp_path, src))
+    assert lufs == pytest.approx(-16.0, abs=1.0)
+    assert peak <= -1.0
+
+
+def test_render_without_audio_track_or_with_silence_still_works(tmp_path):
+    for name, audio in (("n.mp4", None), ("s.mp4", "anullsrc=r=44100:cl=mono")):
+        src = _src(tmp_path, name, audio)
+        stream, duration = _probe(_render(tmp_path, src, "o_" + name))
+        assert stream["height"] == 1920 and duration == pytest.approx(10.0, abs=0.5)
+
+
+def test_loudnorm_filter_parses_report_and_rejects_unusable_ones():
+    ok = '{"input_i":"-30.1","input_tp":"-12.0","input_lra":"5.0","input_thresh":"-40.1","target_offset":"0.3"}'
+    f = clipper.loudnorm_filter("noise\n" + ok + "\n")
+    assert "measured_I=-30.1" in f and "offset=0.3" in f and f.endswith("level=disabled")
+    assert clipper.loudnorm_filter(ok.replace("-30.1", "-inf")) is None  # trecho mudo
+    assert clipper.loudnorm_filter("sem json") is None and clipper.loudnorm_filter("{}") is None
