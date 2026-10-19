@@ -17,6 +17,14 @@ campaigns_module = importlib.import_module("server.campaigns_routes")
 client = TestClient(app_module.app)
 
 
+@pytest.fixture(autouse=True)
+def _sandbox(monkeypatch):
+    # Seed das campanhas de demo só existe em sandbox; o .env da raiz pode ter ARC_SANDBOX=false.
+    import dataclasses
+
+    monkeypatch.setattr(campaigns_module, "settings", dataclasses.replace(campaigns_module.settings, arc_sandbox=True))
+
+
 def _build_claim_payload(
     private_key: Ed25519PrivateKey, campaign_id: int, session_token: str, label: str = "XiaoLee Devnet claim"
 ):
