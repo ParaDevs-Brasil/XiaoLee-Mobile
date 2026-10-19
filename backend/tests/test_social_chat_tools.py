@@ -183,3 +183,9 @@ def test_post_voice_guide_asks_for_human_crypto_native_copy():
     p = tools.SOCIAL_PROMPT
     assert "VOZ DOS POSTS" in p and "Audience" in p
     assert "game changer" in p and "diferentes DE VERDADE" in p  # banidos + opções realmente distintas
+
+
+def test_form_message_forces_options_and_personal_angle_cannot_invent_facts():
+    p = tools.SOCIAL_PROMPT
+    assert "Write post options" in p and "nunca com prepare_social_post" in p
+    assert "não invente motivação, história, bastidor nem sentimento" in p
