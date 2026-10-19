@@ -9,6 +9,7 @@ import type { CardDraft } from '@/lib/chat-cards';
 
 const GOALS = ['Grow my audience', 'Promote something', 'Share news', 'Start a conversation', 'Teach something'];
 const TONES = ['Casual', 'Professional', 'Playful', 'Bold'];
+const AUDIENCES = ['Crypto natives', 'New to crypto', 'Mixed'];
 
 function Chip({ label, on, onPress, children }: { label: string; on: boolean; onPress: () => void; children?: React.ReactNode }) {
   const styles = useStyles();
@@ -36,6 +37,7 @@ export function PostDraftCard({ draft, onAsk }: { draft: CardDraft; onAsk: (mess
   const [idea, setIdea] = useState('');
   const [goal, setGoal] = useState(GOALS[0]);
   const [tone, setTone] = useState(TONES[0]);
+  const [audience, setAudience] = useState(AUDIENCES[2]);
   const [sent, setSent] = useState(false);
 
   if (sent) {
@@ -50,7 +52,7 @@ export function PostDraftCard({ draft, onAsk }: { draft: CardDraft; onAsk: (mess
   function submit() {
     const name = NETWORK_NAMES[platform] ?? platform;
     setSent(true);
-    onAsk(`Write post options for ${name}. Idea: ${idea.trim()}. Goal: ${goal}. Tone: ${tone}.`);
+    onAsk(`Write post options for ${name}. Idea: ${idea.trim()}. Goal: ${goal}. Tone: ${tone}. Audience: ${audience}.`);
   }
 
   return (
@@ -88,6 +90,13 @@ export function PostDraftCard({ draft, onAsk }: { draft: CardDraft; onAsk: (mess
       <View style={styles.chips}>
         {GOALS.map((g) => (
           <Chip key={g} label={g} on={goal === g} onPress={() => setGoal(g)} />
+        ))}
+      </View>
+
+      <Text style={styles.label}>Who reads you</Text>
+      <View style={styles.chips}>
+        {AUDIENCES.map((a) => (
+          <Chip key={a} label={a} on={audience === a} onPress={() => setAudience(a)} />
         ))}
       </View>
 

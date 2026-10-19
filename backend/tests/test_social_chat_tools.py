@@ -177,3 +177,9 @@ async def test_post_options_card_validates_network_count_and_length_and_never_pu
 
 def test_options_prompt_blocks_invented_claims_and_misspelled_brand():
     assert "afirmações sobre terceiros ou o mercado" in tools.SOCIAL_PROMPT and "'Xiaolee'" in tools.SOCIAL_PROMPT
+
+
+def test_post_voice_guide_asks_for_human_crypto_native_copy():
+    p = tools.SOCIAL_PROMPT
+    assert "VOZ DOS POSTS" in p and "Audience" in p
+    assert "game changer" in p and "diferentes DE VERDADE" in p  # banidos + opções realmente distintas

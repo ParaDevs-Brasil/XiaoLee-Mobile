@@ -19,6 +19,7 @@ import {
   claimCampaignReward,
   getChatSessionMessages,
   getMyProfile,
+  listSocialAccounts,
   sendChatMessage,
   type ChatSessionMessage,
 } from '@/api/backend';
@@ -62,6 +63,7 @@ import {
   IconEdit,
   IconGift,
   IconSend,
+  IconShare,
   IconSwap,
   IconWallet,
   type IconProps,
@@ -102,6 +104,14 @@ const ACTIONS: Action[] = [
     title: 'Create a campaign',
     subtitle: 'Reward your community',
     prompt: 'I want to create a campaign to reward my community',
+  },
+  {
+    // Só aparece com a publicação ligada no backend (`SOCIAL_TOOLS_ENABLED`); ver `socialOn`.
+    key: 'post',
+    Icon: IconShare,
+    title: 'Post to your networks',
+    subtitle: 'Draft, preview and publish',
+    prompt: 'I want to post something on my networks, can you help me?',
   },
   {
     key: 'dashboard',
@@ -296,6 +306,8 @@ export default function ChatScreen() {
   const [welcome, setWelcome] = useState<WelcomeCopy | null>(null);
   // Interesses do onboarding — só reordenam os cards do estado inicial.
   const [interests, setInterests] = useState<string[]>([]);
+  // `null` = publicação desligada no backend (404) ou sem sessão: o atalho de postar nem aparece.
+  const [social, setSocial] = useState<{ connected: number } | null>(null);
   const { activeChatSessionId } = useChatSession();
   const [sessionsOpen, setSessionsOpen] = useState(false);
   const [sessionsAnchor, setSessionsAnchor] = useState<{ top: number; right: number }>();
@@ -412,6 +424,18 @@ export default function ChatScreen() {
       active = false;
     };
   }, [sessionId, accountId, router]);
+
+  // A publicação é opcional (flag no backend): se a lista de contas responde, o atalho de postar aparece.
+  useEffect(() => {
+    if (!sessionId) return;
+    let active = true;
+    listSocialAccounts()
+      .then((res) => active && setSocial({ connected: res.accounts.length }))
+      .catch(() => active && setSocial(null));
+    return () => {
+      active = false;
+    };
+  }, [sessionId]);
 
   /**
    * Troca o botão pelo hash na mensagem que foi assinada.
@@ -550,7 +574,7 @@ export default function ChatScreen() {
 
   const empty = messages.length === 0;
   const actions = prioritizeActions(
-    ACTIONS.map((action) => action.key),
+    ACTIONS.filter((action) => action.key !== 'post' || social).map((action) => action.key),
     interests,
   ).map((key) => ACTIONS.find((action) => action.key === key)!);
 
@@ -629,12 +653,17 @@ export default function ChatScreen() {
 
                 <View style={styles.actions}>
                   {actions.map((action) => (
-                    <ActionCard key={action.key} action={action} onPress={() => send(action.prompt)} />
+                    <ActionCard
+                      key={action.key}
+                      action={action}
+                      // Sem rede conectada não há o que rascunhar: leva direto a Contas.
+                      onPress={() => (action.key === 'post' && social?.connected === 0 ? router.push('/accounts') : send(action.prompt))}
+                    />
                   ))}
                 </View>
 
                 <View style={styles.suggestions}>
-                  {SUGGESTIONS.map((text) => (
+                  {(social?.connected ? [...SUGGESTIONS, 'Help me write a post'] : SUGGESTIONS).map((text) => (
                     <Suggestion key={text} text={text} onPress={() => send(text)} />
                   ))}
                 </View>
