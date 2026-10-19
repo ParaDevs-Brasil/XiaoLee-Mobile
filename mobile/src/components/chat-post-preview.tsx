@@ -3,7 +3,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { publishSocialPost } from '@/api/backend';
+import { getSocialSuggestions, publishSocialPost, type SocialSuggestions } from '@/api/backend';
 import { ApiError } from '@/api/client';
 import { IconCheck, IconChevronLeft, IconClose, IconPlus, IconSend } from '@/components/icons';
 import { NETWORK_NAMES, SocialLogo } from '@/components/social-logos';
@@ -11,6 +11,7 @@ import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
 import type { CardPost } from '@/lib/chat-cards';
 import { MAX_IMAGES, mergeImages, moveImage, pickPostImages, type PostImage } from '@/lib/post-images';
+import { insertToken } from '@/lib/post-text';
 
 /** O que a rede aceita (o backend confere de novo). Telegram só limita a legenda quando vai com vídeo. */
 function limitFor(post: CardPost, hasPhotos: boolean): number {
@@ -21,6 +22,8 @@ function limitFor(post: CardPost, hasPhotos: boolean): number {
 
 /** Redes onde o backend já publica foto (Bluesky ainda não). */
 const PHOTO_NETWORKS = ['x', 'telegram'];
+/** Redes onde o backend sabe sugerir menções e hashtags. */
+const SUGGEST_NETWORKS = ['x'];
 
 /**
  * Prévia do post que a Xiaolee deixou pronto (`prepare_social_post`): o creator vê como vai sair, ajusta o texto
@@ -44,6 +47,8 @@ export function PostPreview({
   // Só na memória do app: foto não é gravada no histórico da conversa (pesa e o creator pode trocar).
   const [images, setImages] = useState<PostImage[]>([]);
   const [photoNote, setPhotoNote] = useState<string>();
+  // Menções e hashtags: só buscadas quando o creator abre (cada leitura custa crédito na rede).
+  const [suggest, setSuggest] = useState<{ state: 'idle' | 'loading' | 'ready' | 'error'; data?: SocialSuggestions; error?: string }>({ state: 'idle' });
   const name = NETWORK_NAMES[post.platform] ?? post.platform;
   const limit = limitFor(post, images.length > 0);
   const canPhoto = PHOTO_NETWORKS.includes(post.platform) && post.clipId == null;
@@ -61,6 +66,16 @@ export function PostPreview({
         <Text style={styles.doneText}>Posted on {name}</Text>
       </Pressable>
     );
+  }
+
+  async function openSuggestions() {
+    if (suggest.state === 'ready') return setSuggest({ state: 'idle' });
+    setSuggest({ state: 'loading' });
+    try {
+      setSuggest({ state: 'ready', data: await getSocialSuggestions(post.platform) });
+    } catch (err) {
+      setSuggest({ state: 'error', error: err instanceof ApiError ? err.message : String(err) });
+    }
   }
 
   async function addPhotos() {
@@ -152,6 +167,60 @@ export function PostPreview({
         </Pressable>
       ) : null}
       {photoNote ? <Text style={styles.note}>{photoNote}</Text> : null}
+      {SUGGEST_NETWORKS.includes(post.platform) ? (
+        <>
+          <Pressable
+            onPress={openSuggestions}
+            disabled={posting || suggest.state === 'loading'}
+            style={({ pressed }) => [styles.addPhoto, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Mentions and hashtags"
+          >
+            {suggest.state === 'loading' ? (
+              <ActivityIndicator size="small" color={colors.ink2} />
+            ) : (
+              <Text style={styles.addPhotoText}>{suggest.state === 'ready' ? 'Hide mentions & hashtags' : '@ Mentions & # hashtags'}</Text>
+            )}
+          </Pressable>
+          {suggest.state === 'error' ? <Text style={styles.error}>{suggest.error}</Text> : null}
+          {suggest.state === 'ready' && suggest.data ? (
+            <View style={styles.suggestBox}>
+              {suggest.data.mentions.length ? <Text style={styles.suggestLabel}>People you talk to</Text> : null}
+              <View style={styles.photos}>
+                {suggest.data.mentions.map((m) => (
+                  <Pressable
+                    key={m.handle}
+                    onPress={() => setText((cur) => insertToken(cur, `@${m.handle}`))}
+                    disabled={posting}
+                    style={({ pressed }) => [styles.token, pressed && styles.pressed]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Add @${m.handle}`}
+                  >
+                    <Text style={styles.tokenText}>@{m.handle}</Text>
+                    <Text style={styles.tokenWhy}>{m.why}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              {suggest.data.hashtags.length ? <Text style={styles.suggestLabel}>Hashtags</Text> : null}
+              <View style={styles.photos}>
+                {suggest.data.hashtags.map((h) => (
+                  <Pressable
+                    key={h.tag}
+                    onPress={() => setText((cur) => insertToken(cur, `#${h.tag}`))}
+                    disabled={posting}
+                    style={({ pressed }) => [styles.token, pressed && styles.pressed]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Add #${h.tag}`}
+                  >
+                    <Text style={styles.tokenText}>#{h.tag}</Text>
+                    <Text style={styles.tokenWhy}>{h.why}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          ) : null}
+        </>
+      ) : null}
       <View style={styles.foot}>
         <Text style={[styles.count, over && styles.countOver]}>
           {text.length}/{limit}
@@ -242,6 +311,18 @@ const useStyles = makeStyles((colors) => ({
   },
   addPhotoText: { fontFamily: Fonts.sans, fontSize: 12, color: colors.ink2 },
   note: { fontFamily: Fonts.sans, fontSize: 11, color: colors.ink3 },
+  suggestBox: { gap: Spacing.two },
+  suggestLabel: { fontFamily: Fonts.bold, fontSize: 12, color: colors.ink2 },
+  token: {
+    paddingHorizontal: Spacing.two + 4,
+    paddingVertical: 6,
+    borderRadius: Radius.md,
+    backgroundColor: colors.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+  },
+  tokenText: { fontFamily: Fonts.bold, fontSize: 13, color: colors.ink },
+  tokenWhy: { fontFamily: Fonts.sans, fontSize: 10, color: colors.ink3 },
   foot: { flexDirection: 'row', justifyContent: 'space-between' },
   count: { fontFamily: Fonts.sans, fontSize: 12, color: colors.ink3 },
   countOver: { color: colors.danger },

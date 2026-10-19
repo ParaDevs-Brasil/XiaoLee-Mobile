@@ -1003,6 +1003,17 @@ export async function connectSocialAccount(
   });
 }
 
+/** Menções e hashtags reais (da conta do creator e do nicho cripto) para inserir no post. */
+export interface SocialSuggestions {
+  mentions: { handle: string; name: string; why: string }[];
+  hashtags: { tag: string; why: string }[];
+}
+
+export async function getSocialSuggestions(platform: string): Promise<SocialSuggestions> {
+  const res = await apiFetch<Partial<SocialSuggestions>>(`/v1/social/suggestions/${platform}`, { timeoutMs: 60_000 });
+  return { mentions: res.mentions ?? [], hashtags: res.hashtags ?? [] };
+}
+
 /** Redirect do login do X; o mesmo valor está cadastrado no app do X e em `X_OAUTH_REDIRECT` no backend. */
 export const X_REDIRECT = 'xiaolee://social/x';
 
