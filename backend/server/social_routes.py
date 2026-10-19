@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import secrets
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -31,12 +32,15 @@ from database.repository import to_utc_iso
 from server import media_storage
 from server.campaigns_routes import _resolve_user
 from server.settings import settings
-from server.social_adapters import ADAPTERS, SocialError
+from server.social_adapters import ADAPTERS, SocialError, XAdapter
 from user_management.encryption_service import EncryptionService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/social", tags=["social"])
 _crypto = EncryptionService(ENCRYPTION_KEY)
+
+
+X_PENDING = "x_pending"  # login do X em andamento: {state, verifier} cifrados; some no callback
 
 
 def _enabled() -> None:
@@ -84,7 +88,8 @@ async def _account(db: AsyncSession, user_id: int, platform: str) -> Optional[So
 async def list_accounts(authorization: Optional[str] = Header(None), db: AsyncSession = Depends(get_db_session)):
     _enabled()
     user = await _resolve_user(db, authorization, strict=True)
-    rows = (await db.execute(select(SocialAccount).where(SocialAccount.user_id == user.id))).scalars().all()
+    rows = (await db.execute(select(SocialAccount).where(
+        SocialAccount.user_id == user.id, SocialAccount.platform != X_PENDING))).scalars().all()
     # `hints`: o que a tela precisa mostrar para o creator conectar (bot que ele adiciona como admin do canal).
     return {"accounts": [_account_out(a) for a in rows], "available": list(ADAPTERS),
             "hints": {"telegram_bot": settings.telegram_bot_name}}
@@ -107,6 +112,60 @@ async def connect_account(platform: str, body: ConnectBody, authorization: Optio
     else:
         acc = SocialAccount(user_id=user.id, platform=platform, external_id=external_id, handle=handle,
                             credentials_enc=enc, status="active")
+        db.add(acc)
+    await db.commit()
+    await db.refresh(acc)
+    return _account_out(acc)
+
+
+class XCallbackBody(BaseModel):
+    code: str = Field(min_length=1, max_length=2048)
+    state: str = Field(min_length=1, max_length=256)
+
+
+@router.post("/x/start")
+async def x_start(authorization: Optional[str] = Header(None), db: AsyncSession = Depends(get_db_session)):
+    """Começa o login do X: guarda state+verifier PKCE (cifrados) e devolve a URL para o app abrir."""
+    _enabled()
+    user = await _resolve_user(db, authorization, strict=True)
+    verifier, challenge = XAdapter.new_pkce()
+    state = secrets.token_urlsafe(24)
+    try:
+        url = XAdapter.authorize_url(state, challenge)
+    except SocialError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    enc = _crypto.encrypt(json.dumps({"state": state, "verifier": verifier}))
+    row = await _account(db, user.id, X_PENDING)
+    if row:
+        row.credentials_enc = enc
+    else:
+        db.add(SocialAccount(user_id=user.id, platform=X_PENDING, external_id="", handle="", credentials_enc=enc, status="pending"))
+    await db.commit()
+    return {"authorize_url": url}
+
+
+@router.post("/x/callback")
+async def x_callback(body: XCallbackBody, authorization: Optional[str] = Header(None),
+                     db: AsyncSession = Depends(get_db_session)):
+    """O app devolve o `code`/`state` do redirect; troca por tokens (PKCE) e conecta a conta."""
+    _enabled()
+    user = await _resolve_user(db, authorization, strict=True)
+    pending = await _account(db, user.id, X_PENDING)
+    pend = json.loads(_crypto.decrypt(pending.credentials_enc)) if pending else {}
+    if not pend or not secrets.compare_digest(pend["state"], body.state):
+        raise HTTPException(status_code=400, detail="Login expired, try connecting X again")
+    await db.delete(pending)  # uso único: um code/state só vale uma vez
+    try:
+        external_id, handle, stored = await _adapter("x").exchange(body.code, pend["verifier"])
+    except SocialError as e:
+        await db.commit()
+        raise HTTPException(status_code=400, detail=str(e))
+    enc = _crypto.encrypt(json.dumps(stored))
+    acc = await _account(db, user.id, "x")
+    if acc:
+        acc.external_id, acc.handle, acc.credentials_enc, acc.status = external_id, handle, enc, "active"
+    else:
+        acc = SocialAccount(user_id=user.id, platform="x", external_id=external_id, handle=handle, credentials_enc=enc, status="active")
         db.add(acc)
     await db.commit()
     await db.refresh(acc)
@@ -143,6 +202,15 @@ async def publish(body: PublishBody, authorization: Optional[str] = Header(None)
     if today >= settings.social_max_posts_per_day:
         raise HTTPException(status_code=429, detail="Daily post limit reached for this network")
 
+    if body.platform == "x":
+        month = (await db.execute(
+            select(func.count()).select_from(PostPublication).where(
+                PostPublication.user_id == user.id, PostPublication.platform == "x",
+                PostPublication.status != "failed", PostPublication.created_at >= datetime.utcnow() - timedelta(days=30))
+        )).scalar() or 0
+        if month >= settings.social_x_max_posts_per_month:
+            raise HTTPException(status_code=429, detail="Monthly post limit reached for X")
+
     video_url = None
     if body.clip_id is not None:
         clip = (await db.execute(
@@ -161,8 +229,10 @@ async def publish(body: PublishBody, authorization: Optional[str] = Header(None)
     db.add(pub)
     await db.commit()  # intent log antes de tocar a rede
     await db.refresh(pub)
+    creds = json.loads(_crypto.decrypt(acc.credentials_enc))
+    before = dict(creds)
     try:
-        post_id, url = await adapter.publish(json.loads(_crypto.decrypt(acc.credentials_enc)), body.text, video_url)
+        post_id, url = await adapter.publish(creds, body.text, video_url)
     except SocialError as e:
         pub.status, pub.error = "failed", str(e)[:300]
     except Exception:
@@ -170,6 +240,8 @@ async def publish(body: PublishBody, authorization: Optional[str] = Header(None)
         pub.status, pub.error = "failed", "Unexpected error while posting"
     else:
         pub.status, pub.external_post_id, pub.url, pub.published_at = "published", post_id, url, datetime.utcnow()
+    if creds != before:  # o adaptador renovou o token
+        acc.credentials_enc = _crypto.encrypt(json.dumps(creds))
     await db.commit()
     await db.refresh(pub)
     return _pub_out(pub)
@@ -200,10 +272,14 @@ async def refresh_metrics(pub_id: int, authorization: Optional[str] = Header(Non
     acc = await _account(db, user.id, pub.platform)
     if not acc:
         raise HTTPException(status_code=409, detail=f"Connect your {pub.platform} account first")
+    creds = json.loads(_crypto.decrypt(acc.credentials_enc))
+    before = dict(creds)
     try:
-        m = await _adapter(pub.platform).fetch_metrics(json.loads(_crypto.decrypt(acc.credentials_enc)), pub.external_post_id)
+        m = await _adapter(pub.platform).fetch_metrics(creds, pub.external_post_id)
     except SocialError as e:
         raise HTTPException(status_code=502, detail=str(e))
+    if creds != before:
+        acc.credentials_enc = _crypto.encrypt(json.dumps(creds))
     pub.metrics_json, pub.metrics_at = json.dumps(m), datetime.utcnow()
     await db.commit()
     await db.refresh(pub)

@@ -19,12 +19,12 @@ from sqlalchemy import select
 
 from database.models import MediaClip, PostPublication, SocialAccount
 from server.campaigns_routes import _resolve_user
-from server.social_adapters import ADAPTERS, BSKY_TEXT_MAX, TELEGRAM_CAPTION_MAX
+from server.social_adapters import ADAPTERS, BSKY_TEXT_MAX, TELEGRAM_CAPTION_MAX, X_TEXT_MAX
 
 SOCIAL_TOOL_NAMES = {"get_publishing_context", "prepare_social_post"}
 
 # Limite de texto por rede (o que a rede aceita); Telegram só limita a legenda quando vai com vídeo.
-TEXT_LIMITS = {"bluesky": BSKY_TEXT_MAX, "telegram": TELEGRAM_CAPTION_MAX}
+TEXT_LIMITS = {"bluesky": BSKY_TEXT_MAX, "telegram": TELEGRAM_CAPTION_MAX, "x": X_TEXT_MAX}
 
 SOCIAL_TOOLS = [
     {"type": "function", "function": {

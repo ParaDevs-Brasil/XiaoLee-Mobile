@@ -12,8 +12,13 @@ token do bot, então não usamos `raise_for_status`, cujo texto a inclui).
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import logging
+import secrets
+import time
 from typing import Any, Optional
+from urllib.parse import urlencode
 
 import httpx
 
@@ -26,6 +31,10 @@ TELEGRAM_CAPTION_MAX = 1024
 BSKY_PDS = "https://bsky.social"
 BSKY_PUBLIC = "https://public.api.bsky.app"
 BSKY_TEXT_MAX = 300
+X_AUTHORIZE = "https://x.com/i/oauth2/authorize"
+X_API = "https://api.x.com/2"
+X_SCOPES = "tweet.read tweet.write users.read offline.access"
+X_TEXT_MAX = 280
 
 
 class SocialError(Exception):
@@ -158,4 +167,88 @@ class BlueskyAdapter:
                 "replies": p.get("replyCount", 0), "quotes": p.get("quoteCount", 0)}
 
 
-ADAPTERS = {a.platform: a for a in (TelegramAdapter(), BlueskyAdapter())}
+class XAdapter:
+    """Conta X do creator via OAuth 2.0 PKCE (cliente público). `stored` = {access_token, refresh_token, expires_at}.
+
+    Diferente das outras redes, não conecta por formulário: `authorize_url` + `exchange` (rotas /x/start e /x/callback).
+    `publish`/`fetch_metrics` renovam o token quando vence e o gravam em `stored` — a rota re-cifra se mudou.
+    """
+
+    platform = "x"
+
+    @staticmethod
+    def new_pkce() -> tuple[str, str]:
+        verifier = secrets.token_urlsafe(64)
+        challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+        return verifier, challenge
+
+    @staticmethod
+    def authorize_url(state: str, challenge: str) -> str:
+        if not settings.x_oauth_client_id:
+            raise SocialError("X is not configured")
+        return X_AUTHORIZE + "?" + urlencode({
+            "response_type": "code", "client_id": settings.x_oauth_client_id, "redirect_uri": settings.x_oauth_redirect,
+            "scope": X_SCOPES, "state": state, "code_challenge": challenge, "code_challenge_method": "S256"})
+
+    async def _token(self, **form: str) -> dict:
+        try:
+            async with httpx.AsyncClient(timeout=20) as c:
+                r = await c.post(f"{X_API}/oauth2/token", data={"client_id": settings.x_oauth_client_id, **form})
+            body = r.json()
+        except Exception:
+            raise SocialError("Could not reach X")
+        if not r.is_success or "access_token" not in body:
+            raise SocialError("X rejected the login, connect again")
+        return {"access_token": body["access_token"], "refresh_token": body.get("refresh_token", form.get("refresh_token", "")),
+                "expires_at": int(time.time()) + int(body.get("expires_in", 7200)) - 60}
+
+    async def _get(self, path: str, token: str, **params: str) -> dict:
+        try:
+            async with httpx.AsyncClient(timeout=20) as c:
+                r = await c.get(f"{X_API}{path}", params=params, headers={"Authorization": f"Bearer {token}"})
+            body = r.json()
+        except Exception:
+            raise SocialError("Could not reach X")
+        if not r.is_success:
+            raise SocialError(f"X: {str(body.get('detail') or body.get('title') or 'error')[:200]}")
+        return body
+
+    async def exchange(self, code: str, verifier: str) -> tuple[str, str, dict]:
+        stored = await self._token(grant_type="authorization_code", code=code, redirect_uri=settings.x_oauth_redirect,
+                                   code_verifier=verifier)
+        me = (await self._get("/users/me", stored["access_token"]))["data"]
+        return me["id"], f"@{me['username']}", stored
+
+    async def connect(self, inputs: dict) -> tuple[str, str, dict]:
+        raise SocialError("Connect X with the login button")
+
+    async def _fresh(self, stored: dict) -> str:
+        if stored.get("expires_at", 0) <= time.time():
+            stored.update(await self._token(grant_type="refresh_token", refresh_token=stored.get("refresh_token", "")))
+        return stored["access_token"]
+
+    async def publish(self, stored: dict, text: str, video_url: Optional[str]) -> tuple[str, Optional[str]]:
+        # ponytail: só texto (+ link no texto). Vídeo nativo no X = upload de mídia; o link do corte vem da página /c/{id}.
+        if video_url:
+            raise SocialError("Clips on X go as a link, not as an upload")
+        if len(text) > X_TEXT_MAX:
+            raise SocialError(f"X text is limited to {X_TEXT_MAX} characters")
+        token = await self._fresh(stored)
+        try:
+            async with httpx.AsyncClient(timeout=30) as c:
+                r = await c.post(f"{X_API}/tweets", json={"text": text}, headers={"Authorization": f"Bearer {token}"})
+            body = r.json()
+        except Exception:
+            raise SocialError("Could not reach X")
+        if not r.is_success:
+            raise SocialError(f"X: {str(body.get('detail') or body.get('title') or 'refused the post')[:200]}")
+        tid = body["data"]["id"]
+        return tid, f"https://x.com/i/status/{tid}"
+
+    async def fetch_metrics(self, stored: dict, post_id: str) -> dict:
+        m = (await self._get(f"/tweets/{post_id}", await self._fresh(stored), **{"tweet.fields": "public_metrics"}))["data"]["public_metrics"]
+        return {"views": m.get("impression_count", 0), "likes": m.get("like_count", 0), "reposts": m.get("retweet_count", 0),
+                "replies": m.get("reply_count", 0), "quotes": m.get("quote_count", 0)}
+
+
+ADAPTERS = {a.platform: a for a in (TelegramAdapter(), BlueskyAdapter(), XAdapter())}
