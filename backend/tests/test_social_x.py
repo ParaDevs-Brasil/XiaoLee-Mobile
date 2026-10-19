@@ -77,7 +77,7 @@ class FakeX:
                 {"id": "7", "username": "Bia", "name": "Bia Cripto"}, {"id": "42", "username": "ana", "name": "Ana"}]}})
         if path == "/2/tweets/search/recent":
             return httpx.Response(200, json={"data": [
-                {"id": "5", "entities": {"hashtags": [{"tag": "Bitcoin"}, {"tag": "Arc"}]}},
+                {"id": "5", "entities": {"hashtags": [{"tag": "Bitcoin"}, {"tag": "bitcoin"}, {"tag": "Bitcoin"}, {"tag": "Arc"}]}},
                 {"id": "6", "entities": {"hashtags": [{"tag": "Arc"}, {"tag": "USDC"}]}}]})
         if path == "/2/tweets" and request.method == "POST":
             self.tweet_body = request.content.decode()
@@ -270,10 +270,11 @@ async def test_suggestions_come_only_from_real_account_and_niche_data(db):
     assert handles == ["Bia", "Carlos"] or handles == ["Carlos", "Bia"]  # nunca ele mesmo (ana)
     assert "ana" not in [h.lower() for h in handles]
     bia = next(m for m in out["mentions"] if m["handle"] == "Bia")
-    assert bia["why"] == "replied to you" and bia["name"] == "Bia Cripto"
+    assert bia["why"] == "replied" and bia["name"] == "Bia Cripto"
     tags = {h["tag"]: h for h in out["hashtags"]}
     assert tags["Arc"]["why"] == "you use it"  # a que ele já usa não aparece como "trend"
-    assert tags["Bitcoin"]["why"] == "trending in crypto now" and "USDC" in tags
+    assert tags["Bitcoin"]["why"] == "trending" and "USDC" in tags
+    assert [t for t in tags if t.lower() == "bitcoin"] == ["Bitcoin"]  # maiúscula e minúscula viram uma só
 
 
 @pytest.mark.asyncio

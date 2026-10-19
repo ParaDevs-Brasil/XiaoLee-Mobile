@@ -337,26 +337,31 @@ class XAdapter:
             for m in t.get("entities", {}).get("mentions", []):
                 h = m["username"]
                 if h.lower() not in me:
-                    mentions.setdefault(h.lower(), {"handle": h, "name": "", "why": "you tagged them before", "n": 0})["n"] += 1
+                    mentions.setdefault(h.lower(), {"handle": h, "name": "", "why": "you tagged", "n": 0})["n"] += 1
         for u in inbox.get("includes", {}).get("users", []):
             if u["username"].lower() not in me:
                 e = mentions.setdefault(u["username"].lower(), {"handle": u["username"], "name": u.get("name", ""), "why": "", "n": 0})
                 e["name"] = e["name"] or u.get("name", "")
-                e["why"] = "replied to you" if not e["why"] else "you tagged them and they replied"
+                e["why"] = "replied" if not e["why"] else "tagged + replied"
                 e["n"] += 2
 
         def tags(posts) -> dict[str, int]:
-            out: dict[str, int] = {}
+            # #Crypto e #crypto são a mesma hashtag no X: junta e guarda a grafia mais usada
+            count: dict[str, int] = {}
+            spelling: dict[str, dict[str, int]] = {}
             for t in posts:
                 for h in t.get("entities", {}).get("hashtags", []):
-                    out[h["tag"]] = out.get(h["tag"], 0) + 1
-            return out
+                    k = h["tag"].lower()
+                    count[k] = count.get(k, 0) + 1
+                    spelling.setdefault(k, {})[h["tag"]] = spelling.get(k, {}).get(h["tag"], 0) + 1
+            return {max(spelling[k], key=spelling[k].get): n for k, n in count.items()}
 
         own, trending = tags(mine.get("data", [])), tags(niche.get("data", []))
         hashtags = [{"tag": k, "why": "you use it", "n": v} for k, v in own.items()]
-        hashtags += [{"tag": k, "why": "trending in crypto now", "n": v} for k, v in trending.items() if k not in own]
+        own_lower = {k.lower() for k in own}
+        hashtags += [{"tag": k, "why": "trending", "n": v} for k, v in trending.items() if k.lower() not in own_lower]
         top = lambda items, n: sorted(items, key=lambda x: -x["n"])[:n]  # noqa: E731
-        return {"mentions": top(list(mentions.values()), 8), "hashtags": top(hashtags, 10)}
+        return {"mentions": top(list(mentions.values()), 5), "hashtags": top(hashtags, 6)}
 
     async def fetch_metrics(self, stored: dict, post_id: str) -> dict:
         m = (await self._get(f"/tweets/{post_id}", await self._fresh(stored), **{"tweet.fields": "public_metrics"}))["data"]["public_metrics"]

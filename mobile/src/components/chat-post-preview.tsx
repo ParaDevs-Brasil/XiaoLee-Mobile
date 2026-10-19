@@ -196,8 +196,9 @@ export function PostPreview({
                     accessibilityRole="button"
                     accessibilityLabel={`Add @${m.handle}`}
                   >
-                    <Text style={styles.tokenText}>@{m.handle}</Text>
-                    <Text style={styles.tokenWhy}>{m.why}</Text>
+                    <Text style={styles.tokenText}>
+                      @{m.handle} <Text style={styles.tokenWhy}>· {m.why}</Text>
+                    </Text>
                   </Pressable>
                 ))}
               </View>
@@ -212,8 +213,9 @@ export function PostPreview({
                     accessibilityRole="button"
                     accessibilityLabel={`Add #${h.tag}`}
                   >
-                    <Text style={styles.tokenText}>#{h.tag}</Text>
-                    <Text style={styles.tokenWhy}>{h.why}</Text>
+                    <Text style={styles.tokenText}>
+                      #{h.tag} <Text style={styles.tokenWhy}>· {h.why}</Text>
+                    </Text>
                   </Pressable>
                 ))}
               </View>
@@ -322,7 +324,7 @@ const useStyles = makeStyles((colors) => ({
     borderColor: colors.border,
   },
   tokenText: { fontFamily: Fonts.bold, fontSize: 13, color: colors.ink },
-  tokenWhy: { fontFamily: Fonts.sans, fontSize: 10, color: colors.ink3 },
+  tokenWhy: { fontFamily: Fonts.sans, fontSize: 11, color: colors.ink3 },
   foot: { flexDirection: 'row', justifyContent: 'space-between' },
   count: { fontFamily: Fonts.sans, fontSize: 12, color: colors.ink3 },
   countOver: { color: colors.danger },
