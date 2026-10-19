@@ -33,7 +33,8 @@ BSKY_PUBLIC = "https://public.api.bsky.app"
 BSKY_TEXT_MAX = 300
 X_AUTHORIZE = "https://x.com/i/oauth2/authorize"
 X_API = "https://api.x.com/2"
-X_SCOPES = "tweet.read tweet.write users.read offline.access"
+X_SCOPES = "tweet.read tweet.write users.read offline.access media.write"
+X_IMAGE_MAX = 5 * 1024 * 1024  # upload simples de imagem do X
 X_TEXT_MAX = 280
 
 
@@ -227,16 +228,34 @@ class XAdapter:
             stored.update(await self._token(grant_type="refresh_token", refresh_token=stored.get("refresh_token", "")))
         return stored["access_token"]
 
-    async def publish(self, stored: dict, text: str, video_url: Optional[str]) -> tuple[str, Optional[str]]:
-        # ponytail: só texto (+ link no texto). Vídeo nativo no X = upload de mídia; o link do corte vem da página /c/{id}.
+    async def _upload_image(self, token: str, image: bytes, mime: str) -> str:
+        if len(image) > X_IMAGE_MAX:
+            raise SocialError("Image is larger than X's 5 MB limit")
+        try:
+            async with httpx.AsyncClient(timeout=60) as c:
+                r = await c.post(f"{X_API}/media/upload", headers={"Authorization": f"Bearer {token}"},
+                                 data={"media_category": "tweet_image"}, files={"media": ("image", image, mime)})
+            body = r.json()
+        except Exception:
+            raise SocialError("Could not reach X")
+        if not r.is_success:
+            raise SocialError(f"X: {str(body.get('detail') or body.get('title') or 'refused the image')[:200]}")
+        return str(body["data"]["id"])
+
+    async def publish(self, stored: dict, text: str, video_url: Optional[str],
+                      image: Optional[tuple[bytes, str]] = None) -> tuple[str, Optional[str]]:
+        # ponytail: texto (+ link) e uma imagem (bytes, mime). Vídeo nativo = upload em partes; o corte vai por link (/c/{id}).
         if video_url:
             raise SocialError("Clips on X go as a link, not as an upload")
         if len(text) > X_TEXT_MAX:
             raise SocialError(f"X text is limited to {X_TEXT_MAX} characters")
         token = await self._fresh(stored)
+        payload: dict = {"text": text}
+        if image:
+            payload["media"] = {"media_ids": [await self._upload_image(token, *image)]}
         try:
             async with httpx.AsyncClient(timeout=30) as c:
-                r = await c.post(f"{X_API}/tweets", json={"text": text}, headers={"Authorization": f"Bearer {token}"})
+                r = await c.post(f"{X_API}/tweets", json=payload, headers={"Authorization": f"Bearer {token}"})
             body = r.json()
         except Exception:
             raise SocialError("Could not reach X")

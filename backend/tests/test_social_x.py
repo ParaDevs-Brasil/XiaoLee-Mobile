@@ -11,6 +11,7 @@ import base64
 import dataclasses
 import hashlib
 import importlib
+import json
 import os
 import time
 from datetime import datetime, timedelta
@@ -44,7 +45,7 @@ class FakeX:
     def handler(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
         form = parse_qs(request.content.decode()) if request.headers.get("content-type", "").startswith("application/x-www") else {}
-        self.calls.append((request.method, path, form or request.content.decode()))
+        self.calls.append((request.method, path, form or request.content.decode(errors="replace")))
         if path == "/2/oauth2/token":
             if form["grant_type"] == ["authorization_code"]:
                 if form["code"] != ["good-code"]:
@@ -54,7 +55,11 @@ class FakeX:
             return httpx.Response(200, json={"access_token": "AT2", "refresh_token": "RT2", "expires_in": 7200})
         if path == "/2/users/me":
             return httpx.Response(200, json={"data": {"id": "42", "username": "ana"}})
+        if path == "/2/media/upload":
+            self.uploaded = request.content
+            return httpx.Response(200, json={"data": {"id": "m77", "media_key": "3_m77"}})
         if path == "/2/tweets" and request.method == "POST":
+            self.tweet_body = request.content.decode()
             return httpx.Response(201, json={"data": {"id": "999", "text": "x"}})
         if path == "/2/tweets/999":
             return httpx.Response(200, json={"data": {"public_metrics": {
@@ -169,6 +174,22 @@ async def test_x_rejects_long_text_and_enforces_monthly_cap(db):
     for _ in range(2):
         assert client.post("/v1/social/publish", json={"platform": "x", "text": "ok"}, headers=h).json()["status"] == "published"
     assert client.post("/v1/social/publish", json={"platform": "x", "text": "ok"}, headers=h).status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_publish_with_image_uploads_then_attaches_media_id(db):
+    stored = {"access_token": "AT", "refresh_token": "RT", "expires_at": int(time.time()) + 3600}
+    pid, url = await adapters.XAdapter().publish(stored, "oi", None, image=(b"\x89PNG-bytes", "image/png"))
+    assert pid == "999" and b"PNG-bytes" in db.fake.uploaded and b"tweet_image" in db.fake.uploaded
+    assert json.loads(db.fake.tweet_body)["media"] == {"media_ids": ["m77"]}
+    with pytest.raises(adapters.SocialError, match="5 MB"):
+        await adapters.XAdapter().publish(stored, "oi", None, image=(b"x" * (5 * 1024 * 1024 + 1), "image/png"))
+
+
+@pytest.mark.asyncio
+async def test_login_asks_for_the_media_write_scope(db):
+    h = await _login(db)
+    assert "media.write" in _start(h)["scope"]
 
 
 @pytest.mark.asyncio
