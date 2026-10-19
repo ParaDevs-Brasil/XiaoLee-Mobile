@@ -28,7 +28,18 @@ import {
   avatarAnimation,
   type AnimationKey,
 } from '@/lib/avatar-animation';
-import { insightsFrom, matchCards, type CardInsights, type CardPost, type CardSwap, type ChatCards } from '@/lib/chat-cards';
+import {
+  draftFrom,
+  insightsFrom,
+  matchCards,
+  optionsFrom,
+  type CardDraft,
+  type CardInsights,
+  type CardOptions,
+  type CardPost,
+  type CardSwap,
+  type ChatCards,
+} from '@/lib/chat-cards';
 import { parseSwapRequest } from '@/lib/arc-swap-request';
 import { appendChatMessage, loadChatHistory, updateChatMessage } from '@/lib/chat-history';
 import { refreshChatSessions, setActiveChatSessionId } from '@/lib/chat-session';
@@ -41,6 +52,8 @@ import { usePrivyWallet } from '@/lib/wallet';
 
 import { AnimatedAvatar } from '@/components/animated-avatar';
 import { InsightsCard } from '@/components/chat-insights-card';
+import { PostDraftCard } from '@/components/chat-post-draft';
+import { PostOptions } from '@/components/chat-post-options';
 import { PostPreview } from '@/components/chat-post-preview';
 import {
   IconActivity,
@@ -159,6 +172,9 @@ interface Message {
   post?: CardPost;
   /** Métricas do perfil que o backend montou (`execution.insights`, tool `get_social_insights`). */
   insights?: CardInsights;
+  /** Formulário de rascunho (`execution.draft`, tool `open_post_draft`) e opções de post (`execution.options`, tool `suggest_post_options`). */
+  draft?: CardDraft;
+  options?: CardOptions;
   /** Link do post, quando já publicado. */
   postUrl?: string;
   /** `at` da entrada correspondente no histórico local — é por ele que o comprovante é gravado depois de assinar. */
@@ -244,7 +260,7 @@ function messageFromChatSession(
     time: new Date(entry.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     // O backend só guarda o texto; botões e comprovante vêm do histórico local
     // (`lib/chat-cards.ts`).
-    ...(cards && { storedAt: cards.at, transfer: cards.transfer, txHash: cards.txHash, claim: cards.claim, claimReceiptId: cards.claimReceiptId, swap: cards.swap, swapTxHash: cards.swapTxHash, swapAmountOut: cards.swapAmountOut, post: cards.post, postUrl: cards.postUrl, insights: cards.insights }),
+    ...(cards && { storedAt: cards.at, transfer: cards.transfer, txHash: cards.txHash, claim: cards.claim, claimReceiptId: cards.claimReceiptId, swap: cards.swap, swapTxHash: cards.swapTxHash, swapAmountOut: cards.swapAmountOut, post: cards.post, postUrl: cards.postUrl, insights: cards.insights, draft: cards.draft, options: cards.options }),
   };
 }
 
@@ -430,6 +446,15 @@ export default function ChatScreen() {
     setMessages((current) => current.map((m) => (m.id === id ? { ...m, postUrl: url } : m)));
   }
 
+  /** O creator escolheu uma das opções: ela vira a prévia editável (nada é postado aqui). */
+  function choosePost(id: string, text: string) {
+    const m = messages.find((x) => x.id === id);
+    if (!m?.options) return;
+    const post: CardPost = { platform: m.options.platform, handle: m.options.handle, text };
+    if (m.storedAt) void updateChatMessage(m.storedAt, { post });
+    setMessages((current) => current.map((x) => (x.id === id ? { ...x, post } : x)));
+  }
+
   /** Mesmo acordo de `markSigned`, para o botão de swap. */
   function markSwapped(id: string, hash: string, amountOut?: string) {
     const storedAt = messages.find((m) => m.id === id)?.storedAt;
@@ -492,15 +517,17 @@ export default function ChatScreen() {
       const swap = swapFrom(result.execution);
       const post = postFrom(result.execution);
       const insights = insightsFrom(result.execution);
+      const draft = draftFrom(result.execution);
+      const options = optionsFrom(result.execution);
       const storedAt = new Date().toISOString();
       setMessages((current) => [
         ...current,
-        { id: `x${Date.now()}`, author: 'xiaolee', text: reply, time: now(), transfer, claim, swap, post, insights, storedAt },
+        { id: `x${Date.now()}`, author: 'xiaolee', text: reply, time: now(), transfer, claim, swap, post, insights, draft, options, storedAt },
       ]);
       // O texto gravado é o mesmo que foi para a bolha, fallback incluído —
       // o histórico não deve divergir do que a tela mostrou. Os cards vão junto:
       // é o que os traz de volta quando a conversa é reaberta.
-      appendChatMessage('assistant', reply, { at: storedAt, cards: { transfer, claim, swap, post, insights } });
+      appendChatMessage('assistant', reply, { at: storedAt, cards: { transfer, claim, swap, post, insights, draft, options } });
 
       // O agente escolhe a emoção; nome desconhecido volta para o idle.
       const animation = animationFromBackend(result.animations);
@@ -622,6 +649,8 @@ export default function ChatScreen() {
                     onClaimed={markClaimed}
                     onSwapped={markSwapped}
                     onPosted={markPosted}
+                    onAsk={(text) => void send(text)}
+                    onPick={choosePost}
                   />
                 ))}
                 {sending ? <Typing /> : null}
@@ -987,12 +1016,16 @@ function Bubble({
   onClaimed,
   onSwapped,
   onPosted,
+  onAsk,
+  onPick,
 }: {
   message: Message;
   onSigned: (id: string, hash: string) => void;
   onClaimed: (id: string, receiptId: string) => void;
   onSwapped: (id: string, hash: string, amountOut?: string) => void;
   onPosted: (id: string, url: string) => void;
+  onAsk: (text: string) => void;
+  onPick: (id: string, text: string) => void;
 }) {
   const styles = useStyles();
   const mine = message.author === 'user';
@@ -1033,6 +1066,10 @@ function Bubble({
             <PostPreview post={message.post} postedUrl={message.postUrl} onPosted={(url) => onPosted(message.id, url)} />
           ) : null}
           {message.insights ? <InsightsCard insights={message.insights} /> : null}
+          {message.draft ? <PostDraftCard draft={message.draft} onAsk={onAsk} /> : null}
+          {message.options && !message.post ? (
+            <PostOptions options={message.options} onPick={(text) => onPick(message.id, text)} />
+          ) : null}
         </View>
         <View style={styles.meta}>
           <Text style={styles.metaText}>Xiaolee{message.time ? ` · ${message.time}` : ''}</Text>

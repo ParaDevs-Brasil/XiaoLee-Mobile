@@ -34,6 +34,37 @@ export interface CardPost {
   clipId?: number;
 }
 
+/** Formulário de rascunho (`open_post_draft`): as redes conectadas onde o creator pode postar. */
+export interface CardDraft {
+  networks: { platform: string; handle: string }[];
+}
+
+/** Opções de post que a Xiaolee escreveu (`suggest_post_options`); o creator escolhe uma e ela vira a prévia. */
+export interface CardOptions {
+  platform: string;
+  handle: string;
+  texts: string[];
+}
+
+/** `execution.draft` -> formulário de rascunho, ou `undefined` se não for um (ou sem rede). */
+export function draftFrom(execution: Record<string, unknown> | undefined): CardDraft | undefined {
+  if (!execution || execution.status !== 'draft_open') return undefined;
+  const list = (execution.draft as { networks?: { platform?: string; handle?: string }[] } | undefined)?.networks;
+  const networks = (Array.isArray(list) ? list : [])
+    .filter((n) => n?.platform)
+    .map((n) => ({ platform: String(n.platform), handle: String(n.handle ?? '') }));
+  return networks.length ? { networks } : undefined;
+}
+
+/** `execution.options` -> card de opções, ou `undefined` se não for um (ou com menos de 2 textos). */
+export function optionsFrom(execution: Record<string, unknown> | undefined): CardOptions | undefined {
+  if (!execution || execution.status !== 'post_options') return undefined;
+  const o = execution.options as { platform?: string; handle?: string; texts?: unknown[] } | undefined;
+  const texts = (Array.isArray(o?.texts) ? o.texts : []).map((t) => String(t).trim()).filter(Boolean);
+  if (!o?.platform || texts.length < 2) return undefined;
+  return { platform: o.platform, handle: o.handle ?? '', texts };
+}
+
 /** Desempenho do perfil numa rede (`get_social_insights`): o card de métricas do chat. */
 export interface CardInsights {
   platform: string;
@@ -83,6 +114,8 @@ export interface ChatCards {
   swapAmountOut?: string;
   post?: CardPost;
   insights?: CardInsights;
+  draft?: CardDraft;
+  options?: CardOptions;
   /** Link do post, quando já publicado (some o botão, fica o link). */
   postUrl?: string;
 }
@@ -99,7 +132,7 @@ export interface StoredWithCards extends ChatCards {
 }
 
 export function hasCards(c: ChatCards): boolean {
-  return Boolean(c.transfer || c.claim || c.swap || c.post || c.insights);
+  return Boolean(c.transfer || c.claim || c.swap || c.post || c.insights || c.draft || c.options);
 }
 
 /**
@@ -122,7 +155,7 @@ export function matchCards(
     const i = pool.findIndex((s, idx) => !used.has(idx) && s.content.trim() === text);
     if (i === -1) return undefined;
     used.add(i);
-    const { transfer, txHash, claim, claimReceiptId, swap, swapTxHash, swapAmountOut, post, postUrl, insights, at } = pool[i];
-    return { at, transfer, txHash, claim, claimReceiptId, swap, swapTxHash, swapAmountOut, post, postUrl, insights };
+    const { transfer, txHash, claim, claimReceiptId, swap, swapTxHash, swapAmountOut, post, postUrl, insights, draft, options, at } = pool[i];
+    return { at, transfer, txHash, claim, claimReceiptId, swap, swapTxHash, swapAmountOut, post, postUrl, insights, draft, options };
   });
 }

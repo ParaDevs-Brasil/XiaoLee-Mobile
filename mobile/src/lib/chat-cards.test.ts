@@ -7,7 +7,7 @@
  */
 import assert from 'node:assert/strict';
 
-import { insightsFrom, matchCards, type StoredWithCards } from './chat-cards.ts';
+import { draftFrom, insightsFrom, matchCards, optionsFrom, type StoredWithCards } from './chat-cards.ts';
 
 function test(name: string, fn: () => void) {
   fn();
@@ -95,4 +95,22 @@ test('o card de métricas vem do execution do backend e sobrevive a reabrir a co
     [{ role: 'assistant', content: 'Seu perfil:', at: '9', insights }],
   );
   assert.deepEqual(m?.insights, insights);
+});
+
+test('formulário de rascunho e opções de post vêm do execution e voltam ao reabrir a conversa', () => {
+  const draft = draftFrom({ status: 'draft_open', draft: { networks: [{ platform: 'x', handle: '@ana' }] } });
+  assert.deepEqual(draft, { networks: [{ platform: 'x', handle: '@ana' }] });
+  assert.equal(draftFrom({ status: 'draft_open', draft: { networks: [] } }), undefined);
+  assert.equal(draftFrom({ status: 'post_ready' }), undefined);
+
+  const options = optionsFrom({ status: 'post_options', options: { platform: 'x', handle: '@ana', texts: ['a', ' b ', ''] } });
+  assert.deepEqual(options, { platform: 'x', handle: '@ana', texts: ['a', 'b'] });
+  assert.equal(optionsFrom({ status: 'post_options', options: { platform: 'x', texts: ['só uma'] } }), undefined);
+
+  const [m] = matchCards(
+    [{ role: 'assistant', content: 'Escolhe:' }],
+    [{ role: 'assistant', content: 'Escolhe:', at: '9', draft, options }],
+  );
+  assert.deepEqual(m?.draft, draft);
+  assert.deepEqual(m?.options, options);
 });
