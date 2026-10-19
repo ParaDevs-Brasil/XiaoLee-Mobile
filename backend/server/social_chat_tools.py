@@ -48,7 +48,8 @@ SOCIAL_TOOLS = [
         "description": (
             "Desempenho do perfil do creator numa rede conectada: seguidores, impressões, engajamento, cliques no "
             "perfil e no link e os melhores posts dos últimos 29 dias. O app mostra um card com os números. Chame "
-            "quando ele perguntar como está o perfil, o que funciona, ou antes de sugerir posts. Use SÓ estes números."
+            "quando ele perguntar como está o perfil, o que funciona, ou antes de sugerir posts. Use SÓ estes números: "
+            "nunca cite média de mercado, benchmark ou comparação com outras contas."
         ),
         "parameters": {"type": "object", "properties": {"platform": {"type": "string", "enum": ["x"]}}},
     }},
@@ -78,7 +79,11 @@ SOCIAL_PROMPT = (
     "ofereça gerar cortes do vídeo.\n"
     "- get_social_insights: números do perfil (seguidores, impressões, engajamento, cliques, melhores posts). Chame "
     "para 'como está meu perfil', 'o que funciona' e antes de sugerir posts; mostre um resumo curto, o card já traz os "
-    "números. Amostras pequenas são pista, não regra: diga isso. Sugira posts para o público do creator (cripto ou "
+    "números. Fale só do que está nos dados desta conta: compare apenas os posts dele entre si; NUNCA cite benchmark, "
+    "'média do mercado' ou número que não veio da tool, nem diga que um valor é bom ou ruim por comparação externa. "
+    "Se os dados não mostram algo, diga que ainda não dá para saber. Com menos de 5 posts na janela (totals.posts) NÃO "
+    "afirme padrão nem diga o que funciona: descreva os números e diga que ainda são poucos posts para concluir. "
+    "Sugira posts para o público do creator (cripto ou "
     "gente chegando agora em cripto): termo técnico só com uma explicação curta.\n"
     "- prepare_social_post: prepara o post depois que o creator aprovar a legenda. Ela NÃO publica — só deixa "
     "um botão de confirmar na conversa. Nunca diga que já postou antes do toque dele.\n"

@@ -137,3 +137,11 @@ async def test_insights_returns_card_scopes_to_caller_and_caches(db_session, mon
     # outro creator não tem conta conectada: não enxerga nem gasta leitura
     refused, no_card = await tools.run("get_social_insights", {}, db_session, other)
     assert refused["error"] == "not_connected" and no_card is None and _FakeInsightsAdapter.calls == 1
+
+
+def test_insights_prompt_forbids_numbers_that_did_not_come_from_the_account():
+    # o modelo já inventou "benchmark de 1 a 3%": a regra tem de estar no prompt e na descrição da tool
+    assert "NUNCA cite benchmark" in tools.SOCIAL_PROMPT
+    assert "Com menos de 5 posts" in tools.SOCIAL_PROMPT  # amostra pequena: descrever, não concluir
+    desc = next(t["function"]["description"] for t in tools.SOCIAL_TOOLS if t["function"]["name"] == "get_social_insights")
+    assert "nunca cite média de mercado" in desc
