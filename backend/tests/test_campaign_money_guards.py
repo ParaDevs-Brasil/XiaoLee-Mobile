@@ -244,3 +244,63 @@ class TestChatEndpointMarksCaller:
             r = client.post("/chat", json={"message": "oi", "user_id": "victim"}, headers=headers)
             assert r.status_code == 200, r.text
         assert seen == [True, True, False]
+
+
+class TestCreatorAllowlist:
+    @pytest.mark.asyncio
+    async def test_blocks_creators_outside_the_list_on_real_money(self, db, monkeypatch):
+        headers = await _login(db)
+        _balance(monkeypatch, 100)
+        monkeypatch.setattr(
+            campaigns, "settings",
+            dataclasses.replace(campaigns.settings, arc_sandbox=False, campaign_creator_allowlist="someone_else"),
+        )
+        r = client.post("/campaigns/create", json=_body(), headers=headers)
+        assert r.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_allows_listed_id_case_and_at_insensitive(self, db, monkeypatch):
+        headers = await _login(db)
+        _balance(monkeypatch, 100)
+        monkeypatch.setattr(
+            campaigns, "settings",
+            dataclasses.replace(campaigns.settings, arc_sandbox=False, campaign_creator_allowlist=" @Privy_Creator "),
+        )
+        r = client.post("/campaigns/create", json=_body(), headers=headers)
+        assert r.status_code == 200, r.text
+
+    @pytest.mark.asyncio
+    async def test_ignored_in_sandbox(self, db, monkeypatch):
+        headers = await _login(db)
+        _balance(monkeypatch, 100)
+        monkeypatch.setattr(
+            campaigns, "settings",
+            dataclasses.replace(campaigns.settings, arc_sandbox=True, campaign_creator_allowlist="someone_else"),
+        )
+        r = client.post("/campaigns/create", json=_body(), headers=headers)
+        assert r.status_code == 200, r.text
+
+
+class TestStrictVerifier:
+    """Dinheiro real (strict): nada é aceito de boa fé."""
+
+    @pytest.mark.asyncio
+    async def test_social_rejects_without_bearer_token(self):
+        from server.integrations.campaign_verifier import verify_social
+
+        assert (await verify_social("123", None, "t1", "", strict=True))[0] is False
+        assert (await verify_social("123", None, "t1", ""))[0] is True  # sandbox mantém o legado
+
+    @pytest.mark.asyncio
+    async def test_social_rejects_non_x_account_and_follow_tasks(self):
+        from server.integrations.campaign_verifier import verify_social
+
+        assert (await verify_social("privy_x", None, None, "b", strict=True))[0] is False
+        assert (await verify_social("123", "someone", None, "b", strict=True))[0] is False
+
+    @pytest.mark.asyncio
+    async def test_trading_rejects_without_helius_key(self):
+        from server.integrations.campaign_verifier import verify_trading
+
+        assert (await verify_trading("addr", "", strict=True))[0] is False
+        assert (await verify_trading("addr", ""))[0] is True

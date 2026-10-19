@@ -31,6 +31,15 @@ from server.metrics import clear_metrics, render_prometheus_metrics
 # Fixtures de banco isolado
 # ---------------------------------------------------------------------------
 
+@pytest.fixture(autouse=True)
+def _sandbox_verifier(monkeypatch):
+    # O verificador estrito (ARC_SANDBOX=false) recusa sem X/Helius; aqui o foco é o fluxo, não o provedor.
+    import dataclasses
+    from server import campaigns_routes
+
+    monkeypatch.setattr(campaigns_routes, "settings", dataclasses.replace(campaigns_routes.settings, arc_sandbox=True))
+
+
 @pytest.fixture(scope="module")
 def event_loop():
     loop = asyncio.new_event_loop()

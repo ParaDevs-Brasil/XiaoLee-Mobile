@@ -1100,6 +1100,11 @@ async def _require_creator_funds(db: AsyncSession, user: User, pool: float) -> N
 
 async def create_campaign_for_user(db: AsyncSession, user: User, payload: CreateCampaignRequest) -> dict:
     """Cria a campanha para um usuário já resolvido — caminho único do HTTP e do chat."""
+    allowlist = {h.strip().lower().lstrip("@") for h in settings.campaign_creator_allowlist.split(",") if h.strip()}
+    if not settings.arc_sandbox and allowlist:
+        who = {str(user.twitter_user_id).lower(), str(user.twitter_handle or "").lower().lstrip("@")}
+        if not who & allowlist:
+            raise HTTPException(status_code=403, detail="Campaign creation is limited to approved creators for now.")
     pool = _validate_campaign_limits(payload)
     if settings.campaign_require_funds:
         await _require_creator_funds(db, user, pool)
@@ -1216,9 +1221,9 @@ async def verify_tasks(
 
     # SEC-006: real task verification per campaign type
     from server.integrations.campaign_verifier import verify_social, verify_trading, verify_referral
-    from server.settings import settings
 
     campaign_type = campaign.campaign_type
+    strict = not settings.arc_sandbox  # dinheiro real: nada de "aceito de boa fé"
 
     if campaign_type == "social":
         ok, reason = await verify_social(
@@ -1226,6 +1231,7 @@ async def verify_tasks(
             profile_to_follow=campaign.profile_to_follow,
             tweet_id_to_engage=campaign.tweet_id_to_engage,
             bearer_token=settings.x_bearer_token,
+            strict=strict,
         )
     elif campaign_type == "trading":
         wallet_res = await db.execute(select(Wallet).where(Wallet.user_id == user.id))
@@ -1233,9 +1239,12 @@ async def verify_tasks(
         ok, reason = await verify_trading(
             wallet_address=wallet.address if wallet else None,
             helius_api_key=settings.helius_api_key,
+            strict=strict,
         )
     elif campaign_type == "referral":
         ok, reason = await verify_referral(user.id, db, campaign_id)
+    elif strict:
+        ok, reason = False, "This campaign type cannot be verified automatically."
     else:
         logger.warning("[campaigns/verify] Unknown campaign type %r for campaign %d — accepting", campaign_type, campaign_id)
         ok, reason = True, f"Campaign type accepted"

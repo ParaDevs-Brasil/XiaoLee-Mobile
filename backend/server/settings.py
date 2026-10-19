@@ -77,6 +77,9 @@ class Settings:
     campaign_max_reward_usdc: float = float(os.getenv("CAMPAIGN_MAX_REWARD_USDC", "100"))
     campaign_max_participants: int = int(os.getenv("CAMPAIGN_MAX_PARTICIPANTS", "10000"))
     campaign_allowed_tokens: str = os.getenv("CAMPAIGN_ALLOWED_TOKENS", "USDC")
+    # Só com ARC_SANDBOX=false: lista (handle ou twitter_user_id, separados por vírgula) de quem pode criar.
+    # Vazia = sem restrição; na mainnet, preencher no canário.
+    campaign_creator_allowlist: str = os.getenv("CAMPAIGN_CREATOR_ALLOWLIST", "")
     campaign_require_funds: bool = os.getenv("CAMPAIGN_REQUIRE_FUNDS", "true").lower() == "true"
     cors_allowed_origins: list[str] = None
     cors_allowed_origin_regex: str = ""
