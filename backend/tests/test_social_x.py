@@ -54,7 +54,17 @@ class FakeX:
                 return httpx.Response(200, json={"access_token": "AT1", "refresh_token": "RT1", "expires_in": 7200})
             return httpx.Response(200, json={"access_token": "AT2", "refresh_token": "RT2", "expires_in": 7200})
         if path == "/2/users/me":
-            return httpx.Response(200, json={"data": {"id": "42", "username": "ana"}})
+            return httpx.Response(200, json={"data": {"id": "42", "username": "ana", "public_metrics": {
+                "followers_count": 91, "following_count": 156, "tweet_count": 169}}})
+        if path == "/2/users/42/tweets":
+            ts = "2026-10-15T21:10:57.000Z"
+            return httpx.Response(200, json={"data": [
+                {"id": "1", "text": "a", "created_at": ts, "public_metrics": {"impression_count": 10, "like_count": 1},
+                 "organic_metrics": {"like_count": 1, "reply_count": 0, "retweet_count": 0},
+                 "non_public_metrics": {"impression_count": 10, "engagements": 2, "user_profile_clicks": 1, "url_link_clicks": 0}},
+                {"id": "2", "text": "b", "created_at": ts, "public_metrics": {"impression_count": 40, "like_count": 3},
+                 "organic_metrics": {"like_count": 3, "reply_count": 1, "retweet_count": 0},
+                 "non_public_metrics": {"impression_count": 40, "engagements": 6, "user_profile_clicks": 2, "url_link_clicks": 1}}]})
         if path == "/2/media/upload":
             self.uploaded = request.content
             return httpx.Response(200, json={"data": {"id": "m77", "media_key": "3_m77"}})
@@ -184,6 +194,17 @@ async def test_publish_with_image_uploads_then_attaches_media_id(db):
     assert json.loads(db.fake.tweet_body)["media"] == {"media_ids": ["m77"]}
     with pytest.raises(adapters.SocialError, match="5 MB"):
         await adapters.XAdapter().publish(stored, "oi", None, image=(b"x" * (5 * 1024 * 1024 + 1), "image/png"))
+
+
+@pytest.mark.asyncio
+async def test_insights_sum_profile_and_posts_and_rank_the_best(db):
+    stored = {"access_token": "AT", "refresh_token": "RT", "expires_at": int(time.time()) + 3600}
+    out = await adapters.XAdapter().fetch_insights(stored, "42")
+    assert out["followers"] == 91 and out["posts_total"] == 169
+    assert out["totals"] == {"posts": 2, "impressions": 50, "engagements": 8, "profile_clicks": 3, "link_clicks": 1}
+    assert out["engagement_rate"] == 16.0
+    assert [p["impressions"] for p in out["top_posts"]] == [40, 10]
+    assert out["top_posts"][0]["url"] == "https://x.com/i/status/2"
 
 
 @pytest.mark.asyncio

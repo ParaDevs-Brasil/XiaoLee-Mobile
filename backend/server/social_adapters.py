@@ -17,6 +17,7 @@ import hashlib
 import logging
 import secrets
 import time
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from urllib.parse import urlencode
 
@@ -263,6 +264,37 @@ class XAdapter:
             raise SocialError(f"X: {str(body.get('detail') or body.get('title') or 'refused the post')[:200]}")
         tid = body["data"]["id"]
         return tid, f"https://x.com/i/status/{tid}"
+
+    async def fetch_insights(self, stored: dict, external_id: str, days: int = 29, limit: int = 20) -> dict:
+        """Perfil + desempenho dos posts próprios dos últimos `days` dias (o X só entrega cliques/impressões privadas
+        de posts com até 30 dias). Custo: 1 leitura de perfil + até `limit` posts."""
+        token = await self._fresh(stored)
+        me = (await self._get("/users/me", token, **{"user.fields": "public_metrics"}))["data"]
+        since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        body = await self._get(f"/users/{external_id}/tweets", token, max_results=str(limit), exclude="retweets,replies",
+                               start_time=since, **{"tweet.fields": "organic_metrics,non_public_metrics,public_metrics,created_at"})
+        posts = []
+        for t in body.get("data", []):
+            pub, org, priv = t.get("public_metrics", {}), t.get("organic_metrics", {}), t.get("non_public_metrics", {})
+            likes = org.get("like_count", pub.get("like_count", 0))
+            posts.append({
+                "text": t["text"][:140], "posted_at": t["created_at"], "url": f"https://x.com/i/status/{t['id']}",
+                "impressions": priv.get("impression_count", org.get("impression_count", pub.get("impression_count", 0))),
+                "likes": likes,
+                "engagements": priv.get("engagements", likes + org.get("reply_count", 0) + org.get("retweet_count", 0)),
+                "profile_clicks": priv.get("user_profile_clicks", 0), "link_clicks": priv.get("url_link_clicks", 0),
+            })
+        pm = me.get("public_metrics", {})
+        imp = sum(p["impressions"] for p in posts)
+        eng = sum(p["engagements"] for p in posts)
+        return {
+            "followers": pm.get("followers_count", 0), "following": pm.get("following_count", 0), "posts_total": pm.get("tweet_count", 0),
+            "window_days": days,
+            "totals": {"posts": len(posts), "impressions": imp, "engagements": eng,
+                       "profile_clicks": sum(p["profile_clicks"] for p in posts), "link_clicks": sum(p["link_clicks"] for p in posts)},
+            "engagement_rate": round(eng / imp * 100, 1) if imp else 0.0,
+            "top_posts": sorted(posts, key=lambda p: -p["impressions"])[:3],
+        }
 
     async def fetch_metrics(self, stored: dict, post_id: str) -> dict:
         m = (await self._get(f"/tweets/{post_id}", await self._fresh(stored), **{"tweet.fields": "public_metrics"}))["data"]["public_metrics"]

@@ -108,3 +108,32 @@ async def test_prepare_refuses_bad_requests(db_session):
     assert (await run(platform="bluesky", text="oi", clip_id=await _clip(db_session, uid, "rendering")))[0]["error"] == "clip_not_ready"
     res, execution = await run(platform="bluesky", text="oi", clip_id=999)
     assert res["error"] == "clip_not_ready" and execution is None
+
+
+class _FakeInsightsAdapter:
+    calls = 0
+
+    async def fetch_insights(self, stored, external_id):
+        type(self).calls += 1
+        return {"followers": 91, "totals": {"posts": 1, "impressions": 40}, "engagement_rate": 15.0, "top_posts": []}
+
+
+@pytest.mark.asyncio
+async def test_insights_returns_card_scopes_to_caller_and_caches(db_session, monkeypatch):
+    social_routes = importlib.import_module("server.social_routes")
+    monkeypatch.setitem(tools.ADAPTERS, "x", _FakeInsightsAdapter())
+    tools._insights_cache.clear()
+    _FakeInsightsAdapter.calls = 0
+    me, uid = await _user(db_session, "ana")
+    other, _ = await _user(db_session, "bia")
+    db_session.add(SocialAccount(user_id=uid, platform="x", external_id="42", handle="@ana",
+                                 credentials_enc=social_routes._crypto.encrypt('{"access_token": "AT"}')))
+    await db_session.commit()
+
+    result, execution = await tools.run("get_social_insights", {}, db_session, me)
+    assert result["followers"] == 91 and result["handle"] == "@ana" and execution["status"] == "insights_ready"
+    again, _ = await tools.run("get_social_insights", {}, db_session, me)
+    assert again["followers"] == 91 and _FakeInsightsAdapter.calls == 1  # segunda chamada vem do cache
+    # outro creator não tem conta conectada: não enxerga nem gasta leitura
+    refused, no_card = await tools.run("get_social_insights", {}, db_session, other)
+    assert refused["error"] == "not_connected" and no_card is None and _FakeInsightsAdapter.calls == 1
