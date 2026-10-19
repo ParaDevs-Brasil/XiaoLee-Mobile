@@ -1250,6 +1250,8 @@ async def verify_tasks(
         ok, reason = True, f"Campaign type accepted"
 
     if not ok:
+        if strict:
+            reason += " The campaign creator can also approve your participation."
         return {"success": False, "message": reason, "all_tasks_completed": False}
 
     participant.status = "tasks_verified"
@@ -1290,6 +1292,65 @@ async def _payout_guard(
     if float(spent.scalar() or 0) + amount > settings.payout_daily_budget_usdc:
         return "The daily payout budget was reached. Try claiming again tomorrow."
     return None
+
+
+async def _creator_campaign(db: AsyncSession, authorization: Optional[str], campaign_id: int):
+    """Campanha + usuário autenticado, só se ele for o criador (aprovação mexe em dinheiro: token emitido pelo backend)."""
+    user = await _resolve_user(db, authorization, strict=True)
+    campaign = await _get_campaign_or_404(db, campaign_id)
+    if campaign.creator_twitter_user_id != user.twitter_user_id:
+        raise HTTPException(status_code=403, detail="Only the campaign creator can do this.")
+    return user, campaign
+
+
+@router.get("/campaigns/{campaign_id}/participants")
+async def list_campaign_participants(
+    campaign_id: int,
+    db: AsyncSession = Depends(get_db_session),
+    authorization: Optional[str] = Header(default=None),
+):
+    """Quem entrou na campanha e em que estado está — só o criador vê."""
+    await _creator_campaign(db, authorization, campaign_id)
+    rows = (
+        await db.execute(
+            select(CampaignParticipant, User)
+            .join(User, User.id == CampaignParticipant.user_id)
+            .where(CampaignParticipant.campaign_id == campaign_id)
+            .order_by(CampaignParticipant.id)
+        )
+    ).all()
+    return {
+        "success": True,
+        "participants": [
+            {"user_id": u.id, "handle": u.twitter_handle, "status": part.status} for part, u in rows
+        ],
+    }
+
+
+@router.post("/campaigns/{campaign_id}/participants/{user_id}/approve")
+async def approve_campaign_participant(
+    campaign_id: int,
+    user_id: int,
+    db: AsyncSession = Depends(get_db_session),
+    authorization: Optional[str] = Header(default=None),
+):
+    """O criador confirma que o participante cumpriu as tarefas; libera o resgate (a carteira só é conhecida no claim)."""
+    await _creator_campaign(db, authorization, campaign_id)
+    participant = (
+        await db.execute(
+            select(CampaignParticipant).where(
+                CampaignParticipant.campaign_id == campaign_id, CampaignParticipant.user_id == user_id
+            )
+        )
+    ).scalars().first()
+    if not participant:
+        raise HTTPException(status_code=404, detail="Participant not found in this campaign.")
+    if participant.status == "enrolled":
+        participant.status = "tasks_verified"
+        participant.tasks_verified_at = datetime.now(timezone.utc)
+        await db.commit()
+        record_campaign_event("verify")
+    return {"success": True, "status": participant.status}
 
 
 @router.post("/campaigns/claim")

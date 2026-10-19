@@ -384,3 +384,42 @@ async def test_relay_global_cap(monkeypatch):
         body["from_address"] = "0x" + f"{i + 1:02x}" * 20  # origens diferentes: só o teto global pega
         codes.append(client.post("/v1/arc/usdc/relay-authorization", json=body).status_code)
     assert codes[2] == 429 and codes[0] != 429
+
+
+class TestCreatorApproval:
+    """Na mainnet (verificador estrito) quem libera o resgate é o criador da campanha."""
+
+    async def _setup(self, db):
+        creator = await _login(db, "boss")
+        camp = Campaign(
+            creator_twitter_user_id="privy_boss", name="approve-me", description="d", campaign_type="social",
+            reward_token="USDC", reward_per_participant=0.01, max_participants=5, reward_pool=0.05, status="active",
+        )
+        joiner = User(twitter_user_id="privy_joiner", twitter_handle="joiner")
+        db.add_all([camp, joiner])
+        await db.flush()
+        db.add(CampaignParticipant(campaign_id=camp.id, user_id=joiner.id, status="enrolled"))
+        other = await _login(db, "stranger", wallet=False)
+        await db.commit()
+        return creator, other, camp, joiner
+
+    @pytest.mark.asyncio
+    async def test_only_the_creator_lists_and_approves(self, db):
+        creator, other, camp, joiner = await self._setup(db)
+        url = f"/campaigns/{camp.id}/participants"
+        assert client.get(url).status_code == 401
+        assert client.get(url, headers=other).status_code == 403
+        r = client.get(url, headers=creator)
+        assert r.status_code == 200 and r.json()["participants"][0]["status"] == "enrolled"
+        approve = f"{url}/{joiner.id}/approve"
+        assert client.post(approve, headers=other).status_code == 403
+        r = client.post(approve, headers=creator)
+        assert r.status_code == 200 and r.json()["status"] == "tasks_verified"
+        row = (await db.execute(select(CampaignParticipant).where(CampaignParticipant.user_id == joiner.id))).scalars().one()
+        await db.refresh(row)
+        assert row.status == "tasks_verified" and row.tasks_verified_at is not None
+
+    @pytest.mark.asyncio
+    async def test_unknown_participant_is_404(self, db):
+        creator, _, camp, _ = await self._setup(db)
+        assert client.post(f"/campaigns/{camp.id}/participants/99999/approve", headers=creator).status_code == 404
