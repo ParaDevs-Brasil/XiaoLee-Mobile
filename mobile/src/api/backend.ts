@@ -996,6 +996,24 @@ export async function connectSocialAccount(
   });
 }
 
+/** Redirect do login do X; o mesmo valor está cadastrado no app do X e em `X_OAUTH_REDIRECT` no backend. */
+export const X_REDIRECT = 'xiaolee://social/x';
+
+/** Começa o login do X (PKCE fica no backend) e devolve a URL que o app abre. */
+export async function startXLogin(): Promise<string> {
+  const res = await apiFetch<{ authorize_url: string }>('/v1/social/x/start', { method: 'POST' });
+  return res.authorize_url;
+}
+
+/** Entrega o `code`/`state` que o X devolveu no redirect; o backend troca por tokens e conecta a conta. */
+export async function finishXLogin(code: string, state: string): Promise<SocialAccount> {
+  return apiFetch<SocialAccount>('/v1/social/x/callback', {
+    method: 'POST',
+    json: { code, state },
+    timeoutMs: 30_000,
+  });
+}
+
 /** Desconecta e apaga a credencial guardada. */
 export async function disconnectSocialAccount(platform: string): Promise<void> {
   await apiFetch<{ ok: boolean }>(`/v1/social/accounts/${platform}`, { method: 'DELETE' });

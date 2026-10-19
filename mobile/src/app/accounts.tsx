@@ -1,3 +1,4 @@
+import * as WebBrowser from 'expo-web-browser';
 import { useState } from 'react';
 import {
   ActivityIndicator,
@@ -14,7 +15,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   connectSocialAccount,
   disconnectSocialAccount,
+  finishXLogin,
   listSocialAccounts,
+  startXLogin,
+  X_REDIRECT,
   type SocialAccounts,
 } from '@/api/backend';
 import { ApiError } from '@/api/client';
@@ -33,7 +37,7 @@ import { getSession } from '@/lib/session';
 const NETWORKS = [
   { platform: 'telegram', name: 'Telegram', soon: false },
   { platform: 'bluesky', name: 'Bluesky', soon: false },
-  { platform: 'x', name: 'X', soon: true },
+  { platform: 'x', name: 'X', soon: false },
   { platform: 'tiktok', name: 'TikTok', soon: true },
 ] as const;
 
@@ -53,6 +57,18 @@ async function fetchAccounts(): Promise<SocialAccounts | null> {
   return listSocialAccounts();
 }
 
+/** Login do X: abre a tela oficial, o X volta para `xiaolee://social/x?code&state` e o backend conclui. */
+async function connectX(): Promise<void> {
+  const result = await WebBrowser.openAuthSessionAsync(await startXLogin(), X_REDIRECT);
+  if (result.type !== 'success') return; // fechou ou cancelou: nada a fazer
+  const params = new URL(result.url).searchParams;
+  if (params.get('error')) return; // o creator negou no X
+  const code = params.get('code');
+  const state = params.get('state');
+  if (!code || !state) throw new Error('X did not return a login code, try again');
+  await finishXLogin(code, state);
+}
+
 /** Contas onde a Xiaolee posta pelo creator: conecta, valida na própria rede e desconecta. */
 export default function AccountsScreen() {
   const colors = useTheme();
@@ -61,6 +77,21 @@ export default function AccountsScreen() {
   const { hasSession } = useSession();
   const { data, error, loading, refreshing, reload } = useBackendData(fetchAccounts);
   const [open, setOpen] = useState<string | null>(null);
+  const [xBusy, setXBusy] = useState(false);
+  const [xError, setXError] = useState<string>();
+
+  async function onConnectX() {
+    setXBusy(true);
+    setXError(undefined);
+    try {
+      await connectX();
+      reload();
+    } catch (err) {
+      setXError(err instanceof ApiError ? err.message : err instanceof Error ? err.message : String(err));
+    } finally {
+      setXBusy(false);
+    }
+  }
 
   // 404 = publicação desligada no backend (`SOCIAL_TOOLS_ENABLED`): não é falha, é recurso que ainda não chegou.
   const unavailable = error !== null && /not found/i.test(error);
@@ -136,12 +167,17 @@ export default function AccountsScreen() {
                       />
                     ) : supported ? (
                       <Pressable
-                        onPress={() => setOpen(open === platform ? null : platform)}
+                        onPress={platform === 'x' ? onConnectX : () => setOpen(open === platform ? null : platform)}
+                        disabled={platform === 'x' && xBusy}
                         style={({ pressed }) => [styles.connect, pressed && styles.pressed]}
                         accessibilityRole="button"
                         accessibilityLabel={`Connect ${name}`}
                       >
-                        <Text style={styles.connectText}>{open === platform ? 'Cancel' : 'Connect'}</Text>
+                        {platform === 'x' && xBusy ? (
+                          <ActivityIndicator size="small" color={colors.onAccent} />
+                        ) : (
+                          <Text style={styles.connectText}>{open === platform ? 'Cancel' : 'Connect'}</Text>
+                        )}
                       </Pressable>
                     ) : (
                       <View style={styles.soon}>
@@ -150,7 +186,8 @@ export default function AccountsScreen() {
                     )}
                   </View>
 
-                  {!account && supported && open === platform ? (
+                  {platform === 'x' && xError ? <Text style={[styles.error, styles.xError]}>{xError}</Text> : null}
+                  {!account && supported && platform !== 'x' && open === platform ? (
                     <ConnectForm
                       platform={platform}
                       botName={data.hints.telegram_bot}
@@ -368,6 +405,7 @@ const useStyles = makeStyles((colors) => ({
     color: colors.ink,
   },
   error: { fontFamily: Fonts.sans, fontSize: 12, lineHeight: 18, color: colors.danger },
+  xError: { paddingHorizontal: Spacing.two + 2, paddingBottom: Spacing.two + 2 },
   submit: {
     minHeight: 44,
     alignItems: 'center',
