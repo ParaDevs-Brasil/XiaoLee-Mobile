@@ -133,9 +133,61 @@ def test_groq_provider_without_key_fails_clearly(monkeypatch):
 
 
 def test_pick_highlights_without_key_fails_clearly(monkeypatch):
-    monkeypatch.setattr(clipper, "settings", replace(clipper.settings, highlights_provider="anthropic", anthropic_api_key=""))
+    monkeypatch.setattr(clipper, "settings", replace(
+        clipper.settings, highlights_provider="anthropic", anthropic_api_key="", groq_api_key=""))
     with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
         asyncio.run(clipper.pick_highlights(SEGS))
+
+
+class _ApiError(Exception):
+    def __init__(self, status_code, msg):
+        super().__init__(msg)
+        self.status_code = status_code
+
+
+def _claude_fails_groq_answers(monkeypatch, exc, groq_key):
+    calls = {"groq": 0}
+
+    class _Msgs:
+        async def create(self, **kw):
+            raise exc
+
+    class _Completions:
+        async def create(self, **kw):
+            calls["groq"] += 1
+            args = json.dumps({"highlights": [_h(0, 30, "Gancho")]})
+            call = SimpleNamespace(function=SimpleNamespace(name="report_highlights", arguments=args))
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(tool_calls=[call]))])
+
+    monkeypatch.setattr(clipper, "settings", replace(
+        clipper.settings, highlights_provider="anthropic", anthropic_api_key="k", groq_api_key=groq_key))
+    import anthropic
+    import openai
+
+    monkeypatch.setattr(anthropic, "AsyncAnthropic", lambda **kw: SimpleNamespace(messages=_Msgs()))
+    monkeypatch.setattr(openai, "AsyncOpenAI", lambda **kw: SimpleNamespace(chat=SimpleNamespace(completions=_Completions())))
+    return calls
+
+
+def test_claude_out_of_credit_falls_back_to_groq(monkeypatch):
+    calls = _claude_fails_groq_answers(monkeypatch, _ApiError(400, "Your credit balance is too low"), "g")
+    out = asyncio.run(clipper.pick_highlights(SEGS))
+    assert [(h.title, h.start, h.end) for h in out] == [("Gancho", 0.0, 30.0)]
+    assert calls["groq"] == 1
+
+
+def test_claude_down_without_groq_key_still_raises_unavailable(monkeypatch):
+    calls = _claude_fails_groq_answers(monkeypatch, _ApiError(529, "overloaded"), "")
+    with pytest.raises(clipper.ProviderUnavailable):
+        asyncio.run(clipper.pick_highlights(SEGS))
+    assert calls["groq"] == 0
+
+
+def test_claude_request_error_does_not_fall_back(monkeypatch):
+    calls = _claude_fails_groq_answers(monkeypatch, _ApiError(400, "prompt is malformed"), "g")
+    with pytest.raises(_ApiError):  # erro do pedido não é culpa do provedor: trocar de modelo só esconderia o bug
+        asyncio.run(clipper.pick_highlights(SEGS))
+    assert calls["groq"] == 0
 
 
 def _w(text, a, b):
