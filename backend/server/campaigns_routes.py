@@ -248,8 +248,12 @@ def _verify_claim_proof(payload: CampaignActionRequest, campaign_id: int, sessio
     if not is_custodial and not signature:
         raise HTTPException(status_code=400, detail="Wallet signature proof is required to claim campaign rewards")
 
-    expected_prefix = f"XiaoLee Devnet claim|campaign:{campaign_id}|session:{session_token}|wallet:{public_key}"
-    if not message.startswith(expected_prefix):
+    # "XiaoLee Devnet claim" é o texto legado (web e apps já instalados); aceito junto do novo.
+    expected_prefixes = tuple(
+        f"{label}|campaign:{campaign_id}|session:{session_token}|wallet:{public_key}"
+        for label in ("XiaoLee claim", "XiaoLee Devnet claim")
+    )
+    if not message.startswith(expected_prefixes):
         raise HTTPException(status_code=400, detail="Claim proof does not match the current campaign session")
 
     if proof_encoding not in {"base64", "none", "eip191"}:

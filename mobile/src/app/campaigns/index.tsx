@@ -31,6 +31,7 @@ import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useBackendData } from '@/hooks/use-backend-data';
 import { useSession } from '@/hooks/use-session';
+import { ARC_NETWORK } from '@/lib/arc-network';
 import { formatTokenAmount } from '@/lib/format';
 
 /**
@@ -135,7 +136,7 @@ export default function CampaignsScreen() {
       >
         <PageHeading
           title="Campaigns"
-          subtitle="Join campaigns on Arc Testnet and earn real rewards."
+          subtitle={`Join campaigns on ${ARC_NETWORK.name} and earn real rewards.`}
         />
 
         <SessionBanner hasSession={hasSession} />
@@ -415,7 +416,7 @@ function HowItWorks({ open, onToggle }: { open: boolean; onToggle: () => void })
         accessibilityState={{ expanded: open }}
       >
         <IconTarget size={16} color={colors.accent} />
-        <Text style={styles.howTitle}>How it works — Testnet</Text>
+        <Text style={styles.howTitle}>How it works</Text>
         {/* A rotação vai no wrapper: `IconProps` não expõe `style`, e abrir
             esse contrato para um único uso espalharia estilo por todos os
             ícones do app. */}

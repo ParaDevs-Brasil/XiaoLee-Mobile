@@ -34,6 +34,7 @@ import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useBackendData } from '@/hooks/use-backend-data';
 import { useSession } from '@/hooks/use-session';
+import { ARC_NETWORK } from '@/lib/arc-network';
 import { formatUSDC, shortHash } from '@/lib/format';
 import { getSession } from '@/lib/session';
 
@@ -109,7 +110,7 @@ export default function DashboardScreen() {
       >
         <PageHeading
           title="Dashboard"
-          subtitle="Global metrics of the XiaoLee economy registered on Arc Testnet."
+          subtitle={`Global metrics of the XiaoLee economy registered on ${ARC_NETWORK.name}.`}
         />
 
         {error ? (
@@ -404,7 +405,7 @@ function MyCampaignsSection({
 /** Valores de `locales/en.json` (`tokenomics.*`) — descrevem o trilho, não dado. */
 const PROTOCOL = [
   ['Protocol', 'USDC (ERC-20)'],
-  ['Network', 'Arc Testnet · Circle'],
+  ['Network', `${ARC_NETWORK.name} · Circle`],
   ['Settlement', '~$0.10 / nanopayment'],
   ['Rail', 'HTTP x402 · USDC'],
 ] as const;
@@ -454,7 +455,7 @@ function ArchitectureSection() {
         ))}
       </View>
 
-      <Text style={styles.footer}>Arc Testnet · MVP 2.0 · XiaoLee Core</Text>
+      <Text style={styles.footer}>{ARC_NETWORK.name} · MVP 2.0 · XiaoLee Core</Text>
     </SectionCard>
   );
 }

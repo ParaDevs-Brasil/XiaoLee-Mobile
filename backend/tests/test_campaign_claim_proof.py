@@ -17,14 +17,16 @@ campaigns_module = importlib.import_module("server.campaigns_routes")
 client = TestClient(app_module.app)
 
 
-def _build_claim_payload(private_key: Ed25519PrivateKey, campaign_id: int, session_token: str):
+def _build_claim_payload(
+    private_key: Ed25519PrivateKey, campaign_id: int, session_token: str, label: str = "XiaoLee Devnet claim"
+):
     public_key_bytes = private_key.public_key().public_bytes(
         encoding=serialization.Encoding.Raw,
         format=serialization.PublicFormat.Raw,
     )
     wallet_public_key = str(Pubkey.from_bytes(public_key_bytes))
     proof_message = (
-        f"XiaoLee Devnet claim|campaign:{campaign_id}|session:{session_token}|"
+        f"{label}|campaign:{campaign_id}|session:{session_token}|"
         f"wallet:{wallet_public_key}|ts:1710000000000"
     )
     signature = private_key.sign(proof_message.encode("utf-8"))
@@ -39,7 +41,8 @@ def _build_claim_payload(private_key: Ed25519PrivateKey, campaign_id: int, sessi
 
 
 @pytest.mark.asyncio
-async def test_claim_reward_accepts_valid_wallet_signature(db_session):
+@pytest.mark.parametrize("label", ["XiaoLee claim", "XiaoLee Devnet claim"])
+async def test_claim_reward_accepts_valid_wallet_signature(db_session, label):
     session_token = "devnet_wallet_4NQYv4S8oQ5R6mD8k3mJ7b4q2x9Y1p6L2T7w8A9B"
     private_key = Ed25519PrivateKey.generate()
 
@@ -60,7 +63,7 @@ async def test_claim_reward_accepts_valid_wallet_signature(db_session):
     try:
         response = client.post(
             "/campaigns/claim",
-            json=_build_claim_payload(private_key, 1, session_token),
+            json=_build_claim_payload(private_key, 1, session_token, label),
             headers={"Authorization": f"Bearer {session_token}"},
         )
     finally:

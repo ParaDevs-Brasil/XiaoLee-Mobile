@@ -770,7 +770,7 @@ function ClaimButton({
       const session = await getSessionToken();
       if (!session) throw new Error('Connect a wallet to claim.');
       const proofMessage =
-        `XiaoLee Devnet claim|campaign:${message.claim.campaignId}|` +
+        `XiaoLee claim|campaign:${message.claim.campaignId}|` +
         `session:${session}|wallet:${walletAddress}|ts:${Date.now()}`;
       const signature = await signMessage(proofMessage);
       const result = await claimCampaignReward(

@@ -895,7 +895,7 @@ class OrchestrationService:
                         amount = float(campaign.reward_per_participant)
                         token = campaign.reward_token
                         proof_message = (
-                            f"XiaoLee Devnet claim|campaign:{campaign_id}|"
+                            f"XiaoLee claim|campaign:{campaign_id}|"
                             f"session:{user_id}|wallet:{wallet_address}"
                         )
                 except Exception as exc:
