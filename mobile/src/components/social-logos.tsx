@@ -46,3 +46,6 @@ export function SocialLogo({ platform, ink, size = 22 }: { platform: string; ink
   if (platform === 'tiktok') return <TikTokLogo size={size} color={ink} />;
   return <IconXSocial size={size - 2} color={ink} />;
 }
+
+/** Como cada rede se escreve (o backend manda o id em minúsculas). */
+export const NETWORK_NAMES: Record<string, string> = { telegram: 'Telegram', bluesky: 'Bluesky', x: 'X', tiktok: 'TikTok' };

@@ -17,7 +17,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   claimCampaignReward,
-  publishSocialPost,
   getChatSessionMessages,
   getMyProfile,
   sendChatMessage,
@@ -29,7 +28,7 @@ import {
   avatarAnimation,
   type AnimationKey,
 } from '@/lib/avatar-animation';
-import { matchCards, type CardPost, type CardSwap, type ChatCards } from '@/lib/chat-cards';
+import { insightsFrom, matchCards, type CardInsights, type CardPost, type CardSwap, type ChatCards } from '@/lib/chat-cards';
 import { parseSwapRequest } from '@/lib/arc-swap-request';
 import { appendChatMessage, loadChatHistory, updateChatMessage } from '@/lib/chat-history';
 import { refreshChatSessions, setActiveChatSessionId } from '@/lib/chat-session';
@@ -41,6 +40,8 @@ import { buildWelcomeCopy, prioritizeActions, type WelcomeCopy } from '@/lib/wel
 import { usePrivyWallet } from '@/lib/wallet';
 
 import { AnimatedAvatar } from '@/components/animated-avatar';
+import { InsightsCard } from '@/components/chat-insights-card';
+import { PostPreview } from '@/components/chat-post-preview';
 import {
   IconActivity,
   IconChat,
@@ -156,6 +157,8 @@ interface Message {
   swapAmountOut?: string;
   /** Post que o backend preparou (`execution.post`, tool `prepare_social_post`); publica no toque do creator. */
   post?: CardPost;
+  /** Métricas do perfil que o backend montou (`execution.insights`, tool `get_social_insights`). */
+  insights?: CardInsights;
   /** Link do post, quando já publicado. */
   postUrl?: string;
   /** `at` da entrada correspondente no histórico local — é por ele que o comprovante é gravado depois de assinar. */
@@ -241,7 +244,7 @@ function messageFromChatSession(
     time: new Date(entry.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     // O backend só guarda o texto; botões e comprovante vêm do histórico local
     // (`lib/chat-cards.ts`).
-    ...(cards && { storedAt: cards.at, transfer: cards.transfer, txHash: cards.txHash, claim: cards.claim, claimReceiptId: cards.claimReceiptId, swap: cards.swap, swapTxHash: cards.swapTxHash, swapAmountOut: cards.swapAmountOut, post: cards.post, postUrl: cards.postUrl }),
+    ...(cards && { storedAt: cards.at, transfer: cards.transfer, txHash: cards.txHash, claim: cards.claim, claimReceiptId: cards.claimReceiptId, swap: cards.swap, swapTxHash: cards.swapTxHash, swapAmountOut: cards.swapAmountOut, post: cards.post, postUrl: cards.postUrl, insights: cards.insights }),
   };
 }
 
@@ -421,6 +424,7 @@ export default function ChatScreen() {
 
   /** Mesmo acordo de `markSigned`, para o botão de publicar. */
   function markPosted(id: string, url: string) {
+    avatarAnimation.play('xiaolee_cheer');
     const storedAt = messages.find((m) => m.id === id)?.storedAt;
     if (storedAt) void updateChatMessage(storedAt, { postUrl: url });
     setMessages((current) => current.map((m) => (m.id === id ? { ...m, postUrl: url } : m)));
@@ -487,15 +491,16 @@ export default function ChatScreen() {
       const claim = claimFrom(result.execution);
       const swap = swapFrom(result.execution);
       const post = postFrom(result.execution);
+      const insights = insightsFrom(result.execution);
       const storedAt = new Date().toISOString();
       setMessages((current) => [
         ...current,
-        { id: `x${Date.now()}`, author: 'xiaolee', text: reply, time: now(), transfer, claim, swap, post, storedAt },
+        { id: `x${Date.now()}`, author: 'xiaolee', text: reply, time: now(), transfer, claim, swap, post, insights, storedAt },
       ]);
       // O texto gravado é o mesmo que foi para a bolha, fallback incluído —
       // o histórico não deve divergir do que a tela mostrou. Os cards vão junto:
       // é o que os traz de volta quando a conversa é reaberta.
-      appendChatMessage('assistant', reply, { at: storedAt, cards: { transfer, claim, swap, post } });
+      appendChatMessage('assistant', reply, { at: storedAt, cards: { transfer, claim, swap, post, insights } });
 
       // O agente escolhe a emoção; nome desconhecido volta para o idle.
       const animation = animationFromBackend(result.animations);
@@ -835,82 +840,6 @@ function ClaimButton({
   );
 }
 
-/** Como cada rede se escreve (o backend manda o id em minúsculas). */
-const NETWORK_NAMES: Record<string, string> = { telegram: 'Telegram', bluesky: 'Bluesky', x: 'X', tiktok: 'TikTok' };
-
-/**
- * Post preparado por `prepare_social_post`: a Xiaolee só deixou pronto, quem publica é o toque do creator
- * (`POST /v1/social/publish`, na conta dele). Falha da rede volta com o motivo e deixa tentar de novo.
- */
-function PostButton({
-  message,
-  onPosted,
-}: {
-  message: Message;
-  onPosted: (id: string, url: string) => void;
-}) {
-  const colors = useTheme();
-  const styles = useStyles();
-  const [posting, setPosting] = useState(false);
-  const [error, setError] = useState<string>();
-  const post = message.post;
-  if (!post) return null;
-
-  if (message.postUrl) {
-    return (
-      <Pressable
-        onPress={() => message.postUrl && message.postUrl !== 'posted' && void WebBrowser.openBrowserAsync(message.postUrl)}
-        style={styles.txDone}
-        accessibilityRole="link"
-      >
-        <IconCheck size={14} color={colors.success} />
-        <Text style={styles.txDoneText}>Posted on {NETWORK_NAMES[post.platform] ?? post.platform}</Text>
-      </Pressable>
-    );
-  }
-
-  async function publish() {
-    if (!post) return;
-    setPosting(true);
-    setError(undefined);
-    try {
-      const result = await publishSocialPost(post.platform, post.text, post.clipId);
-      if (result.status === 'published') {
-        onPosted(message.id, result.url ?? 'posted');
-        avatarAnimation.play('xiaolee_cheer');
-      } else {
-        setError(result.error ?? 'Could not post');
-      }
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : errorText(err));
-    } finally {
-      setPosting(false);
-    }
-  }
-
-  return (
-    <>
-      <Pressable
-        onPress={publish}
-        disabled={posting}
-        style={({ pressed }) => [styles.signButton, pressed && styles.signButtonPressed]}
-        accessibilityRole="button"
-      >
-        {posting ? (
-          <ActivityIndicator size="small" color={colors.onAccent} />
-        ) : (
-          <>
-            <IconSend size={15} color={colors.onAccent} />
-            <Text style={styles.signButtonText}>Post to {NETWORK_NAMES[post.platform] ?? post.platform}</Text>
-          </>
-        )}
-      </Pressable>
-      {post.handle ? <Text style={styles.txHint}>as {post.handle}</Text> : null}
-      {error ? <Text style={styles.txError}>{error}</Text> : null}
-    </>
-  );
-}
-
 /** "1.259119" -> "1.259119", "1.2000000" -> "1.2": só para exibir. */
 function fmtAmount(value: string | undefined): string {
   const n = Number(value);
@@ -1100,7 +1029,10 @@ function Bubble({
             <ClaimButton message={message} onClaimed={onClaimed} />
           ) : null}
           {message.swap ? <SwapButton message={message} onSwapped={onSwapped} /> : null}
-          {message.post ? <PostButton message={message} onPosted={onPosted} /> : null}
+          {message.post ? (
+            <PostPreview post={message.post} postedUrl={message.postUrl} onPosted={(url) => onPosted(message.id, url)} />
+          ) : null}
+          {message.insights ? <InsightsCard insights={message.insights} /> : null}
         </View>
         <View style={styles.meta}>
           <Text style={styles.metaText}>Xiaolee{message.time ? ` · ${message.time}` : ''}</Text>

@@ -34,6 +34,43 @@ export interface CardPost {
   clipId?: number;
 }
 
+/** Desempenho do perfil numa rede (`get_social_insights`): o card de métricas do chat. */
+export interface CardInsights {
+  platform: string;
+  handle: string;
+  followers: number;
+  postsTotal: number;
+  windowDays: number;
+  totals: { posts: number; impressions: number; engagements: number; profileClicks: number; linkClicks: number };
+  /** Engajamentos / impressões, em %. */
+  engagementRate: number;
+  topPosts: { text: string; url: string; impressions: number; likes: number }[];
+}
+
+/** `execution.insights` (snake_case do backend) -> card de métricas, ou `undefined` se não for um. */
+export function insightsFrom(execution: Record<string, unknown> | undefined): CardInsights | undefined {
+  if (!execution || execution.status !== 'insights_ready') return undefined;
+  const i = execution.insights as Record<string, any> | undefined;
+  if (!i?.platform) return undefined;
+  const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+  const t = i.totals ?? {};
+  return {
+    platform: String(i.platform),
+    handle: String(i.handle ?? ''),
+    followers: n(i.followers),
+    postsTotal: n(i.posts_total),
+    windowDays: n(i.window_days),
+    totals: {
+      posts: n(t.posts), impressions: n(t.impressions), engagements: n(t.engagements),
+      profileClicks: n(t.profile_clicks), linkClicks: n(t.link_clicks),
+    },
+    engagementRate: n(i.engagement_rate),
+    topPosts: (Array.isArray(i.top_posts) ? i.top_posts : []).map((p: Record<string, unknown>) => ({
+      text: String(p.text ?? ''), url: String(p.url ?? ''), impressions: n(p.impressions), likes: n(p.likes),
+    })),
+  };
+}
+
 /** Estado de card que acompanha uma mensagem da Xiaolee. */
 export interface ChatCards {
   transfer?: CardTransfer;
@@ -45,6 +82,7 @@ export interface ChatCards {
   swapTxHash?: string;
   swapAmountOut?: string;
   post?: CardPost;
+  insights?: CardInsights;
   /** Link do post, quando já publicado (some o botão, fica o link). */
   postUrl?: string;
 }
@@ -61,7 +99,7 @@ export interface StoredWithCards extends ChatCards {
 }
 
 export function hasCards(c: ChatCards): boolean {
-  return Boolean(c.transfer || c.claim || c.swap || c.post);
+  return Boolean(c.transfer || c.claim || c.swap || c.post || c.insights);
 }
 
 /**
@@ -84,7 +122,7 @@ export function matchCards(
     const i = pool.findIndex((s, idx) => !used.has(idx) && s.content.trim() === text);
     if (i === -1) return undefined;
     used.add(i);
-    const { transfer, txHash, claim, claimReceiptId, swap, swapTxHash, swapAmountOut, post, postUrl, at } = pool[i];
-    return { at, transfer, txHash, claim, claimReceiptId, swap, swapTxHash, swapAmountOut, post, postUrl };
+    const { transfer, txHash, claim, claimReceiptId, swap, swapTxHash, swapAmountOut, post, postUrl, insights, at } = pool[i];
+    return { at, transfer, txHash, claim, claimReceiptId, swap, swapTxHash, swapAmountOut, post, postUrl, insights };
   });
 }
