@@ -173,3 +173,7 @@ async def test_post_options_card_validates_network_count_and_length_and_never_pu
     assert other["error"] == "not_connected"
     pubs = (await db_session.execute(select(PostPublication))).scalars().all()
     assert pubs == []  # escolher e publicar é do app, depois do toque
+
+
+def test_options_prompt_blocks_invented_claims_and_misspelled_brand():
+    assert "afirmações sobre terceiros ou o mercado" in tools.SOCIAL_PROMPT and "'Xiaolee'" in tools.SOCIAL_PROMPT

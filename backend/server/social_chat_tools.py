@@ -116,7 +116,9 @@ SOCIAL_PROMPT = (
     "- suggest_post_options: com a ideia (do formulário ou da conversa), escreva 2 ou 3 opções diferentes entre si "
     "(outro ângulo ou gancho em cada), no idioma da ideia, no tom pedido, para o público dele. Se ainda não tiver os "
     "números do perfil, chame get_social_insights antes. Use só fatos que o creator deu: não invente números, "
-    "parcerias nem promessas. Ele escolhe, edita e confirma; você NÃO publica e não repete as opções no texto.\n"
+    "parcerias, promessas nem afirmações sobre terceiros ou o mercado (ex.: 'marcas pagam em...'); escreva o nome do produto "
+    "como 'Xiaolee' (só a primeira letra maiúscula). As opções aparecem num card logo abaixo do seu texto: não diga 'acima'. "
+    "Ele escolhe, edita e confirma; você NÃO publica e não repete as opções no texto.\n"
     "- prepare_social_post: prepara o post depois que o creator aprovar a legenda. Ela NÃO publica — só deixa "
     "um botão de confirmar na conversa. Nunca diga que já postou antes do toque dele.\n"
 )
