@@ -1,11 +1,18 @@
 import { Fragment, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import type { Campaign, UserCampaignParticipation } from '@/api/backend';
-import { claimCampaignReward, joinCampaign, verifyCampaignTasks } from '@/api/backend';
+import type { Campaign, CampaignParticipant, UserCampaignParticipation } from '@/api/backend';
+import {
+  approveCampaignParticipant,
+  claimCampaignReward,
+  joinCampaign,
+  listCampaignParticipants,
+  verifyCampaignTasks,
+} from '@/api/backend';
 import { ApiError } from '@/api/client';
 import { IconList } from '@/components/icons';
 import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
+import { useSession } from '@/hooks/use-session';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { formatDate, formatTokenAmount } from '@/lib/format';
 import { getSessionToken } from '@/lib/session';
@@ -97,6 +104,8 @@ export function CampaignCard({
   const hasTasks = Boolean(campaign.profile_to_follow || campaign.tweet_id_to_engage);
 
   const step = stepOf(participation);
+  const { session } = useSession();
+  const isCreator = Boolean(session) && session?.twitterUserId === campaign.creator_twitter_user_id;
   const { address, signMessage } = usePrivyWallet();
   const [busy, setBusy] = useState(false);
   // Uma linha só de retorno. `tone` separa "a verificação reprovou" (informação
@@ -259,6 +268,8 @@ export function CampaignCard({
             onPress={runStep}
           />
         </View>
+
+        {isCreator ? <CreatorParticipants campaignId={campaign.id} onChanged={onChanged} /> : null}
       </View>
 
       <View style={styles.footer}>
@@ -365,6 +376,92 @@ function StepRail({ step }: { step: Step }) {
     </View>
   );
 }
+
+/**
+ * Painel do criador: quem entrou e em que passo está, com "Approve" para quem ainda não foi verificado.
+ * É o caminho para tarefas que a API do X não confere (ou janelas que a checagem automática não alcança).
+ * Carrega só ao abrir: a lista é por criador e não pesa no carrossel de quem só participa.
+ */
+function CreatorParticipants({ campaignId, onChanged }: { campaignId: number; onChanged?: () => void }) {
+  const colors = useTheme();
+  const styles = useStyles();
+  const [open, setOpen] = useState(false);
+  const [rows, setRows] = useState<CampaignParticipant[] | null>(null);
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const [error, setError] = useState<string>();
+
+  async function load() {
+    setError(undefined);
+    try {
+      setRows(await listCampaignParticipants(campaignId));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    }
+  }
+
+  async function approve(userId: number) {
+    setBusyId(userId);
+    setError(undefined);
+    try {
+      await approveCampaignParticipant(campaignId, userId);
+      await load();
+      onChanged?.();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <View style={styles.tasksBox}>
+      <Pressable
+        onPress={() => {
+          const next = !open;
+          setOpen(next);
+          if (next) load();
+        }}
+        accessibilityRole="button"
+        style={styles.tasksHeader}
+      >
+        <IconList size={13} color={colors.ink2} />
+        <Text style={styles.tasksTitle}>{open ? 'Hide participants' : 'Participants (creator)'}</Text>
+      </Pressable>
+      {open && rows === null && !error ? <ActivityIndicator size="small" color={colors.accent} /> : null}
+      {open && rows?.length === 0 ? <Text style={styles.taskLabel}>Nobody joined yet.</Text> : null}
+      {open
+        ? rows?.map((row) => (
+            <View key={row.user_id} style={styles.task}>
+              <Text style={[styles.taskLabel, styles.taskLinkWrap]} numberOfLines={1}>
+                {row.handle ? `@${row.handle.replace(/^@/, '')}` : `User ${row.user_id}`} · {PARTICIPANT_STATUS[row.status] ?? row.status}
+              </Text>
+              {row.status === 'enrolled' ? (
+                <Pressable
+                  onPress={() => approve(row.user_id)}
+                  disabled={busyId !== null}
+                  accessibilityRole="button"
+                  hitSlop={Spacing.two}
+                >
+                  {busyId === row.user_id ? (
+                    <ActivityIndicator size="small" color={colors.accent} />
+                  ) : (
+                    <Text style={styles.taskLink}>Approve</Text>
+                  )}
+                </Pressable>
+              ) : null}
+            </View>
+          ))
+        : null}
+      {error ? <Text style={[styles.notice, styles.noticeError]}>{error}</Text> : null}
+    </View>
+  );
+}
+
+const PARTICIPANT_STATUS: Record<string, string> = {
+  enrolled: 'joined',
+  tasks_verified: 'approved',
+  paid: 'paid',
+};
 
 /**
  * Ação primária do cartão. O web pinta o primário com um gradiente rosa→roxo;
