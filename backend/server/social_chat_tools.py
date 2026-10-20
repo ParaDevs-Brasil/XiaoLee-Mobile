@@ -21,7 +21,7 @@ from sqlalchemy import select
 from database.models import MediaClip, PostPublication, SocialAccount
 from server.campaigns_routes import _resolve_user
 from server.social_adapters import ADAPTERS, BSKY_TEXT_MAX, TELEGRAM_CAPTION_MAX, X_TEXT_MAX, SocialError
-from server.social_routes import _crypto
+from server.social_routes import _crypto, _insights_cache
 
 SOCIAL_TOOL_NAMES = {"get_publishing_context", "prepare_social_post", "get_social_insights", "open_post_draft", "suggest_post_options"}
 
@@ -31,7 +31,6 @@ SOCIAL_TOOL_NAMES = {"get_publishing_context", "prepare_social_post", "get_socia
 BANNED_IN_OPTIONS = ("—", "–", "game changer", "game-changer", "revolucion", "incrível", "incrivel", "no mundo de hoje")
 
 INSIGHTS_TTL = 600
-_insights_cache: dict[tuple[int, str], tuple[float, dict]] = {}
 
 # Limite de texto por rede (o que a rede aceita); Telegram só limita a legenda quando vai com vídeo.
 TEXT_LIMITS = {"bluesky": BSKY_TEXT_MAX, "telegram": TELEGRAM_CAPTION_MAX, "x": X_TEXT_MAX}

@@ -276,12 +276,17 @@ async def publish(body: PublishBody, authorization: Optional[str] = Header(None)
         pub.status, pub.error = "failed", "Unexpected error while posting"
     else:
         pub.status, pub.external_post_id, pub.url, pub.published_at = "published", post_id, url, datetime.utcnow()
+        _insights_cache.pop((user.id, body.platform), None)
     if creds != before:  # o adaptador renovou o token
         acc.credentials_enc = _crypto.encrypt(json.dumps(creds))
     await db.commit()
     await db.refresh(pub)
     return _pub_out(pub)
 
+
+# Cache das métricas do `get_social_insights` (social_chat_tools). Mora aqui para o `publish` limpar sem import
+# circular: um post novo muda as métricas, e sem limpar o chat mostrava o perfil de antes do post por até 10 min.
+_insights_cache: dict[tuple[int, str], tuple[float, dict]] = {}
 
 # Sugestões custam leitura na rede (X cobra por item): guarda por creator+rede por 6 h.
 # ponytail: cache em memória do processo; com várias instâncias vira um cache por instância (só uma leitura a mais).

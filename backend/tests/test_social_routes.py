@@ -144,6 +144,19 @@ async def test_publish_with_clip_records_published(db):
 
 
 @pytest.mark.asyncio
+async def test_publish_clears_cached_insights_so_chat_sees_the_new_post(db):
+    h = await _login(db, "a")
+    client.post("/v1/social/accounts/bluesky", json=CRED, headers=h)
+    uid = (await db.execute(select(SocialAccount.user_id))).scalar()
+    social_routes._insights_cache[(uid, "bluesky")] = (0.0, {"posts": []})
+    social_routes._insights_cache[(uid, "x")] = (0.0, {"posts": []})
+    assert client.post("/v1/social/publish", json={"platform": "bluesky", "text": "oi"}, headers=h).json()["status"] == "published"
+    assert (uid, "bluesky") not in social_routes._insights_cache
+    assert (uid, "x") in social_routes._insights_cache  # só a rede que recebeu o post
+    social_routes._insights_cache.clear()
+
+
+@pytest.mark.asyncio
 async def test_publish_failure_is_recorded_not_raised(db):
     h = await _login(db, "a")
     client.post("/v1/social/accounts/bluesky", json=CRED, headers=h)
