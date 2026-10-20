@@ -281,7 +281,12 @@ def _validate_telegram_secret(provided_secret: str | None):
     if not hmac.compare_digest(settings.telegram_webhook_secret, provided_secret):
         raise HTTPException(status_code=401, detail="Invalid Telegram webhook secret")
 
-gemini_client = GeminiClient(api_key=settings.gemini_api_key, model=settings.gemini_model)
+gemini_client = GeminiClient(
+    api_key=settings.gemini_api_key,
+    model=settings.gemini_model,
+    anthropic_api_key=settings.anthropic_api_key,
+    anthropic_model=settings.anthropic_model,
+)
 solana_client = SolanaClient(
     rpc_url=settings.solana_rpc_url,
     jupiter_quote_url=settings.jupiter_quote_url,
