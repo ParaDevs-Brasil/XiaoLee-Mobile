@@ -497,6 +497,37 @@ async def marketplace_confirm(
     return {"confirmed": True, "price_usdc": out.get("price_usdc"), "pay_to": out.get("pay_to")}
 
 
+@app.get("/marketplace/search")
+async def marketplace_search(
+    q: str = "",
+    authorization: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Busca de serviços para a tela do app (mesma busca da tool do chat)."""
+    from server.integrations import marketplace_client
+
+    if not marketplace_client.enabled():
+        raise HTTPException(status_code=503, detail="marketplace disabled")
+    await resolve_twitter_identity(db, authorization, strict=True)
+    return await marketplace_client.call("search_marketplace", {"query": q})
+
+
+@app.post("/marketplace/buy")
+async def marketplace_buy(
+    payload: dict,
+    authorization: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Compra pela tela do app. Sem `confirm_id` devolve a cotação (`confirmation_required`, nada é pago);
+    com `confirm_id` já aprovado em /marketplace/confirm, paga. O usuário vem SEMPRE da sessão."""
+    from server.integrations import marketplace_client
+
+    if not marketplace_client.enabled():
+        raise HTTPException(status_code=503, detail="marketplace disabled")
+    twitter_user_id, _ = await resolve_twitter_identity(db, authorization, strict=True)
+    return await marketplace_client.call("buy_marketplace_service", payload, twitter_user_id)
+
+
 @app.post("/chat")
 async def chat_compat(
     payload: dict,

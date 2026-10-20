@@ -7,6 +7,7 @@ import {
   IconClipboard,
   IconDollar,
   IconRocket,
+  IconBag,
   IconScissors,
 } from '@/components/icons';
 import { Fonts, Radius, Spacing } from '@/constants/theme';
@@ -37,6 +38,7 @@ export function NavMenu({ visible, onDismiss }: NavMenuProps) {
     { key: 'dashboard', Icon: IconBarChart, label: 'Dashboard', href: '/dashboard' as const },
     { key: 'traction', Icon: IconDollar, label: 'Traction', href: '/traction' as const },
     { key: 'campaigns', Icon: IconRocket, label: 'Campaigns', href: '/campaigns' as const },
+    { key: 'marketplace', Icon: IconBag, label: 'Marketplace', href: '/marketplace' as const },
     { key: 'clips', Icon: IconScissors, label: 'Clips', href: '/clips' as const },
     { key: 'reports', Icon: IconClipboard, label: 'Reports', href: '/reports' as const },
   ];

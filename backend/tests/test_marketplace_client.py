@@ -63,3 +63,46 @@ async def test_buy_sends_user_and_confirm_id_and_confirm_hits_gateway(monkeypatc
     out = await mc.confirm("c1", "u1")
     assert sent[1][0].endswith("/internal/market/confirm") and sent[1][1] == {"confirmId": "c1", "userId": "u1"}
     assert out["status"] == 200
+
+
+@pytest.mark.asyncio
+async def test_app_routes_strict_session_and_user_from_session(monkeypatch, db_session):
+    """Rotas do app: o endereço/id não é credencial; com sessão, o usuário que paga vem da sessão (nunca do corpo)."""
+    import datetime
+
+    from fastapi.testclient import TestClient
+
+    from database.database import get_db_session
+    from database.models import WebSession
+    from server import app as app_module
+
+    monkeypatch.setenv("X402_GATEWAY_INTERNAL_URL", "http://gw")
+    monkeypatch.setenv("X402_INTERNAL_SECRET", "s")
+    db_session.add(WebSession(session_id="tok", twitter_user_id="privy_u1",
+                              expires_at=datetime.datetime.utcnow() + datetime.timedelta(days=1)))
+    await db_session.commit()
+
+    async def _override():
+        yield db_session
+
+    calls = []
+
+    async def fake_call(name, tool_input, user_id=""):
+        calls.append((name, user_id))
+        return {"error": "confirmation_required", "confirm_id": "c1"}
+
+    monkeypatch.setattr(mc, "call", fake_call)
+    app_module.app.dependency_overrides[get_db_session] = _override
+    try:
+        c = TestClient(app_module.app)
+        assert c.get("/marketplace/search?q=x").status_code == 401
+        bad = {"Authorization": "Bearer 0xabc"}
+        assert c.get("/marketplace/search?q=x", headers=bad).status_code == 401
+        assert c.post("/marketplace/buy", json={"resource": "https://x"}, headers=bad).status_code == 401
+        ok = {"Authorization": "Bearer tok"}
+        assert c.get("/marketplace/search?q=x", headers=ok).status_code == 200
+        r = c.post("/marketplace/buy", json={"resource": "https://x", "userId": "attacker"}, headers=ok)
+        assert r.json()["confirm_id"] == "c1"
+        assert calls[-1] == ("buy_marketplace_service", "privy_u1")
+    finally:
+        app_module.app.dependency_overrides.pop(get_db_session, None)

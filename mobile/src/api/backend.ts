@@ -930,3 +930,70 @@ export async function claimCampaignReward(
     paidOnchain: result.paid_onchain ?? false,
   };
 }
+
+// ── Marketplace (x402) ─────────────────────────────────────────────────────
+// `backend/server/app.py::marketplace_*`. A compra é em dois tempos: sem
+// `confirm_id` o backend só cota (nada é pago); o usuário aprova em
+// `/marketplace/confirm` e a compra repetida com o `confirm_id` paga.
+
+export interface MarketplaceItem {
+  resource: string;
+  method: 'GET' | 'POST';
+  price_usdc: number;
+  provider: string;
+  description: string;
+}
+
+export interface MarketplaceQuote {
+  resource: string;
+  method: string;
+  price_usdc: number;
+  pay_to: string;
+  expires_in_s: number;
+}
+
+/** Cotação (`error: 'confirmation_required'`) ou compra feita (`paid_usdc`). */
+export interface MarketplaceBuyResult {
+  error?: string;
+  message?: string;
+  confirm_id?: string;
+  quote?: MarketplaceQuote;
+  status?: number;
+  paid_usdc?: number;
+  payment_tx?: string;
+  data?: unknown;
+}
+
+export async function searchMarketplace(query: string): Promise<MarketplaceItem[]> {
+  // O primeiro varrimento do Discovery da Circle pode levar dezenas de segundos.
+  const out = await apiFetch<{ items?: MarketplaceItem[]; error?: string }>(
+    `/marketplace/search?q=${encodeURIComponent(query.trim())}`,
+    { timeoutMs: 60_000 },
+  );
+  if (out.error) throw new ApiError('Marketplace is unavailable right now. Try again soon.', null, false);
+  return out.items ?? [];
+}
+
+export function buyMarketplaceService(request: {
+  resource: string;
+  method: string;
+  body?: unknown;
+  maxUsdc: number;
+  confirmId?: string;
+}): Promise<MarketplaceBuyResult> {
+  return apiFetch<MarketplaceBuyResult>('/marketplace/buy', {
+    method: 'POST',
+    timeoutMs: 90_000,
+    json: {
+      resource: request.resource,
+      method: request.method,
+      body: request.body,
+      max_usdc: request.maxUsdc,
+      confirm_id: request.confirmId,
+    },
+  });
+}
+
+export async function confirmMarketplaceSpend(confirmId: string): Promise<void> {
+  await apiFetch('/marketplace/confirm', { method: 'POST', json: { confirm_id: confirmId } });
+}
