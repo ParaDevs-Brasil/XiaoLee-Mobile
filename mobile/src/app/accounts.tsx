@@ -15,7 +15,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   connectSocialAccount,
   disconnectSocialAccount,
-  finishXLogin,
   listSocialAccounts,
   startXLogin,
   X_REDIRECT,
@@ -32,6 +31,7 @@ import { useBackendData } from '@/hooks/use-backend-data';
 import { useSession } from '@/hooks/use-session';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { getSession } from '@/lib/session';
+import { completeXLogin } from '@/lib/x-login';
 
 /** Redes na ordem em que aparecem. `soon` = ainda sem publicação direta (depende de OAuth/auditoria da rede). */
 const NETWORKS = [
@@ -66,7 +66,7 @@ async function connectX(): Promise<void> {
   const code = params.get('code');
   const state = params.get('state');
   if (!code || !state) throw new Error('X did not return a login code, try again');
-  await finishXLogin(code, state);
+  await completeXLogin(code, state);
 }
 
 /** Contas onde a Xiaolee posta pelo creator: conecta, valida na própria rede e desconecta. */
@@ -75,7 +75,7 @@ export default function AccountsScreen() {
   const styles = useStyles();
   const insets = useSafeAreaInsets();
   const { hasSession } = useSession();
-  const { data, error, loading, refreshing, reload } = useBackendData(fetchAccounts);
+  const { data, error, loading, refreshing, reload, replace } = useBackendData(fetchAccounts);
   const [open, setOpen] = useState<string | null>(null);
   const [xBusy, setXBusy] = useState(false);
   const [xError, setXError] = useState<string>();
@@ -85,7 +85,10 @@ export default function AccountsScreen() {
     setXError(undefined);
     try {
       await connectX();
-      reload();
+      // Troca a lista no lugar (o spinner do X fica até ela chegar): `reload` limparia o spinner antes e
+      // mostraria "Connect" por um instante.
+      const next = await fetchAccounts();
+      if (next) replace(next);
     } catch (err) {
       setXError(err instanceof ApiError ? err.message : err instanceof Error ? err.message : String(err));
     } finally {

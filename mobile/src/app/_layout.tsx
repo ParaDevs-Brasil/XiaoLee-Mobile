@@ -113,6 +113,17 @@ function RootNavigator() {
         <Stack.Screen name="history" options={{ headerShown: false }} />
         <Stack.Screen name="marketplace" options={{ headerShown: false }} />
         <Stack.Screen name="accounts" options={{ headerShown: false }} />
+        {/* Retorno do login do X: transparente e sem animação, a Accounts que abriu o login segue visível por baixo. */}
+        <Stack.Screen
+          name="social/x"
+          options={{
+            headerShown: false,
+            presentation: 'transparentModal',
+            animation: 'none',
+            // o `contentStyle` padrão pinta `colors.bg` e cobriria a Accounts de branco enquanto o login conclui
+            contentStyle: { backgroundColor: 'transparent' },
+          }}
+        />
         <Stack.Screen name="clips/index" options={{ headerShown: false }} />
         <Stack.Screen name="clips/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="reports/index" options={{ headerShown: false }} />
