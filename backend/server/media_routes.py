@@ -32,7 +32,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, case, delete, func, inspect, or_, select, update
 from sqlalchemy.exc import IntegrityError
@@ -129,10 +129,22 @@ class ClipOut(BaseModel):
     download_url: Optional[str] = None  # só quando ready; URL temporária (1 h)
     thumbnail_url: Optional[str] = None  # quadro do corte renderizado; URL temporária (1 h)
     updated_at: Optional[str] = None  # idem MediaOut: corte preso em pending/rendering vira "gerar de novo" no app
+    layout: Optional[str] = None  # crop | fit com que foi renderizado; None = corte antigo, de antes do campo
+    caption_fixes: dict[str, str] = Field(default_factory=dict)  # {palavra errada: certa} aplicadas à legenda
 
 
 class TitleUpdate(BaseModel):
     title: str = Field(min_length=1, max_length=TITLE_MAX)
+
+
+class ClipUpdate(BaseModel):
+    """Qualquer subconjunto, ao menos um campo. Título é só texto; início, fim ou layout re-renderizam o corte."""
+    title: Optional[str] = Field(default=None, min_length=1, max_length=TITLE_MAX)
+    start_s: Optional[float] = Field(default=None, ge=0)
+    end_s: Optional[float] = Field(default=None, gt=0)
+    layout: Optional[str] = None
+    # {palavra errada: certa}: SUBSTITUI as correções do corte ({} limpa). Troca a palavra na legenda, sem mexer nos tempos.
+    caption_fixes: Optional[dict[str, str]] = None
 
 
 class MediaUpload(BaseModel):
@@ -794,8 +806,15 @@ def _clip_out(c: MediaClip) -> ClipOut:
     return ClipOut(
         id=c.id, rank=c.rank, start_s=c.start_s, end_s=c.end_s, title=c.title, reason=c.reason,
         status=c.status, error=c.error, size_bytes=c.size_bytes, download_url=url, updated_at=_updated_at(c),
-        thumbnail_url=_thumb_url(c.thumb_key),
+        thumbnail_url=_thumb_url(c.thumb_key), layout=c.layout, caption_fixes=_fixes_of(c),
     )
+
+
+def _fixes_of(c: MediaClip) -> dict[str, str]:
+    try:
+        return json.loads(c.caption_fixes) if c.caption_fixes else {}
+    except ValueError:
+        return {}
 
 
 async def _clips_of(db: AsyncSession, asset_id: int) -> list[MediaClip]:
@@ -823,25 +842,62 @@ async def list_clips(
 
 
 @router.patch("/{asset_id}/clips/{clip_id}", response_model=ClipOut)
-async def rename_clip(
+async def update_clip(
     asset_id: int,
     clip_id: int,
-    body: TitleUpdate,
+    body: ClipUpdate,
+    background: BackgroundTasks,
     authorization: Optional[str] = Header(default=None),
     db: AsyncSession = Depends(get_db_session),
 ):
-    """O título é só texto (o vídeo renderizado não o traz queimado), então renomear não re-renderiza nada."""
+    """Edita um corte. O título é só texto (o vídeo não o traz queimado): não re-renderiza nada. Início, fim ou
+    layout mudam o vídeo: o corte volta a `pending` e só ESTE é re-renderizado, com a transcrição e o layout que
+    já existem (sem nova chamada ao modelo). Enquanto isso o arquivo anterior segue no bucket; sai quando o novo fica pronto."""
+    if body.layout is not None and body.layout not in clipper.LAYOUTS:
+        raise HTTPException(422, f"layout must be one of {', '.join(clipper.LAYOUTS)}")
+    if all(v is None for v in (body.title, body.start_s, body.end_s, body.layout, body.caption_fixes)):
+        raise HTTPException(422, "nothing to change: send title, start_s, end_s, layout or caption_fixes")
+    try:
+        fixes = clipper.clean_fixes(body.caption_fixes) if body.caption_fixes is not None else None
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
     asset = await _owned(db, authorization, asset_id)
     clip = (await db.execute(
         select(MediaClip).where(MediaClip.id == clip_id, MediaClip.media_id == asset.id)
     )).scalars().first()
     if not clip:
         raise HTTPException(404, "clip not found")
-    clip.title = _clean_title(body.title)
-    _keep_updated_at(clip)
+
+    title = _clean_title(body.title) if body.title is not None else None
+    start = clip.start_s if body.start_s is None else body.start_s
+    end = clip.end_s if body.end_s is None else body.end_s
+    layout = body.layout or clip.layout or "fit"  # corte antigo sem layout registrado: `fit` nunca descarta conteúdo
+    changes_video = ((start, end) != (clip.start_s, clip.end_s) or (body.layout is not None and body.layout != clip.layout)
+                     or (fixes is not None and fixes != _fixes_of(clip)))
+    if changes_video:
+        lo, hi = clipper.LEN_BOUNDS_S
+        if not (0 <= start < end) or not (lo <= end - start <= hi):
+            raise HTTPException(422, f"a clip must last between {lo:.0f} and {hi:.0f} seconds")
+        if asset.duration_s is not None and end > asset.duration_s + 1:
+            raise HTTPException(422, f"end_s is past the end of the video ({asset.duration_s:.0f}s)")
+        if asset.status != "transcribed":
+            raise HTTPException(409, f"media is {asset.status}; the original is not available to re-render")
+        if clip.status in ("pending", "rendering") and datetime.utcnow() - clip.updated_at <= STALE_TRANSCRIBING:
+            raise HTTPException(409, "this clip is still rendering")
+
+    if title is not None:
+        clip.title = title
+    if changes_video:
+        clip.start_s, clip.end_s, clip.status, clip.error = start, end, "pending", None
+        if fixes is not None:
+            clip.caption_fixes = json.dumps(fixes, ensure_ascii=False) if fixes else None
+    else:
+        _keep_updated_at(clip)
     await db.commit()
+    if changes_video:
+        background.add_task(render_clips, asset.id, None, layout, [clip.id])
     try:
-        return _clip_out(clip)
+        return [_clip_out(clip)][0]
     except media_storage.StorageNotConfigured as exc:
         raise _unavailable(exc)
 
@@ -882,15 +938,21 @@ async def create_clips(
     background: BackgroundTasks,
     regenerate: bool = False,
     layout: str = "auto",
+    count: int = Query(clipper.N_CLIPS, ge=1, le=clipper.MAX_CLIPS),
+    min_s: float = Query(clipper.MIN_LEN_S, ge=clipper.LEN_BOUNDS_S[0], le=clipper.LEN_BOUNDS_S[1]),
+    max_s: float = Query(clipper.MAX_LEN_S, ge=clipper.LEN_BOUNDS_S[0], le=clipper.LEN_BOUNDS_S[1]),
     authorization: Optional[str] = Header(default=None),
     db: AsyncSession = Depends(get_db_session),
 ):
     """Escolhe os highlights na hora (a lista volta já com títulos) e renderiza em background.
     Cada chamada custa uma ida ao Claude: se já há cortes, exige `regenerate=true`.
+    `count` (1-5) = quantos cortes; `min_s`/`max_s` = duração de cada um (10-90 s, com 5 s de folga).
     `layout=auto` (padrão: o Claude olha 3 quadros e escolhe) | `crop` (quem fala para a câmera) |
     `fit` (gravação de tela/gráficos: vídeo inteiro sobre fundo desfocado)."""
     if layout not in clipper.LAYOUT_CHOICES:
         raise HTTPException(422, f"layout must be one of {', '.join(clipper.LAYOUT_CHOICES)}")
+    if err := clipper.length_error(min_s, max_s):
+        raise HTTPException(422, err)  # antes de gastar o modelo
     asset = await _owned(db, authorization, asset_id)
     if asset.kind != "video":
         raise HTTPException(422, "clips need a video, not audio")
@@ -916,7 +978,7 @@ async def create_clips(
         try:
             # ponytail: seleção síncrona (~5-20 s) para a resposta já trazer os títulos; se o app
             # passar a estourar timeout, mover para background com um status em MediaAsset.
-            picks = await clipper.pick_highlights(segments, row.language)
+            picks = await clipper.pick_highlights(segments, row.language, n=count, min_s=min_s, max_s=max_s)
         except clipper.ProviderUnavailable as exc:  # sem chave/crédito, limite, provedor fora: não é culpa do vídeo
             raise _unavailable(exc)
         except Exception:
@@ -941,14 +1003,16 @@ async def create_clips(
         raise _unavailable(exc)
 
 
-async def render_clips(asset_id: int, old_keys: list[str] | None = None, layout: str = "auto") -> None:
+async def render_clips(asset_id: int, old_keys: list[str] | None = None, layout: str = "auto",
+                       clip_ids: list[int] | None = None) -> None:
     """Um corte por vez (ffmpeg 1080x1920 é pesado, e a RAM do servidor é pouca): o semáforo vale para
-    todas as mídias, não só esta. Cada corte tem o próprio status."""
+    todas as mídias, não só esta. Cada corte tem o próprio status. `clip_ids` limita aos cortes editados."""
     async with _RENDER_SEM:
-        await _render_clips(asset_id, old_keys, layout)
+        await _render_clips(asset_id, old_keys, layout, clip_ids)
 
 
-async def _render_clips(asset_id: int, old_keys: list[str] | None, layout: str) -> None:
+async def _render_clips(asset_id: int, old_keys: list[str] | None, layout: str,
+                        clip_ids: list[int] | None = None) -> None:
     for key in old_keys or []:
         try:
             await media_storage.delete_object(key)
@@ -962,6 +1026,8 @@ async def _render_clips(asset_id: int, old_keys: list[str] | None, layout: str) 
             (await db.execute(select(MediaTranscript).where(MediaTranscript.media_id == asset_id))).scalars().one().segments_json
         )
         clips = await _clips_of(db, asset_id)
+        if clip_ids is not None:
+            clips = [c for c in clips if c.id in clip_ids]
         if layout == "auto" and clips:
             layout = await clipper.detect_layout(media_storage.presign_get(asset.r2_key), clips[0].start_s, clips[0].end_s)
         for clip in clips:
@@ -974,11 +1040,12 @@ async def _render_clips(asset_id: int, old_keys: list[str] | None, layout: str) 
                 await db.rollback()
                 continue
             uploaded: list[str] = []  # o que este corte subiu ao bucket: se ele sumiu no meio, é lixo a apagar
+            prev = [k for k in (clip.r2_key, clip.thumb_key) if k]  # versão anterior (re-render): sai só quando a nova fica pronta
             try:
                 with tempfile.TemporaryDirectory() as tmp:
                     ass, out = os.path.join(tmp, "subs.ass"), os.path.join(tmp, "clip.mp4")
                     with open(ass, "w", encoding="utf-8") as f:
-                        f.write(clipper.build_ass(segments, clip.start_s, clip.end_s))
+                        f.write(clipper.build_ass(segments, clip.start_s, clip.end_s, _fixes_of(clip)))
                     await clipper.render_clip(media_storage.presign_get(asset.r2_key), ass, clip.start_s, clip.end_s, out, layout)
                     key = f"clips/{asset.user_id}/{asset.id}/{uuid.uuid4().hex}.mp4"
                     await media_storage.upload_file(out, key, "video/mp4")
@@ -990,17 +1057,21 @@ async def _render_clips(asset_id: int, old_keys: list[str] | None, layout: str) 
                     )
                     if clip.thumb_key:
                         uploaded.append(clip.thumb_key)
-                clip.status, clip.error = "ready", None
+                clip.status, clip.error, clip.layout = "ready", None, layout
             except Exception as exc:
                 logger.exception("clip render failed for clip %s", clip.id)
                 # o detalhe técnico (stderr do ffmpeg) fica no log acima; o app recebe algo acionável
-                clip.status, clip.error = "failed", "render failed, generate the clips again"
+                clip.status = "failed"
+                clip.error = "render failed, try the edit again" if prev else "render failed, generate the clips again"
             if not await _exists(db, MediaClip, clip.id):
                 # apagado durante o render: o que ele subiu ao bucket não tem mais dono
                 await _delete_objects(uploaded)
                 continue
+            kept = [clip.r2_key, clip.thumb_key] if clip.status == "ready" else prev
             try:
                 await db.commit()
             except (StaleDataError, IntegrityError):  # sumiu entre a checagem e o commit
                 await db.rollback()
                 await _delete_objects(uploaded)
+                continue
+            await _delete_objects([k for k in prev if k not in kept])  # versão anterior, já sem uso
