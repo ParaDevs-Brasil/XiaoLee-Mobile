@@ -10,6 +10,7 @@ import {
   IconBag,
   IconScissors,
   IconShare,
+  IconUser,
 } from '@/components/icons';
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
@@ -40,6 +41,7 @@ export function NavMenu({ visible, onDismiss }: NavMenuProps) {
     { key: 'traction', Icon: IconDollar, label: 'Traction', href: '/traction' as const },
     { key: 'campaigns', Icon: IconRocket, label: 'Campaigns', href: '/campaigns' as const },
     { key: 'marketplace', Icon: IconBag, label: 'Marketplace', href: '/marketplace' as const },
+    { key: 'creators', Icon: IconUser, label: 'AI Creators', href: '/creators' as const },
     { key: 'clips', Icon: IconScissors, label: 'Clips', href: '/clips' as const },
     { key: 'reports', Icon: IconClipboard, label: 'Reports', href: '/reports' as const },
     { key: 'accounts', Icon: IconShare, label: 'Accounts', href: '/accounts' as const },
