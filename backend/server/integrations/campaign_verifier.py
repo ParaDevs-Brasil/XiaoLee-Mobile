@@ -56,6 +56,7 @@ async def verify_social(
     profile_to_follow: Optional[str],
     tweet_id_to_engage: Optional[str],
     bearer_token: str,
+    strict: bool = False,
 ) -> Tuple[bool, str]:
     """
     Verifies social tasks via Twitter API v2 (app-only Bearer token).
@@ -66,13 +67,20 @@ async def verify_social(
 
     Non-Twitter users (Telegram/Google) skip the API check: their identity is already
     authenticated via Bearer session in _resolve_user.
+
+    ``strict`` (dinheiro real): nada é aceito "de boa fé" — sem token, sem conta X, API fora
+    do ar ou follow que a API não consegue conferir viram recusa.
     """
+    if strict and not bearer_token:
+        return False, "Social verification is unavailable right now; try again later."
     if not bearer_token:
         LOG.warning("[campaign/verify] X_BEARER_TOKEN not configured — accepting social task on good faith")
         return True, "Twitter API not configured; accepted"
 
     # Only real Twitter users have a numeric twitter_user_id
     if not twitter_user_id.isdigit():
+        if strict:
+            return False, "Connect your X account to complete social tasks."
         LOG.info("[campaign/verify] Non-Twitter user %s — social task accepted for custodial account", twitter_user_id)
         return True, "Social task verified for custodial account"
 
@@ -82,6 +90,8 @@ async def verify_social(
             f"/tweets/{tweet_id_to_engage}/retweeted_by?max_results=100",
             bearer_token,
         )
+        if data is None and strict:
+            return False, "Could not verify the retweet right now; try again in a moment."
         if data is None:
             LOG.warning("[campaign/verify] Could not reach Twitter to verify retweet — accepting")
             return True, "Retweet could not be verified (Twitter API unavailable); accepted"
@@ -94,6 +104,8 @@ async def verify_social(
             )
 
     # Follow verification — not possible with app-only Bearer token; log for audit
+    if profile_to_follow and strict:
+        return False, "Follow tasks cannot be verified automatically yet."
     if profile_to_follow:
         LOG.info(
             "[campaign/verify] Follow of @%s by Twitter user %s cannot be verified "
@@ -108,6 +120,7 @@ async def verify_social(
 async def verify_trading(
     wallet_address: Optional[str],
     helius_api_key: str,
+    strict: bool = False,
 ) -> Tuple[bool, str]:
     """
     Verifies trading task: user's custodial wallet must have ≥1 successful SWAP
@@ -119,6 +132,8 @@ async def verify_trading(
             "Create your wallet via the dashboard before attempting a trading campaign."
         )
 
+    if strict and not helius_api_key:
+        return False, "Trading verification is unavailable right now; try again later."
     if not helius_api_key:
         LOG.warning("[campaign/verify] HELIUS_API_KEY not configured — accepting trading task on good faith")
         return True, "Helius API not configured; accepted"
@@ -130,6 +145,8 @@ async def verify_trading(
         limit=10,
     )
 
+    if txs is None and strict:
+        return False, "Could not verify the swap right now; try again in a moment."
     if txs is None:
         LOG.warning("[campaign/verify] Helius API unavailable — accepting trading task")
         return True, "Swap could not be verified (Helius API unavailable); accepted"

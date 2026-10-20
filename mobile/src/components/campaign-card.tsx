@@ -131,7 +131,7 @@ export function CampaignCard({
           setNotice({ text: 'Connect a wallet to claim.', tone: 'error' });
           return;
         }
-        const proofMessage = `XiaoLee Devnet claim|campaign:${campaign.id}|session:${session}|wallet:${address}|ts:${Date.now()}`;
+        const proofMessage = `XiaoLee claim|campaign:${campaign.id}|session:${session}|wallet:${address}|ts:${Date.now()}`;
         let signature: string;
         try {
           signature = await signMessage(proofMessage);

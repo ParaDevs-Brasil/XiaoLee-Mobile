@@ -8,11 +8,13 @@ from typing import Any, Dict, Optional
 from server.arc_swap import ARC_SWAP_TOKENS, validate_arc_swap
 from server.caller_trust import unverified_caller
 from server.campaign_match import rank_for_interests
+from server.integrations import marketplace_client
 from server.integrations.gemini_client import GeminiClient
 from server.integrations.solana_client import SolanaClient
 from server.integrations.stellar_adapter import StellarAdapter
 from server.schemas import IntentResponse
 from server.settings import settings
+from server import social_chat_tools
 
 logger = logging.getLogger(__name__)
 
@@ -695,6 +697,7 @@ class OrchestrationService:
             "direto com sua personalidade, sem ferramentas. Se uma operação Stellar exigir carteira e ela "
             "não estiver conectada, peça para conectar via 'Connect Wallet' na navbar (qualquer wallet "
             "compatível: MetaMask, Rabby, Phantom, Freighter). Responda SEMPRE no idioma do usuário."
+            + (f"\n\nPUBLICAR NAS REDES:\n{social_chat_tools.SOCIAL_PROMPT}" if self._social_on(stellar_wallet) else "")
         )
 
     def _make_stellar_executor(
@@ -731,6 +734,27 @@ class OrchestrationService:
                 name = tool_input.get("animation_name")
                 captured["animation_name"] = name
                 return json.dumps({"status": "animation_played", "animation": name})
+
+            if tool_name in ("search_marketplace", "buy_marketplace_service"):
+                if user_id == "web_anonymous":  # gasto exige usuário logado
+                    return json.dumps({"error": "no_session", "message": "Peça para o usuário entrar antes de comprar serviços."})
+                # identidade do gasto = a mesma que a rota de confirmação resolve (sessão -> twitter_user_id);
+                # sem sessão válida (telegram/x, ou /chat que já resolveu) o próprio user_id vale.
+                mp_user = user_id
+                try:
+                    from database.database import SessionLocal as _SL
+                    from server.campaigns_routes import resolve_twitter_identity
+                    async with _SL() as _db:
+                        mp_user = (await resolve_twitter_identity(_db, f"Bearer {user_id}", strict=True))[0]
+                except Exception:
+                    pass
+                try:
+                    out = await marketplace_client.call(tool_name, tool_input, mp_user)
+                except Exception as exc:
+                    logger.warning("[chat-tool] %s failed", tool_name, exc_info=True)
+                    return json.dumps({"error": "marketplace_failed", "message": str(exc)[:200]})
+                captured["actions"].append(tool_name)
+                return json.dumps(out)
 
             if tool_name == "arc_get_usdc_balance":
                 if not evm_wallet:
@@ -774,6 +798,23 @@ class OrchestrationService:
             # (ver `app.py::chat_compat`, `session_token or "web_anonymous"`),
             # então reconstruir `Bearer {user_id}` é exatamente o Authorization
             # que o endpoint REST receberia do app.
+            if tool_name in social_chat_tools.SOCIAL_TOOL_NAMES:
+                if user_id == "web_anonymous" or unverified_caller.get():
+                    return json.dumps({
+                        "error": "no_session",
+                        "message": "Usuário precisa estar logado para isso — peça para conectar/entrar antes.",
+                    })
+                try:
+                    async with _campaigns_db() as db:
+                        result, execution = await social_chat_tools.run(tool_name, tool_input, db, user_id)
+                except Exception as exc:
+                    logger.warning("[chat-tool] %s failed input=%r", tool_name, tool_input, exc_info=True)
+                    return json.dumps({"error": "social_tool_failed", "message": str(exc)})
+                captured["actions"].append(tool_name)
+                if execution:
+                    captured["execution"] = execution
+                return json.dumps(result)
+
             if tool_name in {
                 "create_campaign", "join_campaign", "verify_campaign_tasks", "prepare_campaign_claim",
             }:
@@ -895,7 +936,7 @@ class OrchestrationService:
                         amount = float(campaign.reward_per_participant)
                         token = campaign.reward_token
                         proof_message = (
-                            f"XiaoLee Devnet claim|campaign:{campaign_id}|"
+                            f"XiaoLee claim|campaign:{campaign_id}|"
                             f"session:{user_id}|wallet:{wallet_address}"
                         )
                 except Exception as exc:
@@ -1034,16 +1075,22 @@ class OrchestrationService:
         return messages
 
     @staticmethod
-    def _tools_for(stellar_wallet: str | None, evm_wallet: str | None) -> list:
+    def _social_on(stellar_wallet: str | None) -> bool:
+        # Flag desligada (padrão) ou conversa Stellar: o chat fica exatamente como era.
+        return settings.social_tools_enabled and not stellar_wallet
+
+    @classmethod
+    def _tools_for(cls, stellar_wallet: str | None, evm_wallet: str | None) -> list:
         """Tools do chat conforme a(s) carteira(s) conectada(s).
 
         Só Arc (EVM): o swap é o da Arc e o do Stellar DEX sai — senão a Xiaolee mandava
         "conectar a Freighter". Stellar (ou nenhuma wallet): como sempre foi.
         """
+        social = social_chat_tools.SOCIAL_TOOLS if cls._social_on(stellar_wallet) else []
         if not evm_wallet:
-            return STELLAR_AGENT_TOOLS
+            return [*STELLAR_AGENT_TOOLS, *social]
         tools = [t for t in STELLAR_AGENT_TOOLS if stellar_wallet or t["function"]["name"] != "stellar_swap_quote"]
-        return [*tools, ARC_SWAP_TOOL]
+        return [*tools, ARC_SWAP_TOOL, *social]
 
     async def _execute_agentic(self, text: str, user_id: str, history: list = None,
                                platform: str = "web") -> Dict[str, Any]:
@@ -1060,7 +1107,7 @@ class OrchestrationService:
         result = await self.claude_engine.run(
             system_prompt=system_prompt,
             message=clean_text,
-            tools=self._tools_for(stellar_wallet, evm_wallet),
+            tools=[*self._tools_for(stellar_wallet, evm_wallet), *marketplace_client.tools()],
             tool_executor=executor,
             history=self._history_to_anthropic(history),
         )

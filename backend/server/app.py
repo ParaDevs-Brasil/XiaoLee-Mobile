@@ -40,6 +40,7 @@ from server.webhooks.helius_routes import router as helius_router
 from server.caller_trust import unverified_caller
 from server.campaigns_routes import (
     resolve_optional_identity,
+    resolve_twitter_identity,
     resolve_verified_identity,
     router as campaigns_router,
 )
@@ -50,12 +51,14 @@ from server.routes.x402_routes import router as x402_router
 from server.routes.agent_routes import router as agent_router
 from server.routes.arc_routes import router as arc_router
 from server.routes.arc_x402_routes import router as arc_x402_router
+from server.routes.x402_internal_routes import router as x402_internal_router
 from server.routes.trust_routes import router as trust_router
 from server.routes.cctp_routes import router as cctp_router
 from server.routes.chat_sessions_routes import router as chat_sessions_router
 from server import creator_report, media_maintenance
 from server.media_routes import router as media_router
 from server.creator_report_routes import router as creator_report_router
+from server.social_routes import router as social_router
 from server.traction_routes import router as traction_router
 
 
@@ -66,6 +69,9 @@ async def lifespan(app: FastAPI):
     _missing = [v for v in ("JWT_SECRET", "STELLAR_SERVER_SECRET", "STELLAR_X402_WALLET") if not _os.getenv(v)]
     if _missing:
         logger.warning("[startup] Missing env vars (service may reject auth/payment): %s", ", ".join(_missing))
+
+    from services.pqc_receipt import assert_ready as _pqc_assert_ready
+    _pqc_assert_ready()  # no-op sem PQC_REQUIRE_PERSISTENT_KEY; com ele, par ausente/inválido derruba o boot
 
     init_db()
     await create_tables()
@@ -201,11 +207,13 @@ app.include_router(x402_router)
 app.include_router(agent_router)
 app.include_router(arc_router)
 app.include_router(arc_x402_router)
+app.include_router(x402_internal_router)
 app.include_router(trust_router)
 app.include_router(cctp_router)
 app.include_router(chat_sessions_router)
 app.include_router(media_router)
 app.include_router(creator_report_router)
+app.include_router(social_router)
 app.include_router(traction_router)
 
 request_hits: Dict[str, Deque[datetime]] = defaultdict(deque)
@@ -464,6 +472,62 @@ async def inbound_message(payload: InboundMessage, db: AsyncSession = Depends(ge
         db=db,
         metadata=payload.metadata,
     )
+
+@app.post("/marketplace/confirm")
+async def marketplace_confirm(
+    payload: dict,
+    authorization: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """O usuário aprova o gasto de uma cotação (`confirmation_required`).
+
+    Fica FORA do loop do modelo de propósito: a aprovação exige a sessão da pessoa (strict:
+    só token emitido pelo backend), então prompt injection vinda do marketplace não consegue
+    aprovar o próprio gasto.
+    """
+    from server.integrations import marketplace_client
+
+    if not marketplace_client.enabled():
+        raise HTTPException(status_code=503, detail="marketplace disabled")
+    confirm_id = str(payload.get("confirm_id", "")).strip()
+    if not confirm_id:
+        raise HTTPException(status_code=400, detail="confirm_id is required")
+    twitter_user_id, _ = await resolve_twitter_identity(db, authorization, strict=True)
+    out = await marketplace_client.confirm(confirm_id, twitter_user_id)
+    if out.get("status") != 200:
+        raise HTTPException(status_code=404, detail="confirmation not found or expired")
+    return {"confirmed": True, "price_usdc": out.get("price_usdc"), "pay_to": out.get("pay_to")}
+
+
+@app.get("/marketplace/search")
+async def marketplace_search(
+    q: str = "",
+    authorization: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Busca de serviços para a tela do app (mesma busca da tool do chat)."""
+    from server.integrations import marketplace_client
+
+    if not marketplace_client.enabled():
+        raise HTTPException(status_code=503, detail="marketplace disabled")
+    await resolve_twitter_identity(db, authorization, strict=True)
+    return await marketplace_client.call("search_marketplace", {"query": q})
+
+
+@app.post("/marketplace/buy")
+async def marketplace_buy(
+    payload: dict,
+    authorization: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Compra pela tela do app. Sem `confirm_id` devolve a cotação (`confirmation_required`, nada é pago);
+    com `confirm_id` já aprovado em /marketplace/confirm, paga. O usuário vem SEMPRE da sessão."""
+    from server.integrations import marketplace_client
+
+    if not marketplace_client.enabled():
+        raise HTTPException(status_code=503, detail="marketplace disabled")
+    twitter_user_id, _ = await resolve_twitter_identity(db, authorization, strict=True)
+    return await marketplace_client.call("buy_marketplace_service", payload, twitter_user_id)
 
 
 @app.post("/chat")

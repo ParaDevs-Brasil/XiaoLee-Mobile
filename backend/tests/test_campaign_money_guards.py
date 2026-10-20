@@ -23,7 +23,7 @@ os.environ.setdefault("JWT_SECRET", "route-test-jwt-secret-32-chars-ok")
 os.environ.setdefault("ENCRYPTION_KEY", "route-test-encryption-key-xxxxxx")
 
 from database.database import get_db_session
-from database.models import Campaign, User, Wallet, WebSession
+from database.models import Campaign, CampaignParticipant, User, Wallet, WebSession
 from server.caller_trust import unverified_caller
 
 app_module = importlib.import_module("server.app")
@@ -244,3 +244,198 @@ class TestChatEndpointMarksCaller:
             r = client.post("/chat", json={"message": "oi", "user_id": "victim"}, headers=headers)
             assert r.status_code == 200, r.text
         assert seen == [True, True, False]
+
+
+class TestCreatorAllowlist:
+    @pytest.mark.asyncio
+    async def test_blocks_creators_outside_the_list_on_real_money(self, db, monkeypatch):
+        headers = await _login(db)
+        _balance(monkeypatch, 100)
+        monkeypatch.setattr(
+            campaigns, "settings",
+            dataclasses.replace(campaigns.settings, arc_sandbox=False, campaign_creator_allowlist="someone_else"),
+        )
+        r = client.post("/campaigns/create", json=_body(), headers=headers)
+        assert r.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_allows_listed_id_case_and_at_insensitive(self, db, monkeypatch):
+        headers = await _login(db)
+        _balance(monkeypatch, 100)
+        monkeypatch.setattr(
+            campaigns, "settings",
+            dataclasses.replace(campaigns.settings, arc_sandbox=False, campaign_creator_allowlist=" @Privy_Creator "),
+        )
+        r = client.post("/campaigns/create", json=_body(), headers=headers)
+        assert r.status_code == 200, r.text
+
+    @pytest.mark.asyncio
+    async def test_ignored_in_sandbox(self, db, monkeypatch):
+        headers = await _login(db)
+        _balance(monkeypatch, 100)
+        monkeypatch.setattr(
+            campaigns, "settings",
+            dataclasses.replace(campaigns.settings, arc_sandbox=True, campaign_creator_allowlist="someone_else"),
+        )
+        r = client.post("/campaigns/create", json=_body(), headers=headers)
+        assert r.status_code == 200, r.text
+
+
+class TestStrictVerifier:
+    """Dinheiro real (strict): nada é aceito de boa fé."""
+
+    @pytest.mark.asyncio
+    async def test_social_rejects_without_bearer_token(self):
+        from server.integrations.campaign_verifier import verify_social
+
+        assert (await verify_social("123", None, "t1", "", strict=True))[0] is False
+        assert (await verify_social("123", None, "t1", ""))[0] is True  # sandbox mantém o legado
+
+    @pytest.mark.asyncio
+    async def test_social_rejects_non_x_account_and_follow_tasks(self):
+        from server.integrations.campaign_verifier import verify_social
+
+        assert (await verify_social("privy_x", None, None, "b", strict=True))[0] is False
+        assert (await verify_social("123", "someone", None, "b", strict=True))[0] is False
+
+    @pytest.mark.asyncio
+    async def test_trading_rejects_without_helius_key(self):
+        from server.integrations.campaign_verifier import verify_trading
+
+        assert (await verify_trading("addr", "", strict=True))[0] is False
+        assert (await verify_trading("addr", ""))[0] is True
+
+
+class TestPayoutGuard:
+    """Travas de dinheiro nível 2: kill switch, 1 pagamento por carteira, teto diário global."""
+
+    async def _seed(self, db, reward=1.0):
+        camp = Campaign(
+            creator_twitter_user_id="privy_c", name=f"pg-{reward}", description="d", campaign_type="social",
+            reward_token="USDC", reward_per_participant=reward, max_participants=10, reward_pool=reward * 10,
+            status="active",
+        )
+        u1, u2 = User(twitter_user_id="privy_a", twitter_handle="a"), User(twitter_user_id="privy_b", twitter_handle="b")
+        db.add_all([camp, u1, u2])
+        await db.flush()
+        return camp, u1, u2
+
+    def _cfg(self, monkeypatch, **over):
+        monkeypatch.setattr(campaigns, "settings", dataclasses.replace(campaigns.settings, **over))
+
+    @pytest.mark.asyncio
+    async def test_kill_switch_blocks(self, db, monkeypatch):
+        camp, u1, _ = await self._seed(db)
+        self._cfg(monkeypatch, payouts_enabled=False)
+        assert "paused" in await campaigns._payout_guard(db, camp, u1.id, WALLET, 1.0)
+
+    @pytest.mark.asyncio
+    async def test_open_when_nothing_paid(self, db, monkeypatch):
+        camp, u1, _ = await self._seed(db)
+        self._cfg(monkeypatch, payouts_enabled=True, payout_daily_budget_usdc=20)
+        assert await campaigns._payout_guard(db, camp, u1.id, WALLET, 1.0) is None
+
+    @pytest.mark.asyncio
+    async def test_wallet_already_paid_by_another_account(self, db, monkeypatch):
+        from datetime import timezone
+
+        camp, u1, u2 = await self._seed(db)
+        self._cfg(monkeypatch, payouts_enabled=True, payout_daily_budget_usdc=20)
+        db.add(CampaignParticipant(
+            campaign_id=camp.id, user_id=u1.id, status="paid",
+            paid_at=datetime.now(timezone.utc), paid_wallet=WALLET.lower(),
+        ))
+        await db.flush()
+        assert "already received" in await campaigns._payout_guard(db, camp, u2.id, WALLET.upper().replace("X", "x"), 1.0)
+
+    @pytest.mark.asyncio
+    async def test_daily_budget(self, db, monkeypatch):
+        from datetime import timezone
+
+        camp, u1, u2 = await self._seed(db, reward=1.0)
+        self._cfg(monkeypatch, payouts_enabled=True, payout_daily_budget_usdc=1.5)
+        db.add(CampaignParticipant(
+            campaign_id=camp.id, user_id=u1.id, status="paid",
+            paid_at=datetime.now(timezone.utc), paid_wallet="0x" + "cd" * 20,
+        ))
+        await db.flush()
+        assert "daily" in await campaigns._payout_guard(db, camp, u2.id, WALLET, 1.0)  # 1 + 1 > 1.5
+        self._cfg(monkeypatch, payouts_enabled=True, payout_daily_budget_usdc=2.0)
+        assert await campaigns._payout_guard(db, camp, u2.id, WALLET, 1.0) is None
+
+
+@pytest.mark.asyncio
+async def test_relay_global_cap(monkeypatch):
+    from server.rate_limiter import InMemoryRateLimiter
+    from server.routes import arc_routes
+
+    limiter = InMemoryRateLimiter()
+
+    async def fake_limiter():
+        return limiter
+
+    monkeypatch.setattr(arc_routes, "get_rate_limiter", fake_limiter)
+    monkeypatch.setattr(arc_routes, "_arc_native", lambda: (_ for _ in ()).throw(RuntimeError("no network in tests")))
+    monkeypatch.setattr(arc_routes, "settings", dataclasses.replace(arc_routes.settings, arc_relay_global_per_hour=2, arc_relay_rate_limit_per_hour=100, arc_usdc_address="0x" + "11" * 20))
+    body = {"from_address": "0x" + "aa" * 20, "to_address": "0x" + "bb" * 20, "value": 1, "valid_after": 0,
+            "valid_before": 9999999999, "nonce": "0x" + "00" * 32, "signature": "0x" + "00" * 65}
+    codes = []
+    for i in range(3):
+        body["from_address"] = "0x" + f"{i + 1:02x}" * 20  # origens diferentes: só o teto global pega
+        codes.append(client.post("/v1/arc/usdc/relay-authorization", json=body).status_code)
+    assert codes[2] == 429 and codes[0] != 429
+
+
+class TestCreatorApproval:
+    """Na mainnet (verificador estrito) quem libera o resgate é o criador da campanha."""
+
+    async def _setup(self, db):
+        creator = await _login(db, "boss")
+        camp = Campaign(
+            creator_twitter_user_id="privy_boss", name="approve-me", description="d", campaign_type="social",
+            reward_token="USDC", reward_per_participant=0.01, max_participants=5, reward_pool=0.05, status="active",
+        )
+        joiner = User(twitter_user_id="privy_joiner", twitter_handle="joiner")
+        db.add_all([camp, joiner])
+        await db.flush()
+        db.add(CampaignParticipant(campaign_id=camp.id, user_id=joiner.id, status="enrolled"))
+        other = await _login(db, "stranger", wallet=False)
+        await db.commit()
+        return creator, other, camp, joiner
+
+    @pytest.mark.asyncio
+    async def test_only_the_creator_lists_and_approves(self, db):
+        creator, other, camp, joiner = await self._setup(db)
+        url = f"/campaigns/{camp.id}/participants"
+        assert client.get(url).status_code == 401
+        assert client.get(url, headers=other).status_code == 403
+        r = client.get(url, headers=creator)
+        assert r.status_code == 200 and r.json()["participants"][0]["status"] == "enrolled"
+        approve = f"{url}/{joiner.id}/approve"
+        assert client.post(approve, headers=other).status_code == 403
+        r = client.post(approve, headers=creator)
+        assert r.status_code == 200 and r.json()["status"] == "tasks_verified"
+        row = (await db.execute(select(CampaignParticipant).where(CampaignParticipant.user_id == joiner.id))).scalars().one()
+        await db.refresh(row)
+        assert row.status == "tasks_verified" and row.tasks_verified_at is not None
+
+    @pytest.mark.asyncio
+    async def test_unknown_participant_is_404(self, db):
+        creator, _, camp, _ = await self._setup(db)
+        assert client.post(f"/campaigns/{camp.id}/participants/99999/approve", headers=creator).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_no_default_campaign_seed_on_mainnet(monkeypatch):
+    import dataclasses
+    from server import campaigns_routes as cr
+
+    monkeypatch.setattr(cr, "settings", dataclasses.replace(cr.settings, arc_sandbox=False))
+    called = []
+
+    class _DB:
+        async def execute(self, *a, **k):
+            called.append(1)
+
+    await cr._seed_default_campaigns(_DB())
+    assert not called

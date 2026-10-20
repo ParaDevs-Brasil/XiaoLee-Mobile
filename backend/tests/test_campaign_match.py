@@ -113,3 +113,13 @@ class TestListCampaignsTool:
         captured = {"actions": [], "execution": None, "last_swap_args": {}, "animation_name": None}
         executor = orch._make_stellar_executor(None, captured, user_id=user_id)
         return await executor("list_campaigns", {})
+
+
+@pytest.fixture(autouse=True)
+def _sandbox(monkeypatch):
+    # O seed de demo só roda em sandbox; o .env da raiz pode ter ARC_SANDBOX=false.
+    import dataclasses
+
+    from server import campaigns_routes
+
+    monkeypatch.setattr(campaigns_routes, "settings", dataclasses.replace(campaigns_routes.settings, arc_sandbox=True))
