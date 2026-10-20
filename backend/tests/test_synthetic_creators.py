@@ -78,7 +78,7 @@ async def _persona(db):
     db.add(WebSession(session_id="privy_session_ana", twitter_user_id="privy_did:ana",
                       expires_at=datetime.utcnow() + timedelta(days=1)))
     c = SyntheticCreator(user_id=user.id, name="Mia", voice_id=sc.VOICES[0]["id"], ref_image_key="creators/1/x/ref.jpg",
-                         ref_content_type="image/jpeg", status="ready")
+                         ref_content_type="image/jpeg", status="ready", rights_confirmed_at=datetime.utcnow())
     db.add(c)
     await db.commit()
     return c.id, {"Authorization": "Bearer privy_session_ana"}
@@ -172,3 +172,20 @@ class _Ctx:
 
 
 _real_run_video = routes.run_video
+
+
+@pytest.mark.asyncio
+async def test_persona_needs_the_image_rights_term(db, monkeypatch):
+    _, h = await _persona(db)
+    monkeypatch.setattr(routes.media_storage, "presign_put", lambda key, ct, size, expires=3600: "https://r2/put")
+    body = {"name": "Meme", "voice_id": sc.VOICES[0]["id"], "content_type": "image/png", "size_bytes": 1000}
+    assert client.post("/v1/creators", headers=h, json=body).status_code == 422
+    r = client.post("/v1/creators", headers=h, json={**body, "rights_confirmed": True})
+    assert r.status_code == 200, r.text
+    c = (await db.execute(select(SyntheticCreator).where(SyntheticCreator.name == "Meme"))).scalars().one()
+    assert c.rights_confirmed_at is not None
+
+
+def test_seedance_failure_points_to_the_models_that_accept_the_image():
+    assert "OmniHuman" in routes._failure_message("pro_seedance")
+    assert "Refund pending" in routes._failure_message("standard")

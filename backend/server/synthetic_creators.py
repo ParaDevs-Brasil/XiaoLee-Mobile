@@ -3,7 +3,7 @@ synthetic_creators.py — vídeo falado de uma persona: roteiro → voz (ElevenL
 
 Medido em 2026-10-18 com scripts/creator_cost_probe.py (ver docs/ARQUITETURA_CRIADORES_SINTETICOS.md).
 Preço = custo do provedor x2, cobrado em USDC no Arc antes de gastar na fal (ver synthetic_creator_routes.py).
-Seedance 2.0 na fal recusa pessoa real e IP/música de terceiros: só personas originais, não contornar.
+Persona pode ser o próprio rosto, personagem ou meme (termo de direitos aceito no app). O Seedance 2.0 na fal\nrecusa pessoa real e IP de terceiros — regra do provedor, não contornar; Fabric/OmniHuman aceitam.
 """
 
 from __future__ import annotations

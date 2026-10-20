@@ -27,6 +27,7 @@ def upgrade() -> None:
         sa.Column("ref_image_key", sa.Text(), nullable=False),
         sa.Column("ref_content_type", sa.String(length=50), nullable=False),
         sa.Column("status", sa.String(length=20), nullable=False),
+        sa.Column("rights_confirmed_at", sa.DateTime(), nullable=False),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"]),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("ref_image_key"),

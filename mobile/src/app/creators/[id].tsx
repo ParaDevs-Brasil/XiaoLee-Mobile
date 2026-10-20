@@ -194,7 +194,7 @@ export default function CreatorScreen() {
           </View>
         </SectionCard>
 
-        <SectionCard title="Quality" subtitle="Seedance 2.0 only works with original faces.">
+        <SectionCard title="Quality" subtitle="Seedance 2.0 refuses real people and copyrighted characters — use Standard or OmniHuman for those.">
           {catalog?.qualities.map((q) => (
             <Pressable
               key={q.quality}
@@ -246,6 +246,7 @@ export default function CreatorScreen() {
                     {v.status === 'done' ? <IconCheck size={14} color={colors.accent} /> : null}
                     <Text style={styles.provider}>{videoStatusLabel(v.status)}</Text>
                   </View>
+                  {v.status === 'failed' && v.error ? <Text style={styles.error}>{v.error}</Text> : null}
                   <Text style={styles.desc} numberOfLines={2}>{v.script}</Text>
                   <Text style={styles.desc}>
                     {v.duration_s}s · ${v.price_usdc.toFixed(2)}{v.payment_tx ? ` · ${shortHash(v.payment_tx)}` : ''}

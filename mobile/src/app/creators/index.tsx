@@ -12,7 +12,7 @@ import {
 } from '@/api/backend';
 import { ApiError } from '@/api/client';
 import { ConnectWalletButton, EmptyState } from '@/components/feedback';
-import { IconChevronRight, IconPlus, IconUser } from '@/components/icons';
+import { IconCheck, IconChevronRight, IconPlus, IconUser } from '@/components/icons';
 import { PageHeading, ScreenShell } from '@/components/screen-shell';
 import { SectionCard } from '@/components/section-card';
 import { useCreatorStyles as useStyles } from '@/components/creator-styles';
@@ -44,6 +44,7 @@ export default function CreatorsScreen() {
   const [name, setName] = useState('');
   const [voiceId, setVoiceId] = useState<string | null>(null);
   const [image, setImage] = useState<PickedImage | null>(null);
+  const [rights, setRights] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const fail = (e: unknown) =>
@@ -71,7 +72,7 @@ export default function CreatorsScreen() {
   }
 
   async function save() {
-    if (!name.trim() || !voiceId || !image || saving) return;
+    if (!name.trim() || !voiceId || !image || !rights || saving) return;
     setSaving(true);
     setError(null);
     try {
@@ -81,6 +82,7 @@ export default function CreatorsScreen() {
       setName('');
       setVoiceId(null);
       setImage(null);
+      setRights(false);
       router.push({ pathname: '/creators/[id]', params: { id: String(created.id) } });
     } catch (e) {
       fail(e);
@@ -90,7 +92,7 @@ export default function CreatorsScreen() {
   }
 
   const voiceName = (id: string) => catalog?.voices.find((v) => v.id === id)?.name ?? '';
-  const canSave = Boolean(name.trim() && voiceId && image) && !saving;
+  const canSave = Boolean(name.trim() && voiceId && image && rights) && !saving;
 
   return (
     <ScreenShell>
@@ -99,7 +101,7 @@ export default function CreatorsScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <PageHeading title="AI Creators" subtitle="Original personas that say your script on video. Paid in USDC, per video." />
+        <PageHeading title="AI Creators" subtitle="Your face, a character or a meme saying your script on video. Paid in USDC, per video." />
 
         {!hasSession ? (
           <EmptyState
@@ -128,7 +130,7 @@ export default function CreatorsScreen() {
                 </View>
               </Pressable>
             ) : (
-              <SectionCard title="New persona" subtitle="Use an original face — no real people or celebrities.">
+              <SectionCard title="New persona" subtitle="Your face, a character or a meme. No sexual content, no minors, no pretending to be someone to fool people.">
                 <Pressable onPress={pick} style={styles.photoPick} accessibilityRole="button" accessibilityLabel="Choose reference photo">
                   {image ? (
                     <Image source={{ uri: image.uri }} style={styles.photo} contentFit="cover" />
@@ -162,6 +164,20 @@ export default function CreatorsScreen() {
                     </Pressable>
                   ))}
                 </View>
+
+                <Pressable
+                  onPress={() => setRights((v) => !v)}
+                  style={styles.rowTop}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: rights }}
+                >
+                  <View style={[styles.checkbox, rights && styles.chipActive]}>
+                    {rights ? <IconCheck size={14} color={colors.onAccent} /> : null}
+                  </View>
+                  <Text style={[styles.desc, { flex: 1 }]}>
+                    This image is mine, or it&apos;s parody / fan content, and I won&apos;t use it to deceive or harass anyone.
+                  </Text>
+                </Pressable>
 
                 <Pressable
                   onPress={save}

@@ -51,6 +51,8 @@ class CreatorCreate(BaseModel):
     voice_id: str
     content_type: str
     size_bytes: int = Field(gt=0)
+    # Termo aceito no app: a imagem é do creator, ou é paródia/fan content, e não será usada para enganar ou assediar.
+    rights_confirmed: bool = False
 
 
 class CreatorOut(BaseModel):
@@ -164,6 +166,8 @@ async def create_creator(body: CreatorCreate, authorization: Optional[str] = Hea
         raise HTTPException(422, "reference must be a JPEG, PNG or WebP image")
     if body.size_bytes > MAX_IMAGE_BYTES:
         raise HTTPException(413, "image too large (max 15 MB)")
+    if not body.rights_confirmed:
+        raise HTTPException(422, "confirm you have the right to use this image")
     user = await _resolve_user(db, authorization, strict=True)
     key = f"creators/{user.id}/{uuid.uuid4().hex}/ref{sc._ext(body.content_type)}"
     try:
@@ -171,7 +175,7 @@ async def create_creator(body: CreatorCreate, authorization: Optional[str] = Hea
     except media_storage.StorageNotConfigured as exc:
         raise HTTPException(503, f"storage unavailable: {exc}")
     c = SyntheticCreator(user_id=user.id, name=body.name.strip(), voice_id=body.voice_id, ref_image_key=key,
-                         ref_content_type=body.content_type, status="pending")
+                         ref_content_type=body.content_type, status="pending", rights_confirmed_at=datetime.utcnow())
     db.add(c)
     await db.commit()
     return CreatorUpload(creator=_creator_out(c), upload_url=url, upload_headers={"Content-Type": body.content_type})
@@ -317,6 +321,14 @@ async def get_video(video_id: int, authorization: Optional[str] = Header(default
     return _video_out(v)
 
 
+def _failure_message(quality: str) -> str:
+    if quality == "pro_seedance":
+        # A fal recusa no Seedance pessoa real e personagem com direitos; regra do provedor, não contornamos.
+        return "Seedance refused this image (real people and copyrighted characters aren't allowed there). " \
+               "Try Standard or Pro · OmniHuman. Refund pending."
+    return "Generation failed. Refund pending."
+
+
 async def run_video(video_id: int) -> None:
     # ponytail: tarefa em processo (workers=1 no Railway); restart no meio deixa o vídeo parado em
     # voice/video com refund_due para reembolso manual. Fila Redis quando houver >1 worker.
@@ -336,7 +348,7 @@ async def run_video(video_id: int) -> None:
         except Exception as exc:
             logger.warning("creator video %s failed: %s: %s", v.id, type(exc).__name__, exc)
             # Já pago: marca para reembolso manual em vez de sumir com o dinheiro.
-            v.status, v.error, v.refund_due = "failed", "generation failed", True
+            v.status, v.error, v.refund_due = "failed", _failure_message(v.quality), True
             await db.commit()
             return
         v.status, v.video_key = "done", key

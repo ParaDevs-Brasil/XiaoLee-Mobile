@@ -420,8 +420,8 @@ class PostPublication(Base):
 
 
 class SyntheticCreator(Base):
-    """Persona sintética do creator: foto de referência (R2) + voz pronta do ElevenLabs.
-    status: pending (URL de upload emitida) → ready."""
+    """Persona sintética do creator: foto de referência (R2) + voz pronta do ElevenLabs. Pode ser o próprio rosto,
+    um personagem ou meme (o creator aceita o termo de direitos). status: pending (URL de upload emitida) → ready."""
     __tablename__ = 'synthetic_creators'
 
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
@@ -430,6 +430,8 @@ class SyntheticCreator(Base):
     ref_image_key: Mapped[str] = mapped_column(Text, unique=True)
     ref_content_type: Mapped[str] = mapped_column(String(50))
     status: Mapped[str] = mapped_column(String(20), default='pending')
+    # Quando o creator aceitou o termo de direitos de imagem (dono, paródia ou fan content; não enganar/assediar).
+    rights_confirmed_at: Mapped[datetime] = mapped_column(DateTime)
 
 
 class CreatorVideo(Base):

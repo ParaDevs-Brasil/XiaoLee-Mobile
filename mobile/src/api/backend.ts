@@ -1185,6 +1185,7 @@ export function createCreator(request: {
   voice_id: string;
   content_type: string;
   size_bytes: number;
+  rights_confirmed: boolean;
 }): Promise<{ creator: SyntheticCreator; upload_url: string; upload_headers: Record<string, string> }> {
   return apiFetch('/v1/creators', { method: 'POST', json: request });
 }

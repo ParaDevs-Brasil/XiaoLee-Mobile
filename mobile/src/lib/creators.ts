@@ -4,7 +4,8 @@ import * as ImagePicker from 'expo-image-picker';
 import { completeCreator, createCreator, type SyntheticCreator } from '@/api/backend';
 
 /**
- * Persona sintética: foto de referência + voz pronta. A foto vai direto ao
+ * Persona sintética: foto de referência (o próprio rosto, um personagem ou
+ * meme) + voz pronta. A foto vai direto ao
  * storage por URL pré-assinada (mesmo caminho do upload do Clipper) e o
  * `/complete` só confere que ela chegou.
  */
@@ -35,6 +36,8 @@ export async function createPersona(name: string, voiceId: string, image: Picked
     voice_id: voiceId,
     content_type: image.contentType,
     size_bytes: image.size,
+    // A tela só libera o botão com o termo marcado.
+    rights_confirmed: true,
   });
   const result = await new UploadTask(new File(image.uri), ticket.upload_url, {
     httpMethod: 'PUT',
