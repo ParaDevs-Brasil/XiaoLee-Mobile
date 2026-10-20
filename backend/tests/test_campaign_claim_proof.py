@@ -1,5 +1,6 @@
 import base64
 import importlib
+from datetime import datetime, timedelta
 
 import pytest
 from cryptography.hazmat.primitives import serialization
@@ -9,12 +10,24 @@ from sqlalchemy import select
 from solders.pubkey import Pubkey
 
 from database.database import get_db_session
-from database.models import CampaignParticipant, NotificationEvent, User
+from database.models import CampaignParticipant, NotificationEvent, User, WebSession
 
 app_module = importlib.import_module("server.app")
 campaigns_module = importlib.import_module("server.campaigns_routes")
 
 client = TestClient(app_module.app)
+
+
+async def _issue_session(db_session, token: str, twitter_user_id: str | None = None) -> None:
+    """Sessão emitida pelo backend — o claim só aceita Bearer que exista em `web_sessions`/`auth_tokens`."""
+    db_session.add(
+        WebSession(
+            session_id=token,
+            twitter_user_id=twitter_user_id or token,
+            expires_at=datetime.utcnow() + timedelta(days=1),
+        )
+    )
+    await db_session.commit()
 
 
 @pytest.fixture(autouse=True)
@@ -59,6 +72,7 @@ async def test_claim_reward_accepts_valid_wallet_signature(db_session, label):
     db_session.add(user)
     await db_session.commit()
     await db_session.refresh(user)
+    await _issue_session(db_session, session_token)
 
     participant = CampaignParticipant(campaign_id=1, user_id=user.id, status="tasks_verified")
     db_session.add(participant)
@@ -120,6 +134,7 @@ async def test_claim_reward_rejects_invalid_wallet_signature(db_session):
     db_session.add(user)
     await db_session.commit()
     await db_session.refresh(user)
+    await _issue_session(db_session, session_token)
 
     participant = CampaignParticipant(campaign_id=1, user_id=user.id, status="tasks_verified")
     db_session.add(participant)
@@ -175,3 +190,40 @@ async def test_campaigns_me_returns_user_campaigns(db_session):
     payload = response.json()
     assert payload["success"] is True
     assert payload["campaigns"][0]["claim_receipt_id"] == "receipt-123"
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("victim_id", ["tg_111222333", "google_0123456789abcdef0123", "privy_did:privy:abc"])
+async def test_claim_rejects_public_id_used_as_bearer(db_session, victim_id):
+    """O id público da vítima não é credencial: o prefixo custodial dispensa a assinatura,
+    então aceitá-lo como Bearer deixaria qualquer um resgatar para a própria carteira."""
+    attacker_wallet = "0x" + "cd" * 20
+
+    await campaigns_module._seed_default_campaigns(db_session)
+    victim = User(twitter_handle="@victim", twitter_user_id=victim_id)
+    db_session.add(victim)
+    await db_session.commit()
+    await db_session.refresh(victim)
+    db_session.add(CampaignParticipant(campaign_id=1, user_id=victim.id, status="tasks_verified"))
+    await db_session.commit()
+
+    async def override_db_session():
+        yield db_session
+
+    app_module.app.dependency_overrides[get_db_session] = override_db_session
+    try:
+        response = client.post(
+            "/campaigns/claim",
+            json={
+                "campaign_identifier": "1",
+                "wallet_public_key": attacker_wallet,
+                "proof_message": f"XiaoLee claim|campaign:1|session:{victim_id}|wallet:{attacker_wallet}",
+                "proof_encoding": "none",
+            },
+            headers={"Authorization": f"Bearer {victim_id}"},
+        )
+    finally:
+        app_module.app.dependency_overrides.pop(get_db_session, None)
+
+    assert response.status_code == 401
+    row = (await db_session.execute(select(CampaignParticipant))).scalars().one()
+    assert row.status == "tasks_verified" and row.paid_wallet is None
