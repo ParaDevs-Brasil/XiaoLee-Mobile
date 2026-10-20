@@ -2,8 +2,10 @@
 Campaign task verifier — real on-chain and social proof for campaign rewards.
 
 Verification logic by campaign type:
-  social   → Twitter API v2 (app-only Bearer): retweet verified; follow best-effort
-              (Twitter v2 app-only Bearer cannot enumerate a user's followings)
+  social   → with the participant's connected X account (Accounts, OAuth): repost/quote/reply
+              found in their own timeline, follow found in their following list.
+              Fallback without a connected account: Twitter API v2 (app-only Bearer),
+              retweet verified, follow best-effort.
   trading  → Helius: wallet has ≥1 successful SWAP transaction
   referral → DB: ≥3 other participants enrolled in the same campaign (proxy metric;
               proper referral codes are a future feature)
@@ -11,11 +13,63 @@ Verification logic by campaign type:
 from __future__ import annotations
 
 import logging
+import re
 from typing import Tuple, Optional
 
 import aiohttp
 
 LOG = logging.getLogger(__name__)
+
+
+def _tweet_id(value: str) -> str:
+    """O criador cola o link do post ou só o id; fica o id."""
+    m = re.search(r"/status(?:es)?/(\d+)", value)
+    return m.group(1) if m else value.strip()
+
+
+def _handle(value: str) -> str:
+    """`@ana`, `ana` ou `https://x.com/ana` → `ana`."""
+    return value.strip().rstrip("/").rsplit("/", 1)[-1].lstrip("@").lower()
+
+
+async def verify_social_with_x_account(
+    adapter,
+    stored: dict,
+    x_user_id: str,
+    profile_to_follow: Optional[str],
+    tweet_id_to_engage: Optional[str],
+) -> Tuple[bool, str]:
+    """Confere as tarefas com a conta X que o participante conectou (token OAuth dele, renovado em `stored`).
+
+    Engajar: o post da campanha aparece como repost, quote ou reply entre os 20 posts mais recentes dele.
+    Seguir: o perfil está entre os 100 que ele seguiu por último (o X lista do mais recente para o mais antigo).
+    Cada checagem é 1 leitura paga no X. ponytail: janelas de 20/100 itens; quem engajou/seguiu há muito
+    tempo cai fora e precisa da aprovação do criador. Paginar se isso virar reclamação.
+    """
+    from server.social_adapters import SocialError  # lazy: social_adapters importa settings do server
+
+    try:
+        token = await adapter._fresh(stored)
+        if tweet_id_to_engage:
+            tid = _tweet_id(tweet_id_to_engage)
+            body = await adapter._get(f"/users/{x_user_id}/tweets", token, max_results="20",
+                                      **{"tweet.fields": "referenced_tweets"})
+            refs = {r["id"] for t in body.get("data", []) for r in t.get("referenced_tweets", [])}
+            if tid not in refs:
+                return False, "Repost, quote or reply to the campaign post on X, then verify again."
+        if profile_to_follow:
+            want = _handle(profile_to_follow)
+            try:
+                body = await adapter._get(f"/users/{x_user_id}/following", token, max_results="100")
+            except SocialError as e:
+                if "reconnect" in str(e).lower():  # 401/403 (`_x_error`): token sem `follows.read`, de antes do escopo
+                    return False, "Reconnect X in Accounts so Xiaolee can check who you follow."
+                raise
+            if want not in {u.get("username", "").lower() for u in body.get("data", [])}:
+                return False, f"Follow @{want} on X, then verify again."
+    except SocialError as e:
+        return False, f"Could not check X right now ({e}). Try again in a moment."
+    return True, "Social tasks verified with your X account"
 
 _TWITTER_BASE = "https://api.twitter.com/2"
 _HELIUS_BASE = "https://api.helius.xyz/v0"

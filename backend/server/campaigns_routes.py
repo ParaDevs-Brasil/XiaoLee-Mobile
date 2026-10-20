@@ -29,7 +29,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from database.database import get_db_session
 from server import token_auth
 import logging
-from database.models import AuthToken, Campaign as CampaignModel, CampaignParticipant, NotificationEvent, User, Wallet, WebSession
+from database.models import AuthToken, Campaign as CampaignModel, CampaignParticipant, NotificationEvent, SocialAccount, User, Wallet, WebSession
 from server.integrations.arc_client import ArcClient
 from server.settings import settings
 
@@ -1198,6 +1198,40 @@ async def join_campaign(
     }
 
 
+async def _verify_social_tasks(db: AsyncSession, user: User, campaign: CampaignModel, strict: bool) -> tuple[bool, str]:
+    """Tarefas sociais. Com o X conectado em Accounts, confere com o token da própria pessoa — é o caminho de quem
+    entra por carteira/Privy, cujo `twitter_user_id` não é um id do X. Sem conta conectada, cai no Bearer do app."""
+    from server.integrations.campaign_verifier import verify_social, verify_social_with_x_account
+    from server.social_adapters import ADAPTERS
+    from server.social_routes import _crypto  # lazy: social_routes importa este módulo
+
+    if not campaign.profile_to_follow and not campaign.tweet_id_to_engage:
+        return True, "No social tasks to check"
+    acc = (
+        await db.execute(select(SocialAccount).where(SocialAccount.user_id == user.id, SocialAccount.platform == "x"))
+    ).scalars().first()
+    if acc:
+        creds = json.loads(_crypto.decrypt(acc.credentials_enc))
+        before = dict(creds)
+        ok, reason = await verify_social_with_x_account(
+            ADAPTERS["x"], creds, acc.external_id, campaign.profile_to_follow, campaign.tweet_id_to_engage
+        )
+        if creds != before:  # o adaptador renovou o token
+            acc.credentials_enc = _crypto.encrypt(json.dumps(creds))
+            await db.commit()
+        return ok, reason
+    ok, reason = await verify_social(
+        twitter_user_id=user.twitter_user_id,
+        profile_to_follow=campaign.profile_to_follow,
+        tweet_id_to_engage=campaign.tweet_id_to_engage,
+        bearer_token=settings.x_bearer_token,
+        strict=strict,
+    )
+    if not ok and strict:
+        reason = "Connect your X account in Accounts so Xiaolee can verify your tasks."
+    return ok, reason
+
+
 @router.post("/campaigns/verify")
 async def verify_tasks(
     payload: CampaignActionRequest,
@@ -1222,19 +1256,13 @@ async def verify_tasks(
         return {"success": True, "message": "Tasks already verified! You can now claim your reward.", "all_tasks_completed": True}
 
     # SEC-006: real task verification per campaign type
-    from server.integrations.campaign_verifier import verify_social, verify_trading, verify_referral
+    from server.integrations.campaign_verifier import verify_trading, verify_referral
 
     campaign_type = campaign.campaign_type
     strict = not settings.arc_sandbox  # dinheiro real: nada de "aceito de boa fé"
 
     if campaign_type == "social":
-        ok, reason = await verify_social(
-            twitter_user_id=user.twitter_user_id,
-            profile_to_follow=campaign.profile_to_follow,
-            tweet_id_to_engage=campaign.tweet_id_to_engage,
-            bearer_token=settings.x_bearer_token,
-            strict=strict,
-        )
+        ok, reason = await _verify_social_tasks(db, user, campaign, strict)
     elif campaign_type == "trading":
         wallet_res = await db.execute(select(Wallet).where(Wallet.user_id == user.id))
         wallet = wallet_res.scalars().first()
