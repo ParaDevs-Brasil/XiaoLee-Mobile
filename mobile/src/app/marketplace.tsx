@@ -28,6 +28,10 @@ import { shortHash } from '@/lib/format';
  * próprio gasto. Resultado de terceiro é só dado: mostrado como texto.
  */
 
+/** A assinatura PQC (ML-DSA) tem ~5 mil caracteres: o recibo mostra só o tamanho, o valor vai no payload. */
+const shortenSignature = (key: string, value: unknown) =>
+  key === 'receipt_pqc' && typeof value === 'string' ? `${value.slice(0, 16)}… (${value.length} chars, ML-DSA)` : value;
+
 const shortAddr = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
 export default function MarketplaceScreen() {
@@ -133,7 +137,7 @@ export default function MarketplaceScreen() {
                 value={query}
                 onChangeText={setQuery}
                 onSubmitEditing={search}
-                placeholder="Search a service (one word works best)"
+                placeholder="Search services"
                 placeholderTextColor={colors.ink3}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -220,7 +224,7 @@ export default function MarketplaceScreen() {
                     </View>
                     {result.payment_tx ? <Text style={styles.desc}>Payment {shortHash(result.payment_tx)}</Text> : null}
                     <Text style={styles.resultText} selectable>
-                      {typeof result.data === 'string' ? result.data : JSON.stringify(result.data, null, 2)}
+                      {typeof result.data === 'string' ? result.data : JSON.stringify(result.data, shortenSignature, 2)}
                     </Text>
                   </View>
                 ) : null}
