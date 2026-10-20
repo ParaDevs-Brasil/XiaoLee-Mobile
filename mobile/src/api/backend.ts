@@ -849,6 +849,26 @@ export async function joinCampaign(campaignId: number): Promise<string> {
   return actionText(result, 'Joined');
 }
 
+/** Quem entrou numa campanha — só o criador vê (`GET /campaigns/{id}/participants`). */
+export interface CampaignParticipant {
+  user_id: number;
+  handle: string | null;
+  /** enrolled | tasks_verified | paid */
+  status: string;
+}
+
+export async function listCampaignParticipants(campaignId: number): Promise<CampaignParticipant[]> {
+  const result = await apiFetch<{ participants: CampaignParticipant[] }>(
+    `/campaigns/${campaignId}/participants`,
+  );
+  return result.participants;
+}
+
+/** O criador confirma que o participante cumpriu as tarefas; libera o resgate. */
+export async function approveCampaignParticipant(campaignId: number, userId: number): Promise<void> {
+  await apiFetch(`/campaigns/${campaignId}/participants/${userId}/approve`, { method: 'POST' });
+}
+
 export interface VerifyResult {
   message: string;
   allTasksCompleted: boolean;
