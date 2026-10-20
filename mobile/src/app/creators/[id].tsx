@@ -29,6 +29,8 @@ import { shortHash } from '@/lib/format';
 import { usePrivyWallet } from '@/lib/wallet';
 
 const POLL_MS = 5000;
+/** O botão flutuante do Chat cobre o fim da lista: a folga extra deixa o botão de pagar à vista. */
+const CHAT_FAB_CLEARANCE = 72;
 
 /**
  * Tela de uma persona: escreve (ou pede à Xiaolee) o roteiro, escolhe duração
@@ -132,7 +134,7 @@ export default function CreatorScreen() {
   return (
     <ScreenShell>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: Spacing.four + insets.bottom }]}
+        contentContainerStyle={[styles.content, { paddingBottom: Spacing.four + CHAT_FAB_CLEARANCE + insets.bottom }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >

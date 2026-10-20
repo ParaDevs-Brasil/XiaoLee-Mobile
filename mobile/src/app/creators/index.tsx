@@ -21,6 +21,9 @@ import { useTheme } from '@/hooks/use-theme';
 import { useSession } from '@/hooks/use-session';
 import { createPersona, pickReferenceImage, type PickedImage } from '@/lib/creators';
 
+/** O botão flutuante do Chat cobre o fim da lista: a folga extra deixa o botão de pagar à vista. */
+const CHAT_FAB_CLEARANCE = 72;
+
 /**
  * Criadores sintéticos — personas originais (foto de referência + voz pronta)
  * que falam o roteiro do creator em vídeo vertical. Cada vídeo é pago em USDC
@@ -92,7 +95,7 @@ export default function CreatorsScreen() {
   return (
     <ScreenShell>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: Spacing.four + insets.bottom }]}
+        contentContainerStyle={[styles.content, { paddingBottom: Spacing.four + CHAT_FAB_CLEARANCE + insets.bottom }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
