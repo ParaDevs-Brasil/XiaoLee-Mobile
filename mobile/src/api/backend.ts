@@ -997,3 +997,108 @@ export function buyMarketplaceService(request: {
 export async function confirmMarketplaceSpend(confirmId: string): Promise<void> {
   await apiFetch('/marketplace/confirm', { method: 'POST', json: { confirm_id: confirmId } });
 }
+
+/** Post feito pela Xiaolee numa rede do creator — `POST /v1/social/publish` (`social_routes.py`). */
+export interface SocialPublication {
+  id: number;
+  platform: string;
+  status: 'pending' | 'published' | 'failed';
+  error: string | null;
+  url: string | null;
+}
+
+/**
+ * Publica o post que o chat preparou (`prepare_social_post`). O backend registra a tentativa
+ * antes de chamar a rede; falha da rede volta como `status: "failed"` com o motivo, não como erro HTTP.
+ */
+export async function publishSocialPost(
+  platform: string,
+  text: string,
+  clipId?: number,
+  /** Até 4 fotos (base64 + mime); não vai junto com `clipId`. */
+  images?: { mime: string; base64: string }[],
+): Promise<SocialPublication> {
+  return apiFetch<SocialPublication>('/v1/social/publish', {
+    method: 'POST',
+    json: {
+      platform,
+      text,
+      ...(clipId != null && { clip_id: clipId }),
+      ...(images?.length && { images: images.map((i) => ({ mime: i.mime, data: i.base64 })) }),
+    },
+    timeoutMs: 120_000,
+  });
+}
+
+
+/** Conta de rede social conectada — `GET /v1/social/accounts` (`social_routes.py`). Sem credenciais. */
+export interface SocialAccount {
+  platform: string;
+  handle: string;
+  status: string;
+  connected_at: string;
+}
+
+export interface SocialAccounts {
+  accounts: SocialAccount[];
+  /** Redes que o backend sabe publicar hoje. */
+  available: string[];
+  /** Nome do bot da Xiaolee, que o creator adiciona como admin do canal do Telegram. */
+  hints: { telegram_bot: string };
+}
+
+/** Com `SOCIAL_TOOLS_ENABLED` desligado o backend responde 404 (`ApiError.status === 404`). */
+export async function listSocialAccounts(): Promise<SocialAccounts> {
+  const res = await apiFetch<Partial<SocialAccounts>>('/v1/social/accounts');
+  return {
+    accounts: res.accounts ?? [],
+    available: res.available ?? [],
+    hints: { telegram_bot: res.hints?.telegram_bot ?? '' },
+  };
+}
+
+/** Conecta e valida na própria rede (canal com o bot admin, app password do Bluesky); erro vem com o motivo. */
+export async function connectSocialAccount(
+  platform: string,
+  credentials: Record<string, string>,
+): Promise<SocialAccount> {
+  return apiFetch<SocialAccount>(`/v1/social/accounts/${platform}`, {
+    method: 'POST',
+    json: { credentials },
+    timeoutMs: 30_000,
+  });
+}
+
+/** Menções e hashtags reais (da conta do creator e do nicho cripto) para inserir no post. */
+export interface SocialSuggestions {
+  mentions: { handle: string; name: string; why: string }[];
+  hashtags: { tag: string; why: string }[];
+}
+
+export async function getSocialSuggestions(platform: string): Promise<SocialSuggestions> {
+  const res = await apiFetch<Partial<SocialSuggestions>>(`/v1/social/suggestions/${platform}`, { timeoutMs: 60_000 });
+  return { mentions: res.mentions ?? [], hashtags: res.hashtags ?? [] };
+}
+
+/** Redirect do login do X; o mesmo valor está cadastrado no app do X e em `X_OAUTH_REDIRECT` no backend. */
+export const X_REDIRECT = 'xiaolee://social/x';
+
+/** Começa o login do X (PKCE fica no backend) e devolve a URL que o app abre. */
+export async function startXLogin(): Promise<string> {
+  const res = await apiFetch<{ authorize_url: string }>('/v1/social/x/start', { method: 'POST' });
+  return res.authorize_url;
+}
+
+/** Entrega o `code`/`state` que o X devolveu no redirect; o backend troca por tokens e conecta a conta. */
+export async function finishXLogin(code: string, state: string): Promise<SocialAccount> {
+  return apiFetch<SocialAccount>('/v1/social/x/callback', {
+    method: 'POST',
+    json: { code, state },
+    timeoutMs: 30_000,
+  });
+}
+
+/** Desconecta e apaga a credencial guardada. */
+export async function disconnectSocialAccount(platform: string): Promise<void> {
+  await apiFetch<{ ok: boolean }>(`/v1/social/accounts/${platform}`, { method: 'DELETE' });
+}

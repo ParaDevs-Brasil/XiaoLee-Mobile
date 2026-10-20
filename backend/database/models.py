@@ -382,3 +382,38 @@ class CreatorReport(Base):
     summary: Mapped[str] = mapped_column(Text)
     suggestions_json: Mapped[str] = mapped_column(Text)
     lang: Mapped[str] = mapped_column(String(8), default='en')
+
+
+class SocialAccount(Base):
+    """Conta de rede social do creator conectada à Xiaolee (uma por plataforma por usuário).
+
+    `credentials_enc` é JSON cifrado (EncryptionService) com o que a rede exige para postar; nunca sai da API
+    nem vai a log. Desconectar apaga a linha (e o token junto). status: active | error.
+    """
+    __tablename__ = 'social_accounts'
+    __table_args__ = (UniqueConstraint('user_id', 'platform', name='uq_social_account_platform'),)
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    platform: Mapped[str] = mapped_column(String(20))  # telegram | bluesky | x | tiktok
+    external_id: Mapped[str] = mapped_column(String(128))
+    handle: Mapped[str] = mapped_column(String(128))
+    credentials_enc: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default='active')
+
+
+class PostPublication(Base):
+    """Um post feito (ou tentado) pela Xiaolee em nome do creator. Gravado `pending` ANTES de chamar a rede
+    (intent log) e base das métricas. status: pending → published | failed."""
+    __tablename__ = 'post_publications'
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    clip_id: Mapped[Optional[int]] = mapped_column(ForeignKey("media_clips.id"), nullable=True)
+    platform: Mapped[str] = mapped_column(String(20), index=True)
+    caption: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default='pending', index=True)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    external_post_id: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    metrics_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    metrics_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

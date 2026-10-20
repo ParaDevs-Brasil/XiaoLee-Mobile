@@ -26,6 +26,82 @@ export interface CardSwap {
   amountIn: string;
 }
 
+/** Post preparado pela Xiaolee (`prepare_social_post`); quem publica é o toque do creator. */
+export interface CardPost {
+  platform: string;
+  handle: string;
+  text: string;
+  clipId?: number;
+}
+
+/** Formulário de rascunho (`open_post_draft`): as redes conectadas onde o creator pode postar. */
+export interface CardDraft {
+  networks: { platform: string; handle: string }[];
+}
+
+/** Opções de post que a Xiaolee escreveu (`suggest_post_options`); o creator escolhe uma e ela vira a prévia. */
+export interface CardOptions {
+  platform: string;
+  handle: string;
+  texts: string[];
+}
+
+/** `execution.draft` -> formulário de rascunho, ou `undefined` se não for um (ou sem rede). */
+export function draftFrom(execution: Record<string, unknown> | undefined): CardDraft | undefined {
+  if (!execution || execution.status !== 'draft_open') return undefined;
+  const list = (execution.draft as { networks?: { platform?: string; handle?: string }[] } | undefined)?.networks;
+  const networks = (Array.isArray(list) ? list : [])
+    .filter((n) => n?.platform)
+    .map((n) => ({ platform: String(n.platform), handle: String(n.handle ?? '') }));
+  return networks.length ? { networks } : undefined;
+}
+
+/** `execution.options` -> card de opções, ou `undefined` se não for um (ou com menos de 2 textos). */
+export function optionsFrom(execution: Record<string, unknown> | undefined): CardOptions | undefined {
+  if (!execution || execution.status !== 'post_options') return undefined;
+  const o = execution.options as { platform?: string; handle?: string; texts?: unknown[] } | undefined;
+  const texts = (Array.isArray(o?.texts) ? o.texts : []).map((t) => String(t).trim()).filter(Boolean);
+  if (!o?.platform || texts.length < 2) return undefined;
+  return { platform: o.platform, handle: o.handle ?? '', texts };
+}
+
+/** Desempenho do perfil numa rede (`get_social_insights`): o card de métricas do chat. */
+export interface CardInsights {
+  platform: string;
+  handle: string;
+  followers: number;
+  postsTotal: number;
+  windowDays: number;
+  totals: { posts: number; impressions: number; engagements: number; profileClicks: number; linkClicks: number };
+  /** Engajamentos / impressões, em %. */
+  engagementRate: number;
+  topPosts: { text: string; url: string; impressions: number; likes: number }[];
+}
+
+/** `execution.insights` (snake_case do backend) -> card de métricas, ou `undefined` se não for um. */
+export function insightsFrom(execution: Record<string, unknown> | undefined): CardInsights | undefined {
+  if (!execution || execution.status !== 'insights_ready') return undefined;
+  const i = execution.insights as Record<string, any> | undefined;
+  if (!i?.platform) return undefined;
+  const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+  const t = i.totals ?? {};
+  return {
+    platform: String(i.platform),
+    handle: String(i.handle ?? ''),
+    followers: n(i.followers),
+    postsTotal: n(i.posts_total),
+    windowDays: n(i.window_days),
+    totals: {
+      posts: n(t.posts), impressions: n(t.impressions), engagements: n(t.engagements),
+      profileClicks: n(t.profile_clicks), linkClicks: n(t.link_clicks),
+    },
+    engagementRate: n(i.engagement_rate),
+    topPosts: (Array.isArray(i.top_posts) ? i.top_posts : []).map((p: Record<string, unknown>) => ({
+      text: String(p.text ?? ''), url: String(p.url ?? ''), impressions: n(p.impressions), likes: n(p.likes),
+    })),
+  };
+}
+
 /** Estado de card que acompanha uma mensagem da Xiaolee. */
 export interface ChatCards {
   transfer?: CardTransfer;
@@ -36,6 +112,12 @@ export interface ChatCards {
   /** Hash do swap, quando já assinado; `swapAmountOut` é o que o SDK diz que entrou na carteira. */
   swapTxHash?: string;
   swapAmountOut?: string;
+  post?: CardPost;
+  insights?: CardInsights;
+  draft?: CardDraft;
+  options?: CardOptions;
+  /** Link do post, quando já publicado (some o botão, fica o link). */
+  postUrl?: string;
 }
 
 export interface SessionEntry {
@@ -50,7 +132,7 @@ export interface StoredWithCards extends ChatCards {
 }
 
 export function hasCards(c: ChatCards): boolean {
-  return Boolean(c.transfer || c.claim || c.swap);
+  return Boolean(c.transfer || c.claim || c.swap || c.post || c.insights || c.draft || c.options);
 }
 
 /**
@@ -73,7 +155,7 @@ export function matchCards(
     const i = pool.findIndex((s, idx) => !used.has(idx) && s.content.trim() === text);
     if (i === -1) return undefined;
     used.add(i);
-    const { transfer, txHash, claim, claimReceiptId, swap, swapTxHash, swapAmountOut, at } = pool[i];
-    return { at, transfer, txHash, claim, claimReceiptId, swap, swapTxHash, swapAmountOut };
+    const { transfer, txHash, claim, claimReceiptId, swap, swapTxHash, swapAmountOut, post, postUrl, insights, draft, options, at } = pool[i];
+    return { at, transfer, txHash, claim, claimReceiptId, swap, swapTxHash, swapAmountOut, post, postUrl, insights, draft, options };
   });
 }

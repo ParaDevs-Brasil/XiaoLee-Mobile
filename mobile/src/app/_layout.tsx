@@ -112,6 +112,7 @@ function RootNavigator() {
         <Stack.Screen name="transactions" options={{ headerShown: false }} />
         <Stack.Screen name="history" options={{ headerShown: false }} />
         <Stack.Screen name="marketplace" options={{ headerShown: false }} />
+        <Stack.Screen name="accounts" options={{ headerShown: false }} />
         <Stack.Screen name="clips/index" options={{ headerShown: false }} />
         <Stack.Screen name="clips/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="reports/index" options={{ headerShown: false }} />

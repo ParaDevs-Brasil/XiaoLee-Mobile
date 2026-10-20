@@ -7,7 +7,7 @@
  */
 import assert from 'node:assert/strict';
 
-import { matchCards, type StoredWithCards } from './chat-cards.ts';
+import { draftFrom, insightsFrom, matchCards, optionsFrom, type StoredWithCards } from './chat-cards.ts';
 
 function test(name: string, fn: () => void) {
   fn();
@@ -65,4 +65,52 @@ test('card de swap (pendente e assinado) também volta', () => {
   assert.deepEqual(m?.swap, swap);
   assert.equal(m?.swapTxHash, '0xfeed');
   assert.equal(m?.swapAmountOut, '1.25');
+});
+
+test('o card de post e o link publicado sobrevivem a reabrir a conversa', () => {
+  const post = { platform: 'bluesky', handle: '@ana', text: 'oi', clipId: 3 };
+  const [m] = matchCards(
+    [{ role: 'assistant', content: 'Posto?' }],
+    [{ role: 'assistant', content: 'Posto?', at: '9', post, postUrl: 'https://bsky.app/x' }],
+  );
+  assert.deepEqual(m?.post, post);
+  assert.equal(m?.postUrl, 'https://bsky.app/x');
+});
+
+test('o card de métricas vem do execution do backend e sobrevive a reabrir a conversa', () => {
+  const insights = insightsFrom({
+    status: 'insights_ready',
+    insights: {
+      platform: 'x', handle: '@ana', followers: 91, posts_total: 169, window_days: 29, engagement_rate: 9.3,
+      totals: { posts: 2, impressions: 86, engagements: 8, profile_clicks: 1, link_clicks: 1 },
+      top_posts: [{ text: 'oi', url: 'https://x.com/i/status/1', impressions: 60, likes: 4 }],
+    },
+  });
+  assert.equal(insights?.followers, 91);
+  assert.equal(insights?.totals.profileClicks, 1);
+  assert.equal(insights?.topPosts[0].impressions, 60);
+  assert.equal(insightsFrom({ status: 'post_ready' }), undefined);
+  const [m] = matchCards(
+    [{ role: 'assistant', content: 'Seu perfil:' }],
+    [{ role: 'assistant', content: 'Seu perfil:', at: '9', insights }],
+  );
+  assert.deepEqual(m?.insights, insights);
+});
+
+test('formulário de rascunho e opções de post vêm do execution e voltam ao reabrir a conversa', () => {
+  const draft = draftFrom({ status: 'draft_open', draft: { networks: [{ platform: 'x', handle: '@ana' }] } });
+  assert.deepEqual(draft, { networks: [{ platform: 'x', handle: '@ana' }] });
+  assert.equal(draftFrom({ status: 'draft_open', draft: { networks: [] } }), undefined);
+  assert.equal(draftFrom({ status: 'post_ready' }), undefined);
+
+  const options = optionsFrom({ status: 'post_options', options: { platform: 'x', handle: '@ana', texts: ['a', ' b ', ''] } });
+  assert.deepEqual(options, { platform: 'x', handle: '@ana', texts: ['a', 'b'] });
+  assert.equal(optionsFrom({ status: 'post_options', options: { platform: 'x', texts: ['só uma'] } }), undefined);
+
+  const [m] = matchCards(
+    [{ role: 'assistant', content: 'Escolhe:' }],
+    [{ role: 'assistant', content: 'Escolhe:', at: '9', draft, options }],
+  );
+  assert.deepEqual(m?.draft, draft);
+  assert.deepEqual(m?.options, options);
 });

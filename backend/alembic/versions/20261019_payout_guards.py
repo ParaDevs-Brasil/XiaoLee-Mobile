@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "20261019_payout_guards"
-down_revision = "20261016_creator_reports"
+down_revision = "20261018_social_accounts"
 branch_labels = None
 depends_on = None
 

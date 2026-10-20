@@ -68,6 +68,13 @@ class Settings:
     x_webhook_secret: str = os.getenv("X_WEBHOOK_SECRET", "")
     x_bearer_token: str = os.getenv("X_BEARER_TOKEN", "")
     x_dm_api_base_url: str = os.getenv("X_DM_API_BASE_URL", "https://api.x.com")
+    # Publicação nas redes do creator (server/social_routes.py). Desligado = rotas respondem 404.
+    social_tools_enabled: bool = os.getenv("SOCIAL_TOOLS_ENABLED", "false").lower() in ("true", "1", "yes")
+    social_max_posts_per_day: int = int(os.getenv("SOCIAL_MAX_POSTS_PER_DAY", "10"))
+    # X (OAuth 2.0 PKCE, app público: só Client ID, sem secret). Teto mensal por creator = custo da casa limitado.
+    x_oauth_client_id: str = os.getenv("X_OAUTH_CLIENT_ID", "")
+    x_oauth_redirect: str = os.getenv("X_OAUTH_REDIRECT", "xiaolee://social/x")
+    social_x_max_posts_per_month: int = int(os.getenv("SOCIAL_X_MAX_POSTS_PER_MONTH", "60"))
     inbound_rate_limit_per_minute: int = int(os.getenv("INBOUND_RATE_LIMIT_PER_MINUTE", "60"))
 
     # ── Guardas de criação de campanha ───────────────────────────────────────

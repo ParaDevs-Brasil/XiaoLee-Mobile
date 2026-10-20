@@ -9,6 +9,7 @@ import {
   IconRocket,
   IconBag,
   IconScissors,
+  IconShare,
 } from '@/components/icons';
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
@@ -41,6 +42,7 @@ export function NavMenu({ visible, onDismiss }: NavMenuProps) {
     { key: 'marketplace', Icon: IconBag, label: 'Marketplace', href: '/marketplace' as const },
     { key: 'clips', Icon: IconScissors, label: 'Clips', href: '/clips' as const },
     { key: 'reports', Icon: IconClipboard, label: 'Reports', href: '/reports' as const },
+    { key: 'accounts', Icon: IconShare, label: 'Accounts', href: '/accounts' as const },
   ];
 
   return (
