@@ -18,11 +18,13 @@ from __future__ import annotations
 
 import pytest
 import asyncio
+from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from httpx import AsyncClient, ASGITransport
 
 from database.base import Base
 from database.database import get_db_session
+from database.models import WebSession
 from server.app import app
 from server.metrics import clear_metrics, render_prometheus_metrics
 
@@ -84,6 +86,12 @@ TOKEN = "mainnet-readiness-test-token"
 CAMPAIGN_ID = "1"
 
 
+async def _issue_session(session: AsyncSession, token: str = TOKEN) -> None:
+    """O claim paga dinheiro: só aceita Bearer que o backend emitiu, não o id cru usado como token."""
+    session.add(WebSession(session_id=token, twitter_user_id=token, expires_at=datetime.utcnow() + timedelta(days=1)))
+    await session.commit()
+
+
 async def _join(client: AsyncClient, token: str = TOKEN, campaign_id: str = CAMPAIGN_ID):
     return await client.post(
         "/campaigns/join",
@@ -128,6 +136,7 @@ async def test_join_different_campaigns_independent(fresh_db):
 @pytest.mark.anyio
 async def test_claim_without_proof_returns_clean_error(fresh_db):
     """Claim sem proof deve retornar 400 com mensagem clara, não 500."""
+    await _issue_session(fresh_db)
     async with make_client(fresh_db) as client:
         await _join(client)
         await client.post(
@@ -149,6 +158,7 @@ async def test_claim_without_proof_returns_clean_error(fresh_db):
 @pytest.mark.anyio
 async def test_claim_before_verify_rejected(fresh_db):
     """Claim antes de verificar tarefas deve ser rejeitado."""
+    await _issue_session(fresh_db)
     async with make_client(fresh_db) as client:
         await _join(client)
         r = await client.post(

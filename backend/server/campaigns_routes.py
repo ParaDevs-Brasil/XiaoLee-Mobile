@@ -1362,7 +1362,9 @@ async def claim_reward(
     authorization: Optional[str] = Header(default=None),
 ):
     await _seed_default_campaigns(db)
-    user = await _resolve_user(db, authorization)
+    # strict: claim paga dinheiro, e o prefixo custodial dispensa a assinatura da carteira —
+    # então o Bearer tem que ser um token que o backend emitiu, não o id público do usuário.
+    user = await _resolve_user(db, authorization, strict=True)
     campaign_id = int(payload.campaign_identifier)
     campaign = await _get_campaign_or_404(db, campaign_id)
 
