@@ -100,6 +100,7 @@ class Settings:
     onoff_max_tx_usdc: float = float(os.getenv("ONOFF_MAX_TX_USDC", "100"))
     onoff_max_day_usdc: float = float(os.getenv("ONOFF_MAX_DAY_USDC", "250"))
     onoff_max_month_usdc: float = float(os.getenv("ONOFF_MAX_MONTH_USDC", "1000"))
+    onoff_max_global_day_usdc: float = float(os.getenv("ONOFF_MAX_GLOBAL_DAY_USDC", "2000"))  # todos os usuários, por direção
     # Saque para fiat exige KYC deste nível no provedor que paga; e espera depois de depósito grande (chargeback).
     onoff_withdraw_min_kyc_level: int = int(os.getenv("ONOFF_WITHDRAW_MIN_KYC_LEVEL", "2"))
     onoff_cooldown_hours: int = int(os.getenv("ONOFF_COOLDOWN_HOURS", "24"))

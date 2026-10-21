@@ -17,7 +17,7 @@ from typing import Optional, Protocol
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.models import OnoffEvent, OnoffIntent, OnoffKyc
+from database.models import OnoffEvent, OnoffIntent, OnoffKyc, User
 from server.settings import settings
 
 DEPOSIT, WITHDRAW = "deposit", "withdraw"
@@ -28,19 +28,23 @@ METHODS = FIAT_METHODS | {"chain"}
 TRANSITIONS: dict[str, dict[str, set[str]]] = {
     DEPOSIT: {
         "created": {"pending_provider", "failed", "expired"},
-        "pending_provider": {"funds_received", "rejected", "failed", "expired"},
-        "funds_received": {"settled", "failed"},
+        "pending_provider": {"funds_received", "rejected", "failed", "expired", "review"},
+        "funds_received": {"settled", "failed", "review"},
     },
     WITHDRAW: {
         "created": {"pending_provider", "failed", "expired"},
-        "pending_provider": {"sent_to_provider", "rejected", "failed", "expired"},
-        "sent_to_provider": {"paid_out", "failed"},
+        "pending_provider": {"sent_to_provider", "rejected", "failed", "expired", "review"},
+        "sent_to_provider": {"paid_out", "failed", "review"},
         "failed": {"refunded"},
     },
 }
 TERMINAL = {"settled", "paid_out", "rejected", "expired", "refunded"}
+# `review` = o provedor reportou valor diferente do pedido (ou sem valor): trava para análise humana, sem saída automática.
 # Contam para os tetos: tudo que ainda pode virar dinheiro movido (falhas e rejeições não consomem teto).
-COUNTED = {"created", "pending_provider", "funds_received", "sent_to_provider", "settled", "paid_out"}
+COUNTED = {"created", "pending_provider", "funds_received", "sent_to_provider", "settled", "paid_out", "review"}
+# Estados em que o provedor afirma que dinheiro andou: o valor dele precisa bater com o do intent.
+MONEY_MOVED = {"funds_received", "sent_to_provider", "settled", "paid_out"}
+SESSION_TTL = timedelta(minutes=30)
 
 
 class OnoffError(Exception):
@@ -67,6 +71,7 @@ class ProviderEvent:
     provider_ref: Optional[str] = None
     status: Optional[str] = None       # novo estado do intent (nosso vocabulário)
     onchain_tx: Optional[str] = None
+    amount_usdc: Optional[float] = None      # o que o provedor diz que cobrou/pagou; conferido contra o intent
     external_user_id: Optional[str] = None   # nosso user_id, devolvido pelo provedor
     customer_ref: Optional[str] = None
     kyc_level: Optional[int] = None
@@ -139,7 +144,17 @@ async def _sum_since(db: AsyncSession, user_id: int, direction: str, since: date
     return float(res.scalar() or 0)
 
 
+async def _sum_all_since(db: AsyncSession, direction: str, since: datetime) -> float:
+    res = await db.execute(
+        select(func.coalesce(func.sum(OnoffIntent.amount_usdc), 0)).where(
+            OnoffIntent.direction == direction, OnoffIntent.status.in_(COUNTED), OnoffIntent.created_at >= since))
+    return float(res.scalar() or 0)
+
+
 async def check_limits(db: AsyncSession, user_id: int, direction: str, amount: float) -> None:
+    """Chame e grave o intent NA MESMA transação: o FOR UPDATE na linha do usuário serializa pedidos
+    simultâneos dele (Postgres; no SQLite dos testes é no-op), senão dois pedidos passam do teto juntos."""
+    await db.execute(select(User.id).where(User.id == user_id).with_for_update())
     if amount <= 0:
         raise OnoffError(422, "bad_amount", "amount must be positive")
     if amount > settings.onoff_max_tx_usdc:
@@ -149,6 +164,9 @@ async def check_limits(db: AsyncSession, user_id: int, direction: str, amount: f
         raise OnoffError(429, "over_day_limit", f"daily limit is {settings.onoff_max_day_usdc:g} USDC")
     if await _sum_since(db, user_id, direction, now - timedelta(days=30)) + amount > settings.onoff_max_month_usdc:
         raise OnoffError(429, "over_month_limit", f"monthly limit is {settings.onoff_max_month_usdc:g} USDC")
+    # Teto global da operação (todos os usuários): freio contra abuso em massa, sem revelar o motivo exato.
+    if await _sum_all_since(db, direction, now - timedelta(days=1)) + amount > settings.onoff_max_global_day_usdc:
+        raise OnoffError(429, "capacity", "temporarily at capacity, try again later")
 
 
 async def kyc_level(db: AsyncSession, user_id: int, provider: str) -> int:
@@ -214,3 +232,28 @@ async def apply_kyc(db: AsyncSession, provider: str, ev: ProviderEvent) -> None:
     row.subject = "business" if ev.kyc_subject == "business" else "person"
     row.customer_ref = ev.customer_ref or row.customer_ref
     row.verified_at = datetime.now(timezone.utc) if row.status == "approved" else None
+
+
+def amount_matches(intent: OnoffIntent, reported: Optional[float]) -> bool:
+    """Valor do provedor x valor do intent. Sem valor = não bate. Tolerância: o maior entre 1 centavo e 1%."""
+    if reported is None:
+        return False
+    want = float(intent.amount_usdc)
+    return abs(float(reported) - want) <= max(0.01, want * 0.01)
+
+
+def naive_utc(dt: Optional[datetime]) -> Optional[datetime]:
+    if dt is None:
+        return None
+    return dt.astimezone(timezone.utc).replace(tzinfo=None) if dt.tzinfo else dt
+
+
+async def expire_stale(db: AsyncSession, user_id: int) -> None:
+    """Intents sem desfecho depois do prazo viram `expired` (sem agendador: roda ao consultar/criar)."""
+    now = datetime.utcnow()
+    rows = (await db.execute(select(OnoffIntent).where(
+        OnoffIntent.user_id == user_id, OnoffIntent.status.in_(("created", "pending_provider"))))).scalars().all()
+    for i in rows:
+        limit = naive_utc(i.expires_at) or naive_utc(i.created_at) + SESSION_TTL
+        if limit < now and not (i.status == "created" and i.dest_network):  # saque entre redes não tem sessão de provedor
+            await advance(db, i, "expired", actor="system")

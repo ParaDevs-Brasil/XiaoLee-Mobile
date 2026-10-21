@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -136,7 +137,8 @@ async def _start_session(db: AsyncSession, intent: OnoffIntent, provider: onoff.
         await onoff.advance(db, intent, "failed", actor="system")
         await db.commit()
         raise HTTPException(502, {"code": "provider_error", "message": "provider unavailable, try again"})
-    intent.provider_ref, intent.expires_at = session.provider_ref, session.expires_at
+    intent.provider_ref = session.provider_ref
+    intent.expires_at = onoff.naive_utc(session.expires_at) or datetime.utcnow() + onoff.SESSION_TTL
     await onoff.advance(db, intent, "pending_provider", actor="system")
     await db.commit()
     return session.url
@@ -189,6 +191,8 @@ async def withdraw(body: WithdrawIn, authorization: Optional[str] = Header(defau
 @router.get("/intents", response_model=list[IntentOut])
 async def list_intents(authorization: Optional[str] = Header(default=None), db: AsyncSession = Depends(get_db_session)):
     user = await _resolve_user(db, authorization, strict=True)
+    await onoff.expire_stale(db, user.id)
+    await db.commit()
     rows = (await db.execute(select(OnoffIntent).where(OnoffIntent.user_id == user.id)
                              .order_by(OnoffIntent.id.desc()).limit(50))).scalars().all()
     return [_out(i) for i in rows]
@@ -198,6 +202,8 @@ async def list_intents(authorization: Optional[str] = Header(default=None), db: 
 async def get_intent(intent_id: str, authorization: Optional[str] = Header(default=None),
                      db: AsyncSession = Depends(get_db_session)):
     user = await _resolve_user(db, authorization, strict=True)
+    await onoff.expire_stale(db, user.id)
+    await db.commit()
     i = (await db.execute(select(OnoffIntent).where(OnoffIntent.intent_id == intent_id,
                                                     OnoffIntent.user_id == user.id))).scalars().first()
     if i is None:
@@ -227,7 +233,13 @@ async def webhook(provider: str, request: Request, db: AsyncSession = Depends(ge
             return {"ignored": True}
         if ev.onchain_tx:
             i.onchain_tx = ev.onchain_tx
-        await onoff.advance(db, i, ev.status, actor="webhook", event_id=ev.event_id, payload=body)
+        target = ev.status
+        if target in onoff.MONEY_MOVED and not onoff.amount_matches(i, ev.amount_usdc):
+            # O provedor diz que moveu um valor diferente do pedido: trava para análise humana, não segue sozinho.
+            logger.error("onoff amount mismatch: intent=%s want=%s got=%s", i.intent_id, i.amount_usdc, ev.amount_usdc)
+            i.error = f"provider reported {ev.amount_usdc} for {float(i.amount_usdc)}"
+            target = "review"
+        await onoff.advance(db, i, target, actor="webhook", event_id=ev.event_id, payload=body)
         await db.commit()
     except onoff.OnoffError as e:
         await db.rollback()

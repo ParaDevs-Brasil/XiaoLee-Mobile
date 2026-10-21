@@ -111,8 +111,8 @@ async def test_deposit_settles_and_audits_every_step(db):
     out = r.json()
     assert out["status"] == "pending_provider" and out["url"].startswith("https://sandbox.invalid/")
     ref = f"sbx_{out['intent_id']}"
-    assert _hook(event_id="e1", kind="intent", provider_ref=ref, status="funds_received").status_code == 200
-    assert _hook(event_id="e2", kind="intent", provider_ref=ref, status="settled", onchain_tx="0xabc").status_code == 200
+    assert _hook(event_id="e1", kind="intent", provider_ref=ref, status="funds_received", amount_usdc=50).status_code == 200
+    assert _hook(event_id="e2", kind="intent", provider_ref=ref, status="settled", amount_usdc=50, onchain_tx="0xabc").status_code == 200
     got = client.get(f"/v1/onoff/intents/{out['intent_id']}", headers=h).json()
     assert got["status"] == "settled" and got["onchain_tx"] == "0xabc"
     steps = (await db.execute(select(OnoffEvent.to_status).order_by(OnoffEvent.id))).scalars().all()
@@ -127,9 +127,9 @@ async def test_webhook_needs_a_valid_signature_and_ignores_replay_and_bad_transi
     body = json.dumps({"event_id": "x", "kind": "intent", "provider_ref": ref, "status": "settled"}).encode()
     assert client.post("/v1/onoff/webhooks/sandbox", content=body, headers={"X-Onoff-Signature": "00"}).status_code == 401
     assert client.post("/v1/onoff/webhooks/sandbox", content=body).status_code == 401
-    assert _hook(event_id="a", kind="intent", provider_ref=ref, status="settled").json() == {"ignored": True}  # pula etapas
-    assert _hook(event_id="b", kind="intent", provider_ref=ref, status="funds_received").status_code == 200
-    assert _hook(event_id="b", kind="intent", provider_ref=ref, status="funds_received").json() == {"duplicate": True}
+    assert _hook(event_id="a", kind="intent", provider_ref=ref, status="settled", amount_usdc=50).json() == {"ignored": True}  # pula etapas
+    assert _hook(event_id="b", kind="intent", provider_ref=ref, status="funds_received", amount_usdc=50).status_code == 200
+    assert _hook(event_id="b", kind="intent", provider_ref=ref, status="funds_received", amount_usdc=50).json() == {"duplicate": True}
     assert _hook("nope", event_id="c", kind="intent").status_code == 404
 
 
@@ -168,7 +168,7 @@ async def test_fiat_withdraw_needs_kyc_then_waits_after_a_big_deposit(db):
     d = _deposit(h, 100).json()
     ref = f"sbx_{d['intent_id']}"
     for n, st in enumerate(["funds_received", "settled"]):
-        assert _hook(event_id=f"d{n}", kind="intent", provider_ref=ref, status=st).status_code == 200
+        assert _hook(event_id=f"d{n}", kind="intent", provider_ref=ref, status=st, amount_usdc=100).status_code == 200
     assert client.post("/v1/onoff/withdraw", headers=h, json=w).json()["detail"]["code"] == "cooldown"
     row = (await db.execute(select(OnoffIntent).where(OnoffIntent.intent_id == d["intent_id"]))).scalars().one()
     row.updated_at = datetime.utcnow() - timedelta(hours=25)
@@ -196,3 +196,51 @@ async def test_requires_a_real_session_and_a_known_method(db):
     _, h = await _user(db)
     assert _deposit(h, 5, "boleto").json()["detail"]["code"] == "bad_method"
     assert client.get("/v1/onoff/config").json()["providers"][0]["name"] == "sandbox"
+
+
+# ── valor conferido, teto global, expiração ─────────────────────────────────
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reported", [None, 49.0, 500.0])
+async def test_amount_mismatch_or_missing_locks_the_intent_for_review(db, reported):
+    _, h = await _user(db)
+    out = _deposit(h, 50).json()
+    ref = f"sbx_{out['intent_id']}"
+    ev = dict(event_id="m1", kind="intent", provider_ref=ref, status="funds_received")
+    assert _hook(**ev, **({} if reported is None else {"amount_usdc": reported})).status_code == 200
+    assert client.get(f"/v1/onoff/intents/{out['intent_id']}", headers=h).json()["status"] == "review"
+    # `review` não anda sozinho e continua contando no teto
+    assert _hook(event_id="m2", kind="intent", provider_ref=ref, status="settled", amount_usdc=50).json() == {"ignored": True}
+    assert client.get(f"/v1/onoff/intents/{out['intent_id']}", headers=h).json()["status"] == "review"
+
+
+@pytest.mark.asyncio
+async def test_amount_within_one_percent_is_accepted(db):
+    _, h = await _user(db)
+    out = _deposit(h, 50).json()
+    assert _hook(event_id="t1", kind="intent", provider_ref=f"sbx_{out['intent_id']}", status="funds_received",
+                 amount_usdc=50.4).status_code == 200
+    assert client.get(f"/v1/onoff/intents/{out['intent_id']}", headers=h).json()["status"] == "funds_received"
+
+
+@pytest.mark.asyncio
+async def test_global_cap_stops_everyone_without_naming_the_reason(db, monkeypatch):
+    _, a = await _user(db, "ana")
+    _, b = await _user(db, "bob")
+    monkeypatch.setattr(onoff, "settings", dataclasses.replace(onoff.settings, onoff_max_global_day_usdc=120))
+    assert _deposit(a, 100).status_code == 200
+    r = _deposit(b, 50)
+    assert r.status_code == 429 and r.json()["detail"]["code"] == "capacity"
+
+
+@pytest.mark.asyncio
+async def test_stale_intents_expire_and_stop_counting(db):
+    _, h = await _user(db)
+    out = _deposit(h, 100).json()
+    row = (await db.execute(select(OnoffIntent).where(OnoffIntent.intent_id == out["intent_id"]))).scalars().one()
+    row.expires_at = datetime.utcnow() - timedelta(minutes=1)
+    await db.commit()
+    assert client.get(f"/v1/onoff/intents/{out['intent_id']}", headers=h).json()["status"] == "expired"
+    assert _hook(event_id="x1", kind="intent", provider_ref=f"sbx_{out['intent_id']}", status="funds_received",
+                 amount_usdc=100).json() == {"ignored": True}   # chegou tarde: não ressuscita
+    assert _deposit(h, 100).status_code == 200 and _deposit(h, 100).status_code == 200

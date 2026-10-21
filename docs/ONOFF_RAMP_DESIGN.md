@@ -14,6 +14,7 @@ licenciado, que faz o KYC do usuário e liquida o dinheiro. A XiaoLee orquestra,
 
 Se algum dia a XiaoLee passar a receber fiat ou a converter por conta própria, vira atividade regulada
 (Brasil: regime de prestadoras de serviços de ativos virtuais do BCB; verificar com advogado).
+**Também não custodiamos USDC do usuário** (ver §5): ele assina com a própria carteira.
 **Fora do escopo do código: parecer jurídico sobre enquadramento.** Este documento não é parecer.
 
 ## 2. Camadas de identidade (tiers)
@@ -38,6 +39,11 @@ sócios/beneficiários finais, descrição do negócio. É pré-requisito comerc
 - **Kill switch:** `ONOFF_ENABLED` e por direção (`ONOFF_DEPOSIT_ENABLED`, `ONOFF_WITHDRAW_ENABLED`).
 - **Allowlist no início:** só carteiras/usuários listados enquanto estamos em piloto.
 - **Cooldown pós-depósito:** saque de valor alto só depois de N horas do depósito (anti-lavagem/fraude de cartão com chargeback).
+- **Valor conferido:** o webhook do provedor traz o valor movido; se diferir do intent (tolerância de 1% ou 1 centavo)
+  ou vier sem valor, o intent vai para `review` e não anda sozinho. Continua contando no teto.
+- **Teto global** da operação por dia e por direção, além dos tetos por usuário. Pedidos simultâneos do mesmo
+  usuário são serializados (`SELECT ... FOR UPDATE`) para não furar o teto.
+- **Expiração:** sessões e intents sem desfecho expiram (30 min por padrão); eventos tardios não os ressuscitam.
 - **Idempotência:** toda operação nasce com `intent_id` (UUID) gravado antes de qualquer chamada externa.
 - **Webhooks assinados:** verificar assinatura do provedor, rejeitar replay (guardar `event_id`).
 - **Auditoria append-only:** toda mudança de estado vira uma linha em `onoff_events`; nunca atualizar nem apagar.
@@ -50,19 +56,29 @@ sócios/beneficiários finais, descrição do negócio. É pré-requisito comerc
 ```
 created -> kyc_required -> pending_provider -> funds_received -> settled
                     \-> rejected / expired / failed
-settled -> (saque) withdraw_requested -> sent_to_provider -> paid_out
-                                    \-> failed -> refunded
+deposit : pending_provider -> funds_received -> settled
+withdraw: pending_provider -> sent_to_provider -> paid_out     (failed -> refunded)
+qualquer etapa com dinheiro andando e valor divergente -> review (análise humana)
 ```
 
 Estados terminais: `settled` (depósito), `paid_out` (saque), `rejected`, `expired`, `refunded`.
 Transições só avançam; qualquer outra é recusada e logada.
 
-## 5. Saque para outra rede
+## 5. Saque para outra rede (sem custódia nossa)
 
-Padrão do projeto: o usuário assina uma autorização EIP-3009 (`relay-authorization`) para a tesouraria
-e o backend envia por CCTP com a carteira Circle LIVE (já provado Arc -> Base). Semi-custodial
-por alguns minutos. Mitigações: intent durável antes de mover, teto por usuário, idempotência,
-reconciliação do que ficou preso (padrão `cctp_recover_transfers.py`).
+O USDC do usuário **nunca passa por uma carteira da XiaoLee**. Custodiar cripto de terceiros, mesmo por minutos,
+também pode ser atividade regulada; por isso o desenho anterior (usuário assina para a tesouraria, nós enviamos
+por CCTP) foi descartado.
+
+Fluxo: o app monta a transação e a **carteira do próprio usuário** (Privy) assina e envia:
+- mesma rede (Arc -> endereço na Arc): transferência normal de USDC, ou o relay EIP-3009 já existente
+  (o relay só paga o gás; o destino é o que o usuário assinou);
+- outra rede (ex.: Arc -> Base): o usuário assina o `depositForBurn` do CCTP direto na Arc; o app acompanha a
+  attestation e o mint no destino. Quem paga o gás no destino e como (Forwarding Service da Circle ou claim pelo
+  usuário) **precisa ser verificado na doc oficial antes de implementar**.
+
+O backend só **registra o intent e acompanha o status** (hash da burn, attestation, hash do mint) e aplica os tetos.
+Ele não segura chave, não assina e não move fundos do usuário.
 
 ## 6. Abstração de provedor
 
@@ -103,7 +119,7 @@ aparecem como "em breve", não somem.
 ## 10. Fases
 
 1. Backend base: modelos, máquina de estados, tetos, kill switches, webhooks assinados, testes. (sem provedor)
-2. Saque para outra rede (CCTP via tesouraria) de ponta a ponta. (sem KYB)
+2. Saque para outra rede **assinado pela carteira do usuário** (sem tesouraria), com acompanhamento do CCTP. (sem KYB)
 3. Provedor de depósito (Circle Onramp ou MoonPay) em sandbox -> produção após KYB.
 4. Provedor de saque Pix/conta.
 5. Revisão de segurança e jurídica antes de abrir para todos.
@@ -115,3 +131,10 @@ aparecem como "em breve", não somem.
 - Provedor de saque Pix.
 - Tetos iniciais de piloto.
 - Países suportados na primeira versão.
+
+## 12. O que NÃO está provado (atualizar a cada fase)
+
+- Nenhum provedor real integrado; só o provedor de teste (`sandbox`) com webhook assinado.
+- Testes rodam em SQLite; o `FOR UPDATE` dos tetos só tem efeito em Postgres e ainda não foi exercitado lá.
+- Não há trilha de IP/dispositivo do pedido, nem alerta automático para webhook fora de ordem ou `review`.
+- Parecer jurídico, KYB da XiaoLee e contratos com provedores: pendentes (fora do código).
