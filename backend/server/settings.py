@@ -90,6 +90,22 @@ class Settings:
     # Pagamentos de campanha (só valem com ARC_SANDBOX=false): kill switch e teto diário global em USDC.
     payouts_enabled: bool = os.getenv("PAYOUTS_ENABLED", "true").lower() == "true"
     payout_daily_budget_usdc: float = float(os.getenv("PAYOUT_DAILY_BUDGET_USDC", "20"))
+    # ── On/off-ramp (server/onoff.py): tudo desligado até o piloto ─────────────
+    # Kill switches por direção; allowlist (handle ou id, vírgula) vazia = sem restrição, mas só vale com ONOFF_ENABLED.
+    onoff_enabled: bool = os.getenv("ONOFF_ENABLED", "false").lower() == "true"
+    onoff_deposit_enabled: bool = os.getenv("ONOFF_DEPOSIT_ENABLED", "true").lower() == "true"
+    onoff_withdraw_enabled: bool = os.getenv("ONOFF_WITHDRAW_ENABLED", "true").lower() == "true"
+    onoff_allowlist: str = os.getenv("ONOFF_ALLOWLIST", "")
+    # Tetos em USDC (1 USDC ~ 1 USD): por operação, por 24h e por 30 dias, por usuário e por direção.
+    onoff_max_tx_usdc: float = float(os.getenv("ONOFF_MAX_TX_USDC", "100"))
+    onoff_max_day_usdc: float = float(os.getenv("ONOFF_MAX_DAY_USDC", "250"))
+    onoff_max_month_usdc: float = float(os.getenv("ONOFF_MAX_MONTH_USDC", "1000"))
+    # Saque para fiat exige KYC deste nível no provedor que paga; e espera depois de depósito grande (chargeback).
+    onoff_withdraw_min_kyc_level: int = int(os.getenv("ONOFF_WITHDRAW_MIN_KYC_LEVEL", "2"))
+    onoff_cooldown_hours: int = int(os.getenv("ONOFF_COOLDOWN_HOURS", "24"))
+    onoff_cooldown_min_usdc: float = float(os.getenv("ONOFF_COOLDOWN_MIN_USDC", "100"))
+    # Provedor de teste (assina webhooks com este segredo). Só entra no registro se houver segredo.
+    onoff_sandbox_secret: str = os.getenv("ONOFF_SANDBOX_SECRET", "")
     campaign_require_funds: bool = os.getenv("CAMPAIGN_REQUIRE_FUNDS", "true").lower() == "true"
     cors_allowed_origins: list[str] = None
     cors_allowed_origin_regex: str = ""

@@ -453,3 +453,52 @@ class CreatorVideo(Base):
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     refund_due: Mapped[bool] = mapped_column(Boolean, default=False)
     video_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class OnoffIntent(Base):
+    """Depósito ou saque de fiat/cripto (server/onoff.py). Gravado ANTES de qualquer chamada ao provedor
+    (intent log durável). Só avança pela máquina de estados de `onoff.advance`; cada passo vira um `OnoffEvent`.
+    A XiaoLee não guarda dados bancários nem documentos: quem paga/cobra o fiat é o provedor licenciado."""
+    __tablename__ = 'onoff_intents'
+
+    intent_id: Mapped[str] = mapped_column(String(36), unique=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    direction: Mapped[str] = mapped_column(String(10))            # 'deposit' | 'withdraw'
+    method: Mapped[str] = mapped_column(String(24))               # card | apple_pay | google_pay | pix | bank | chain
+    provider: Mapped[str] = mapped_column(String(32))
+    amount_usdc: Mapped[float] = mapped_column(Numeric(20, 8))
+    fiat_currency: Mapped[Optional[str]] = mapped_column(String(3), nullable=True)
+    status: Mapped[str] = mapped_column(String(24), default='created', index=True)
+    provider_ref: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, index=True)
+    dest_network: Mapped[Optional[str]] = mapped_column(String(24), nullable=True)
+    dest_address: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    onchain_tx: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class OnoffEvent(Base):
+    """Trilha de auditoria append-only das mudanças de estado de um `OnoffIntent`. Nunca se atualiza nem apaga.
+    `event_id` (id do evento no provedor) é único: é o anti-replay dos webhooks."""
+    __tablename__ = 'onoff_events'
+
+    intent_id: Mapped[int] = mapped_column(ForeignKey("onoff_intents.id"), index=True)
+    from_status: Mapped[Optional[str]] = mapped_column(String(24), nullable=True)
+    to_status: Mapped[str] = mapped_column(String(24))
+    actor: Mapped[str] = mapped_column(String(16))                # system | user | webhook
+    event_id: Mapped[Optional[str]] = mapped_column(String(128), unique=True, nullable=True)
+    payload_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+
+
+class OnoffKyc(Base):
+    """Resultado do KYC/KYB feito pelo provedor. Só o veredito: nenhum documento é guardado aqui."""
+    __tablename__ = 'onoff_kyc'
+    __table_args__ = (UniqueConstraint('user_id', 'provider', name='uq_onoff_kyc_user_provider'),)
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    provider: Mapped[str] = mapped_column(String(32))
+    level: Mapped[int] = mapped_column(default=0)                 # 0 nenhum, 1 básico, 2 completo
+    status: Mapped[str] = mapped_column(String(16), default='none')   # none | pending | approved | rejected
+    subject: Mapped[str] = mapped_column(String(8), default='person') # person | business
+    customer_ref: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
