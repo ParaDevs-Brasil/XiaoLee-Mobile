@@ -14,7 +14,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { createPublicClient, http } from 'viem';
+import { createPublicClient, http, isAddress as isEvmAddress } from 'viem';
 
 import { getOnoffIntent, registerBurn, startChainWithdraw, type OnoffIntent } from '@/api/backend';
 import { ApiError } from '@/api/client';
@@ -51,7 +51,8 @@ const PHASES = ['Approve', 'Send', 'Confirm', 'Deliver'] as const;
 const QUOTE_TTL_MS = 120_000;
 /** Pede o mínimo de dígitos úteis: 0.054 aparece inteiro, 0.5 vira 0.50. */
 const fmt = (n: number) => n.toFixed(3).replace(/0$/, '');
-const isAddress = (a: string) => /^0x[0-9a-fA-F]{40}$/.test(a);
+/** Igual ao backend: endereço em caixa mista precisa ter o checksum (EIP-55) certo. */
+const isAddress = (a: string) => isEvmAddress(a);
 
 const now = () => Date.now();
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
