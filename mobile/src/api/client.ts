@@ -33,7 +33,7 @@ function messageFromBody(body: unknown): string | null {
   // Rotas de dinheiro (on/off-ramp) respondem `detail: { code, message }`.
   if (typeof detail === 'object' && detail !== null && !Array.isArray(detail)) {
     const m = (detail as { message?: unknown }).message;
-    if (typeof m === 'string') return m;
+    if (typeof m === 'string') return m.charAt(0).toUpperCase() + m.slice(1);
   }
 
   if (Array.isArray(detail)) {

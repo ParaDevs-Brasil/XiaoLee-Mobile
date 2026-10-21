@@ -16,6 +16,7 @@ import { getOnoffConfig } from '@/api/backend';
 import { useBackendData } from '@/hooks/use-backend-data';
 import { PageHeading } from '@/components/screen-shell';
 import { SectionCard } from '@/components/section-card';
+import { WalletActions } from '@/components/wallet-actions';
 import { WalletAddressCard } from '@/components/wallet-address-card';
 import { WalletBalanceCard } from '@/components/wallet-balance-card';
 import { WalletMockSwitcher } from '@/components/wallet-mock-switcher';
@@ -192,27 +193,18 @@ export function WalletHomeView({
               />
             ) : null}
 
+            {wallet.status === 'ready' ? (
+              <WalletActions
+                canAdd={canDeposit}
+                canWithdraw={canWithdraw}
+                onAdd={() => setAddOpen(true)}
+                onWithdraw={() => setWithdrawOpen(true)}
+                onReceive={() => setReceiveOpen(true)}
+                onActivity={onSeeAllReceipts}
+              />
+            ) : null}
+
             <WalletAddressCard address={wallet.address} onShowQr={() => setReceiveOpen(true)} />
-
-            {canDeposit ? (
-              <Pressable
-                onPress={() => setAddOpen(true)}
-                style={({ pressed }) => [styles.faucet, pressed && styles.pressed]}
-                accessibilityRole="button"
-              >
-                <Text style={styles.faucetText}>Add money</Text>
-              </Pressable>
-            ) : null}
-
-            {canWithdraw ? (
-              <Pressable
-                onPress={() => setWithdrawOpen(true)}
-                style={({ pressed }) => [styles.faucet, pressed && styles.pressed]}
-                accessibilityRole="button"
-              >
-                <Text style={styles.faucetText}>Withdraw to another network</Text>
-              </Pressable>
-            ) : null}
 
             {!ARC_NETWORK.isMainnet && !wallet.isMock ? <FaucetButton address={wallet.address} /> : null}
 

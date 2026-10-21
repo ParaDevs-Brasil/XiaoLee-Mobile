@@ -1,9 +1,7 @@
 import * as Clipboard from 'expo-clipboard';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Animated,
-  Easing,
   KeyboardAvoidingView,
   Modal,
   Pressable,
@@ -21,9 +19,9 @@ import { ApiError } from '@/api/client';
 import { IconAlert, IconCheck, IconClose, IconSend } from '@/components/icons';
 import { Pop, Reveal } from '@/components/motion';
 import { PipelineSteps } from '@/components/pipeline-steps';
+import { SuccessBadge } from '@/components/success-badge';
 import { ChunkedAddress } from '@/components/wallet-address-card';
 import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
-import { useReduceMotion } from '@/hooks/use-reduce-motion';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { buildBurnTxs, type BurnParams, type ChainNetwork } from '@/lib/onoff-burn';
 import { arcChain, usePrivyWallet } from '@/lib/wallet';
@@ -409,36 +407,6 @@ function progressText(step: Step, phase: number, net: string): { title: string; 
   }
 }
 
-/** Selo de sucesso: o check "estoura" com mola e um halo se expande uma vez. */
-function SuccessBadge() {
-  const colors = useTheme();
-  const styles = useStyles();
-  const reduce = useReduceMotion();
-  const [halo] = useState(() => new Animated.Value(0));
-
-  useEffect(() => {
-    if (reduce) return;
-    Animated.timing(halo, { toValue: 1, duration: 900, delay: 150, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
-  }, [reduce, halo]);
-
-  return (
-    <View style={styles.badgeWrap}>
-      <Animated.View
-        style={[
-          styles.halo,
-          {
-            opacity: halo.interpolate({ inputRange: [0, 1], outputRange: [0.45, 0] }),
-            transform: [{ scale: halo.interpolate({ inputRange: [0, 1], outputRange: [1, 2.1] }) }],
-          },
-        ]}
-      />
-      <Pop style={styles.badge}>
-        <IconCheck size={34} sw={3} color={colors.onAccent} />
-      </Pop>
-    </View>
-  );
-}
-
 function Fact({ label: name, value, last = false, strong = false }: { label: string; value: string; last?: boolean; strong?: boolean }) {
   const styles = useStyles();
   return (
@@ -564,9 +532,6 @@ const useStyles = makeStyles((colors) => ({
   progressBox: { alignItems: 'center', gap: Spacing.two, paddingVertical: Spacing.three },
   progressTitle: { fontFamily: Fonts.bold, fontSize: 17, color: colors.ink, textAlign: 'center' },
 
-  badgeWrap: { alignSelf: 'center', width: 72, height: 72, alignItems: 'center', justifyContent: 'center', marginVertical: Spacing.two },
-  halo: { position: 'absolute', width: 72, height: 72, borderRadius: Radius.pill, backgroundColor: colors.successFill },
-  badge: { width: 72, height: 72, borderRadius: Radius.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.successFill },
   bigTitle: { fontFamily: Fonts.bold, fontSize: 22, color: colors.ink, textAlign: 'center' },
 
   primary: {
