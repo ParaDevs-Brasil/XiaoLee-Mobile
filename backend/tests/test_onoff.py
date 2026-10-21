@@ -314,6 +314,13 @@ async def test_chain_withdraw_without_a_quote_fails_and_frees_the_cap(db):
 
 
 @pytest.mark.asyncio
+async def test_chain_withdraw_has_no_volume_caps(db):
+    _, h = await _user(db)
+    assert (await _chain_withdraw(h, 5000))["status"] == "created"   # acima de tx/dia/mês: é USDC do próprio usuário
+    assert (await _chain_withdraw(h, 5000))["status"] == "created"
+
+
+@pytest.mark.asyncio
 async def test_burn_is_verified_on_the_iris_then_tracked_to_the_forward_mint(db):
     _, h = await _user(db)
     w = await _chain_withdraw(h)

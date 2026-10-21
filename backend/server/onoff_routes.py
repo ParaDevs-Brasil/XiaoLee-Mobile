@@ -180,7 +180,7 @@ async def withdraw(body: WithdrawIn, authorization: Optional[str] = Header(defau
         else:
             provider = _pick(onoff.WITHDRAW, body.method, body.provider)
             provider_name = provider.name
-        await onoff.check_limits(db, user.id, onoff.WITHDRAW, body.amount_usdc)
+        await onoff.check_limits(db, user.id, onoff.WITHDRAW, body.amount_usdc, body.method)
         await onoff.check_withdraw_gates(db, user.id, body.method, provider_name)
         intent = await onoff.new_intent(db, user_id=user.id, direction=onoff.WITHDRAW, method=body.method,
                                         provider=provider_name, amount=body.amount_usdc, fiat_currency=body.fiat_currency,

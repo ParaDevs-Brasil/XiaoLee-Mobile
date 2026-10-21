@@ -35,7 +35,7 @@ sócios/beneficiários finais, descrição do negócio. É pré-requisito comerc
 ## 3. Proteções da operação
 
 - **Gate de KYC:** saque para fiat só com `kyc_level >= 2` do provedor que vai pagar.
-- **Tetos:** por transação, diário, mensal e por tier. Configuráveis por env, com padrão baixo.
+- **Tetos:** por transação, diário, mensal e por tier. Configuráveis por env, com padrão baixo. **Não valem para saque `chain`** (USDC do próprio usuário, assinado por ele, sem fiat); só a taxa máxima da Circle é limitada no app (2 USDC).
 - **Kill switch:** `ONOFF_ENABLED` e por direção (`ONOFF_DEPOSIT_ENABLED`, `ONOFF_WITHDRAW_ENABLED`).
 - **Allowlist no início:** só carteiras/usuários listados enquanto estamos em piloto.
 - **Cooldown pós-depósito:** saque de valor alto só depois de N horas do depósito (anti-lavagem/fraude de cartão com chargeback).

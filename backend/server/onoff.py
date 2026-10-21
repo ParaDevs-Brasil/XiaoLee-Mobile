@@ -151,12 +151,14 @@ async def _sum_all_since(db: AsyncSession, direction: str, since: datetime) -> f
     return float(res.scalar() or 0)
 
 
-async def check_limits(db: AsyncSession, user_id: int, direction: str, amount: float) -> None:
+async def check_limits(db: AsyncSession, user_id: int, direction: str, amount: float, method: str = "") -> None:
     """Chame e grave o intent NA MESMA transação: o FOR UPDATE na linha do usuário serializa pedidos
     simultâneos dele (Postgres; no SQLite dos testes é no-op), senão dois pedidos passam do teto juntos."""
     await db.execute(select(User.id).where(User.id == user_id).with_for_update())
     if amount <= 0:
         raise OnoffError(422, "bad_amount", "amount must be positive")
+    if method == "chain":
+        return  # USDC do próprio usuário, assinado por ele, sem fiat nem custódia nossa: sem tetos de volume
     if amount > settings.onoff_max_tx_usdc:
         raise OnoffError(422, "over_tx_limit", f"max per operation is {settings.onoff_max_tx_usdc:g} USDC")
     now = datetime.utcnow()
