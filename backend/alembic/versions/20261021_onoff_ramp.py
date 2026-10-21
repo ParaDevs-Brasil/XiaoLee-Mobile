@@ -39,6 +39,8 @@ def upgrade() -> None:
         sa.Column("dest_network", sa.String(length=24), nullable=True),
         sa.Column("dest_address", sa.String(length=128), nullable=True),
         sa.Column("onchain_tx", sa.Text(), nullable=True),
+        sa.Column("forward_tx", sa.Text(), nullable=True),
+        sa.Column("max_fee_usdc", sa.Numeric(20, 8), nullable=True),
         sa.Column("error", sa.Text(), nullable=True),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"]),

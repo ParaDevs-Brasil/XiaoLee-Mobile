@@ -472,7 +472,9 @@ class OnoffIntent(Base):
     provider_ref: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, index=True)
     dest_network: Mapped[Optional[str]] = mapped_column(String(24), nullable=True)
     dest_address: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
-    onchain_tx: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    onchain_tx: Mapped[Optional[str]] = mapped_column(Text, nullable=True)       # saque entre redes: burn assinado pelo usuário
+    forward_tx: Mapped[Optional[str]] = mapped_column(Text, nullable=True)       # saque entre redes: mint feito pelo Forwarding Service
+    max_fee_usdc: Mapped[Optional[float]] = mapped_column(Numeric(20, 8), nullable=True)  # teto de taxa cotado (burn = valor + teto)
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 

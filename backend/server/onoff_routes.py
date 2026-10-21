@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.database import get_db_session
 from database.models import OnoffIntent
 from database.repository import to_utc_iso
-from server import onoff
+from server import onoff, onoff_chain
 from server.campaigns_routes import _resolve_user
 from server.settings import settings
 
@@ -37,7 +37,7 @@ router = APIRouter(prefix="/v1/onoff", tags=["onoff"])
 
 CHAIN_NETWORKS = {"base", "ethereum"}
 _EVM_ADDR_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
-CCTP = "cctp"  # saque entre redes: executado por nós, sem provedor externo
+CCTP = onoff_chain.CCTP
 
 
 class _Sandbox:
@@ -78,13 +78,18 @@ class IntentOut(BaseModel):
     url: Optional[str] = None
     dest_network: Optional[str] = None
     onchain_tx: Optional[str] = None
+    forward_tx: Optional[str] = None
+    max_fee_usdc: Optional[float] = None
+    burn: Optional[dict] = None      # só na criação do saque entre redes: o que a carteira do usuário deve assinar
     created_at: Optional[str] = None
 
 
-def _out(i: OnoffIntent, url: Optional[str] = None) -> IntentOut:
+def _out(i: OnoffIntent, url: Optional[str] = None, burn: Optional[dict] = None) -> IntentOut:
     return IntentOut(intent_id=i.intent_id, direction=i.direction, method=i.method, provider=i.provider,
                      amount_usdc=float(i.amount_usdc), fiat_currency=i.fiat_currency, status=i.status, url=url,
-                     dest_network=i.dest_network, onchain_tx=i.onchain_tx, created_at=to_utc_iso(i.created_at))
+                     dest_network=i.dest_network, onchain_tx=i.onchain_tx, forward_tx=i.forward_tx,
+                     max_fee_usdc=None if i.max_fee_usdc is None else float(i.max_fee_usdc), burn=burn,
+                     created_at=to_utc_iso(i.created_at))
 
 
 class DepositIn(BaseModel):
@@ -184,8 +189,77 @@ async def withdraw(body: WithdrawIn, authorization: Optional[str] = Header(defau
         await db.commit()
     except onoff.OnoffError as e:
         raise _fail(e)
-    url = None if provider is None else await _start_session(db, intent, provider)
-    return _out(intent, url)
+    if provider is not None:
+        return _out(intent, await _start_session(db, intent, provider))
+    try:
+        q = await onoff_chain.quote(intent.dest_network, float(intent.amount_usdc))
+    except onoff.OnoffError as e:  # sem cotação não há burn: o intent falha e não conta no teto
+        intent.error = e.message[:500]
+        await onoff.advance(db, intent, "failed", actor="system")
+        await db.commit()
+        raise _fail(e)
+    intent.max_fee_usdc = q["max_fee_minor"] / 10**onoff_chain.USDC_DECIMALS
+    intent.expires_at = datetime.utcnow() + onoff.SESSION_TTL   # a cotação de gás envelhece rápido
+    await db.commit()
+    return _out(intent, burn=onoff_chain.burn_params(intent, q))
+
+
+async def _refresh_chain(db: AsyncSession, i: OnoffIntent) -> None:
+    """Saque entre redes em andamento: pergunta à Iris se já foi atestado e se a Circle já fez o mint."""
+    if i.provider != onoff_chain.CCTP or i.status not in ("pending_provider", "sent_to_provider") or not i.onchain_tx:
+        return
+    try:
+        msg = await onoff_chain.message_for(i.onchain_tx)
+    except onoff.OnoffError as e:
+        logger.warning("onoff chain refresh failed for %s: %s", i.intent_id, e.message)
+        return
+    if not msg:
+        return
+    if not onoff_chain.burn_matches(i, msg):  # nunca deveria mudar depois de registrado; se mudou, não segue sozinho
+        i.error = "burn on chain does not match the intent"
+        await onoff.advance(db, i, "review", actor="system")
+        return
+    if i.status == "pending_provider" and msg.get("status") == "complete":
+        await onoff.advance(db, i, "sent_to_provider", actor="system")
+    if i.status == "sent_to_provider" and msg.get("forwardTxHash"):
+        i.forward_tx = msg["forwardTxHash"]
+        await onoff.advance(db, i, "paid_out", actor="system")
+
+
+class BurnIn(BaseModel):
+    tx_hash: str = Field(pattern=r"^0x[0-9a-fA-F]{64}$")
+
+
+@router.post("/intents/{intent_id}/burn", response_model=IntentOut)
+async def register_burn(intent_id: str, body: BurnIn, authorization: Optional[str] = Header(default=None),
+                        db: AsyncSession = Depends(get_db_session)):
+    """O app avisa o hash do burn que a carteira do usuário enviou. Só é aceito se a Iris vê um burn igual ao do intent."""
+    user = await _resolve_user(db, authorization, strict=True)
+    i = (await db.execute(select(OnoffIntent).where(OnoffIntent.intent_id == intent_id,
+                                                    OnoffIntent.user_id == user.id))).scalars().first()
+    if i is None or i.provider != onoff_chain.CCTP:
+        raise HTTPException(404, "intent not found")
+    try:
+        await onoff.expire_stale(db, user.id)
+        if i.status != "created":
+            raise onoff.OnoffError(409, "bad_state", f"intent is {i.status}")
+        tx = body.tx_hash.lower()
+        if (await db.execute(select(OnoffIntent.id).where(OnoffIntent.onchain_tx == tx))).first():
+            raise onoff.OnoffError(409, "tx_already_used", "this transaction is already registered")
+        msg = await onoff_chain.message_for(tx)
+        if msg is None:
+            await db.commit()
+            raise onoff.OnoffError(202, "not_indexed", "transaction not seen yet, try again in a few seconds")
+        if not onoff_chain.burn_matches(i, msg):
+            raise onoff.OnoffError(422, "burn_mismatch", "this burn does not match the withdrawal")
+        i.onchain_tx = tx
+        await onoff.advance(db, i, "pending_provider", actor="user")
+        await _refresh_chain(db, i)
+        await db.commit()
+    except onoff.OnoffError as e:
+        await db.rollback()
+        raise _fail(e)
+    return _out(i)
 
 
 @router.get("/intents", response_model=list[IntentOut])
@@ -208,6 +282,8 @@ async def get_intent(intent_id: str, authorization: Optional[str] = Header(defau
                                                     OnoffIntent.user_id == user.id))).scalars().first()
     if i is None:
         raise HTTPException(404, "intent not found")
+    await _refresh_chain(db, i)
+    await db.commit()
     return _out(i)
 
 

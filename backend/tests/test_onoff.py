@@ -28,13 +28,45 @@ os.environ.setdefault("ENCRYPTION_KEY", "route-test-encryption-key-xxxxxx")
 
 from database.database import get_db_session
 from database.models import OnoffEvent, OnoffIntent, User, WebSession
-from server import onoff
+from server import onoff, onoff_chain
 
 app_module = importlib.import_module("server.app")
 routes = importlib.import_module("server.onoff_routes")
 client = TestClient(app_module.app)
 SECRET = "sandbox-secret"
 ADDR = "0x" + "a" * 40
+
+
+class FakeIris:
+    """Iris simulada: cotação fixa e mensagens por hash do burn."""
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.messages = {}
+        self.fail_fees = False
+
+    async def __call__(self, path):
+        if "/fees/" in path:
+            if self.fail_fees:
+                raise onoff.OnoffError(502, "iris_unreachable", "down")
+            return [{"finalityThreshold": 1000, "minimumFee": 1, "forwardFee": {"low": 1, "med": 1, "high": 1}},
+                    {"finalityThreshold": 2000, "minimumFee": 0, "forwardFee": {"low": 50_000, "med": 60_000, "high": 90_000}}]
+        tx = path.split("transactionHash=")[1]
+        return {"messages": [self.messages[tx]]} if tx in self.messages else None
+
+
+iris = FakeIris()
+BURN_TX = "0x" + "b" * 64
+
+
+def _burn_msg(amount_minor, to=ADDR, domain="6", status="complete", forward=None):
+    m = {"status": status, "forwardState": "COMPLETE" if forward else "PENDING",
+         "decodedMessage": {"destinationDomain": domain,
+                            "decodedMessageBody": {"mintRecipient": "0x" + "0" * 24 + to[2:], "amount": str(amount_minor)}}}
+    if forward:
+        m["forwardTxHash"] = forward
+    return m
 
 
 @pytest_asyncio.fixture
@@ -50,6 +82,8 @@ async def db(db_session, monkeypatch):
     monkeypatch.setattr(onoff, "settings", s)
     monkeypatch.setattr(onoff, "_PROVIDERS", {})
     onoff.register(routes._Sandbox())
+    iris.reset()
+    monkeypatch.setattr(onoff_chain, "iris_get", iris)
     yield db_session
     app_module.app.dependency_overrides.pop(get_db_session, None)
 
@@ -185,6 +219,7 @@ async def test_chain_withdraw_validates_destination_and_stays_private(db):
         assert client.post("/v1/onoff/withdraw", headers=h, json=base | bad).json()["detail"]["code"] == "bad_destination"
     r = client.post("/v1/onoff/withdraw", headers=h, json=base | {"dest_network": "base", "dest_address": ADDR})
     assert r.status_code == 200 and r.json()["provider"] == "cctp" and r.json()["status"] == "created"
+    assert r.json()["max_fee_usdc"] == 0.06 and r.json()["burn"]["burn_amount"] == "10060000"
     _, other = await _user(db, "bob")
     assert client.get(f"/v1/onoff/intents/{r.json()['intent_id']}", headers=other).status_code == 404
     assert client.get("/v1/onoff/intents", headers=other).json() == []
@@ -244,3 +279,75 @@ async def test_stale_intents_expire_and_stop_counting(db):
     assert _hook(event_id="x1", kind="intent", provider_ref=f"sbx_{out['intent_id']}", status="funds_received",
                  amount_usdc=100).json() == {"ignored": True}   # chegou tarde: não ressuscita
     assert _deposit(h, 100).status_code == 200 and _deposit(h, 100).status_code == 200
+
+
+# ── saque entre redes: a carteira do usuário assina, a Circle faz o mint ────
+
+async def _chain_withdraw(h, amount=10):
+    r = client.post("/v1/onoff/withdraw", headers=h, json={"amount_usdc": amount, "method": "chain",
+                                                           "dest_network": "base", "dest_address": ADDR})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+@pytest.mark.asyncio
+async def test_chain_withdraw_quotes_the_burn_the_app_must_sign(db):
+    _, h = await _user(db)
+    w = await _chain_withdraw(h)
+    b = w["burn"]
+    assert b["destination_domain"] == 6 and b["source_domain"] == 26 and b["min_finality_threshold"] == 2000
+    assert b["mint_recipient"] == "0x" + "0" * 24 + "a" * 40 and b["destination_caller"] == "0x" + "0" * 64
+    assert b["max_fee"] == "60000" and b["burn_amount"] == "10060000" and b["hook_data"].startswith("0x636374702d666f72776172640")
+    assert client.get(f"/v1/onoff/intents/{w['intent_id']}", headers=h).json()["burn"] is None   # só na criação
+
+
+@pytest.mark.asyncio
+async def test_chain_withdraw_without_a_quote_fails_and_frees_the_cap(db):
+    _, h = await _user(db)
+    iris.fail_fees = True
+    r = client.post("/v1/onoff/withdraw", headers=h, json={"amount_usdc": 100, "method": "chain",
+                                                           "dest_network": "base", "dest_address": ADDR})
+    assert r.status_code == 502
+    iris.fail_fees = False
+    assert client.get("/v1/onoff/intents", headers=h).json()[0]["status"] == "failed"
+    assert (await _chain_withdraw(h, 100))["status"] == "created"
+
+
+@pytest.mark.asyncio
+async def test_burn_is_verified_on_the_iris_then_tracked_to_the_forward_mint(db):
+    _, h = await _user(db)
+    w = await _chain_withdraw(h)
+    url = f"/v1/onoff/intents/{w['intent_id']}/burn"
+    assert client.post(url, headers=h, json={"tx_hash": BURN_TX}).status_code == 202   # Iris ainda não viu
+    iris.messages[BURN_TX] = _burn_msg(10_060_000, status="pending_confirmations")
+    r = client.post(url, headers=h, json={"tx_hash": BURN_TX})
+    assert r.status_code == 200 and r.json()["status"] == "pending_provider" and r.json()["onchain_tx"] == BURN_TX
+    iris.messages[BURN_TX] = _burn_msg(10_060_000)
+    assert client.get(f"/v1/onoff/intents/{w['intent_id']}", headers=h).json()["status"] == "sent_to_provider"
+    iris.messages[BURN_TX] = _burn_msg(10_060_000, forward="0xmint")
+    done = client.get(f"/v1/onoff/intents/{w['intent_id']}", headers=h).json()
+    assert done["status"] == "paid_out" and done["forward_tx"] == "0xmint"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("msg", [_burn_msg(9_000_000), _burn_msg(10_060_000, to="0x" + "c" * 40), _burn_msg(10_060_000, domain="0")])
+async def test_a_burn_that_does_not_match_the_intent_is_refused(db, msg):
+    _, h = await _user(db)
+    w = await _chain_withdraw(h)
+    iris.messages[BURN_TX] = msg
+    r = client.post(f"/v1/onoff/intents/{w['intent_id']}/burn", headers=h, json={"tx_hash": BURN_TX})
+    assert r.status_code == 422 and r.json()["detail"]["code"] == "burn_mismatch"
+    assert client.get(f"/v1/onoff/intents/{w['intent_id']}", headers=h).json()["status"] == "created"
+
+
+@pytest.mark.asyncio
+async def test_one_burn_cannot_settle_two_withdrawals_nor_someone_elses(db):
+    _, a = await _user(db, "ana")
+    _, b = await _user(db, "bob")
+    w1, w2 = await _chain_withdraw(a), await _chain_withdraw(a)
+    iris.messages[BURN_TX] = _burn_msg(10_060_000)
+    assert client.post(f"/v1/onoff/intents/{w1['intent_id']}/burn", headers=a, json={"tx_hash": BURN_TX}).status_code == 200
+    again = client.post(f"/v1/onoff/intents/{w2['intent_id']}/burn", headers=a, json={"tx_hash": BURN_TX})
+    assert again.status_code == 409 and again.json()["detail"]["code"] == "tx_already_used"
+    assert client.post(f"/v1/onoff/intents/{w2['intent_id']}/burn", headers=b, json={"tx_hash": BURN_TX}).status_code == 404
+    assert client.post(f"/v1/onoff/intents/{w2['intent_id']}/burn", headers=a, json={"tx_hash": "0x12"}).status_code == 422

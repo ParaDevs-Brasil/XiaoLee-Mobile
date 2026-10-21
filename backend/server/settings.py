@@ -106,6 +106,11 @@ class Settings:
     onoff_cooldown_hours: int = int(os.getenv("ONOFF_COOLDOWN_HOURS", "24"))
     onoff_cooldown_min_usdc: float = float(os.getenv("ONOFF_COOLDOWN_MIN_USDC", "100"))
     # Provedor de teste (assina webhooks com este segredo). Só entra no registro se houver segredo.
+    # Saque entre redes (CCTP + Forwarding Service da Circle). Iris mainnet por padrão; "https://iris-api-sandbox.circle.com" = testnet.
+    # TokenMessengerV2 da Arc mainnet: developers.circle.com/cctp/references/contract-addresses.
+    onoff_iris_base: str = os.getenv("ONOFF_IRIS_BASE", "https://iris-api.circle.com")
+    onoff_arc_token_messenger: str = os.getenv("ONOFF_ARC_TOKEN_MESSENGER", "0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d")
+    onoff_forward_fee_tier: str = os.getenv("ONOFF_FORWARD_FEE_TIER", "med")  # low | med | high
     onoff_sandbox_secret: str = os.getenv("ONOFF_SANDBOX_SECRET", "")
     campaign_require_funds: bool = os.getenv("CAMPAIGN_REQUIRE_FUNDS", "true").lower() == "true"
     cors_allowed_origins: list[str] = None
