@@ -10,6 +10,9 @@ import { IconChevronRight, IconUser } from '@/components/icons';
 import { NetworkMismatchCard } from '@/components/network-badge';
 import { ReceiptRow } from '@/components/receipt-row';
 import { ReceiveSheet } from '@/components/receive-sheet';
+import { WithdrawSheet } from '@/components/withdraw-sheet';
+import { getOnoffConfig } from '@/api/backend';
+import { useBackendData } from '@/hooks/use-backend-data';
 import { PageHeading } from '@/components/screen-shell';
 import { SectionCard } from '@/components/section-card';
 import { WalletAddressCard } from '@/components/wallet-address-card';
@@ -113,6 +116,10 @@ export function WalletHomeView({
   // Barra de gestos do Android come o fim da lista sem este inset.
   const insets = useSafeAreaInsets();
   const [receiveOpen, setReceiveOpen] = useState(false);
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
+  // Saque só aparece com o on/off-ramp ligado no backend (ONOFF_ENABLED); falha de rede = esconde, nunca quebra a tela.
+  const onoff = useBackendData(() => getOnoffConfig().catch(() => null));
+  const canWithdraw = hasSession && wallet.status === 'ready' && onoff.data?.withdraw_enabled === true;
 
   const showGuest = !hasSession && !wallet.isMock;
   // Saldo e recompensas vêm do mesmo backend: quando um cai, o outro quase
@@ -184,6 +191,16 @@ export function WalletHomeView({
 
             <WalletAddressCard address={wallet.address} onShowQr={() => setReceiveOpen(true)} />
 
+            {canWithdraw ? (
+              <Pressable
+                onPress={() => setWithdrawOpen(true)}
+                style={({ pressed }) => [styles.faucet, pressed && styles.pressed]}
+                accessibilityRole="button"
+              >
+                <Text style={styles.faucetText}>Withdraw to another network</Text>
+              </Pressable>
+            ) : null}
+
             {!ARC_NETWORK.isMainnet && !wallet.isMock ? <FaucetButton address={wallet.address} /> : null}
 
             {/* Sem nenhum recebimento o cartão de saldo já faz o convite —
@@ -209,6 +226,8 @@ export function WalletHomeView({
 
         <WalletFooter isConnected={isConnected} onSignOut={onSignOut} />
       </ScrollView>
+
+      {withdrawOpen ? <WithdrawSheet maxUsdc={wallet.balanceUsdc ?? null} onClose={() => setWithdrawOpen(false)} /> : null}
 
       {wallet.address ? (
         <ReceiveSheet visible={receiveOpen} address={wallet.address} onClose={() => setReceiveOpen(false)} />
