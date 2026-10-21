@@ -1237,6 +1237,7 @@ export interface OnoffConfig {
   withdraw_enabled: boolean;
   limits_usdc: { per_tx: number; per_day: number; per_month: number };
   chain_networks: string[];
+  providers: { name: string; methods: string[]; directions: string[] }[];
 }
 
 export type OnoffStatus =
@@ -1253,7 +1254,15 @@ export interface OnoffIntent {
   onchain_tx: string | null;
   forward_tx: string | null;
   max_fee_usdc: number | null;
+  url: string | null;
   burn: import('@/lib/onoff-burn').BurnParams | null;
+}
+
+export function startDeposit(amountUsdc: number, method: string, fiatCurrency: string): Promise<OnoffIntent> {
+  return apiFetch<OnoffIntent>('/v1/onoff/deposit', {
+    method: 'POST',
+    json: { amount_usdc: amountUsdc, method, fiat_currency: fiatCurrency },
+  });
 }
 
 export function getOnoffConfig(): Promise<OnoffConfig> {

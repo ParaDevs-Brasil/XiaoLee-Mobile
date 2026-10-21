@@ -10,6 +10,7 @@ import { IconChevronRight, IconUser } from '@/components/icons';
 import { NetworkMismatchCard } from '@/components/network-badge';
 import { ReceiptRow } from '@/components/receipt-row';
 import { ReceiveSheet } from '@/components/receive-sheet';
+import { AddMoneySheet } from '@/components/add-money-sheet';
 import { WithdrawSheet } from '@/components/withdraw-sheet';
 import { getOnoffConfig } from '@/api/backend';
 import { useBackendData } from '@/hooks/use-backend-data';
@@ -117,8 +118,10 @@ export function WalletHomeView({
   const insets = useSafeAreaInsets();
   const [receiveOpen, setReceiveOpen] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
   // Saque só aparece com o on/off-ramp ligado no backend (ONOFF_ENABLED); falha de rede = esconde, nunca quebra a tela.
   const onoff = useBackendData(() => getOnoffConfig().catch(() => null));
+  const canDeposit = hasSession && wallet.status === 'ready' && onoff.data?.deposit_enabled === true;
   const canWithdraw = hasSession && wallet.status === 'ready' && onoff.data?.withdraw_enabled === true;
 
   const showGuest = !hasSession && !wallet.isMock;
@@ -191,6 +194,16 @@ export function WalletHomeView({
 
             <WalletAddressCard address={wallet.address} onShowQr={() => setReceiveOpen(true)} />
 
+            {canDeposit ? (
+              <Pressable
+                onPress={() => setAddOpen(true)}
+                style={({ pressed }) => [styles.faucet, pressed && styles.pressed]}
+                accessibilityRole="button"
+              >
+                <Text style={styles.faucetText}>Add money</Text>
+              </Pressable>
+            ) : null}
+
             {canWithdraw ? (
               <Pressable
                 onPress={() => setWithdrawOpen(true)}
@@ -227,6 +240,9 @@ export function WalletHomeView({
         <WalletFooter isConnected={isConnected} onSignOut={onSignOut} />
       </ScrollView>
 
+      {addOpen && onoff.data ? (
+        <AddMoneySheet config={onoff.data} onReceive={() => setReceiveOpen(true)} onClose={() => setAddOpen(false)} />
+      ) : null}
       {withdrawOpen ? <WithdrawSheet maxUsdc={wallet.balanceUsdc ?? null} onClose={() => setWithdrawOpen(false)} /> : null}
 
       {wallet.address ? (
