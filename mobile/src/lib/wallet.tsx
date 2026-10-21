@@ -22,6 +22,7 @@ import {
   linkWallet,
   loginWithPrivy,
   relayUsdcAuthorization,
+  type RelayAuthorizationRequest,
 } from '@/api/backend';
 import { useSession } from '@/hooks/use-session';
 import { isRealSession } from '@/lib/auth-state';
@@ -100,6 +101,8 @@ interface WalletContextValue {
    * hash da tx submetida pelo backend.
    */
   signAndRelay: (to: string, amountUsdc: number) => Promise<string>;
+  /** Só assina a autorização EIP-3009 (a rota que cobra faz o relay). */
+  signUsdcAuthorization: (to: string, amountUsdc: number) => Promise<RelayAuthorizationRequest>;
   /**
    * Assinatura EIP-191 (`personal_sign`) sobre uma mensagem UTF-8 qualquer —
    * devolve a assinatura hex de 65 bytes. É a prova de posse da carteira que
@@ -166,6 +169,18 @@ async function signAndRelayAuthorization(
   to: string,
   amountUsdc: number,
 ): Promise<string> {
+  const relayed = await relayUsdcAuthorization(await signAuthorization(requester, from, to, amountUsdc));
+  console.log(`[3009] relay ok: tx=${relayed.tx_hash} confirmada=${relayed.confirmed}`);
+  return relayed.tx_hash;
+}
+
+/** Só a assinatura EIP-3009, sem relay — para rotas que cobram e fazem o relay elas mesmas. */
+async function signAuthorization(
+  requester: Requester,
+  from: string,
+  to: string,
+  amountUsdc: number,
+): Promise<RelayAuthorizationRequest> {
   const domain = await getUsdcAuthorizationDomain();
   const validBefore = Math.floor(Date.now() / 1000) + AUTHORIZATION_TTL_S;
   const nonce = randomNonce();
@@ -219,7 +234,7 @@ async function signAndRelayAuthorization(
   }
   console.log(`[3009] assinatura recebida (${signature?.length ?? 0} chars)`);
 
-  const relayed = await relayUsdcAuthorization({
+  return {
     from_address: from,
     to_address: to,
     value,
@@ -227,9 +242,7 @@ async function signAndRelayAuthorization(
     valid_before: validBefore,
     nonce,
     signature,
-  });
-  console.log(`[3009] relay ok: tx=${relayed.tx_hash} confirmada=${relayed.confirmed}`);
-  return relayed.tx_hash;
+  };
 }
 
 /**
@@ -433,6 +446,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     return signAndRelayAuthorization(await requester(), address, to, amountUsdc);
   }
 
+  async function signUsdcAuthorization(to: string, amountUsdc: number): Promise<RelayAuthorizationRequest> {
+    if (!address) throw new Error('Nenhuma carteira conectada.');
+    return signAuthorization(await requester(), address, to, amountUsdc);
+  }
+
   async function signMessage(message: string): Promise<string> {
     if (!address) throw new Error('Nenhuma carteira conectada.');
     return personalSign(await requester(), address, message);
@@ -467,6 +485,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       retrySession,
       signAndSend,
       signAndRelay,
+      signUsdcAuthorization,
       signMessage,
       estimateSwap,
       swap,

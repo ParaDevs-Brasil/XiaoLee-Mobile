@@ -417,3 +417,39 @@ class PostPublication(Base):
     published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     metrics_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     metrics_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class SyntheticCreator(Base):
+    """Persona sintética do creator: foto de referência (R2) + voz pronta do ElevenLabs. Pode ser o próprio rosto,
+    um personagem ou meme (o creator aceita o termo de direitos). status: pending (URL de upload emitida) → ready."""
+    __tablename__ = 'synthetic_creators'
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(60))
+    voice_id: Mapped[str] = mapped_column(String(64))
+    ref_image_key: Mapped[str] = mapped_column(Text, unique=True)
+    ref_content_type: Mapped[str] = mapped_column(String(50))
+    status: Mapped[str] = mapped_column(String(20), default='pending')
+    # Quando o creator aceitou o termo de direitos de imagem (dono, paródia ou fan content; não enganar/assediar).
+    rights_confirmed_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class CreatorVideo(Base):
+    """Vídeo falado de uma persona. Gravado ANTES do relay do pagamento (intent log; `payment_nonce` único
+    = anti-replay). status: paying → queued → voice → video → done | failed (`refund_due` se já pago)."""
+    __tablename__ = 'creator_videos'
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    creator_id: Mapped[int] = mapped_column(ForeignKey("synthetic_creators.id"), index=True)
+    quality: Mapped[str] = mapped_column(String(20))
+    model: Mapped[str] = mapped_column(String(100))
+    duration_s: Mapped[int] = mapped_column()
+    script: Mapped[str] = mapped_column(Text)
+    price_usdc: Mapped[float] = mapped_column(Numeric(12, 6))
+    payment_from: Mapped[str] = mapped_column(String(64))
+    payment_nonce: Mapped[str] = mapped_column(String(80), unique=True)
+    payment_tx: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default='paying', index=True)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    refund_due: Mapped[bool] = mapped_column(Boolean, default=False)
+    video_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

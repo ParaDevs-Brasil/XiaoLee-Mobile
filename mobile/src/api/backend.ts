@@ -1122,3 +1122,102 @@ export async function finishXLogin(code: string, state: string): Promise<SocialA
 export async function disconnectSocialAccount(platform: string): Promise<void> {
   await apiFetch<{ ok: boolean }>(`/v1/social/accounts/${platform}`, { method: 'DELETE' });
 }
+
+// ── Criadores sintéticos (`server/synthetic_creator_routes.py`) ─────────────
+
+export interface CreatorVoice {
+  id: string;
+  name: string;
+  gender: 'female' | 'male';
+}
+
+export interface CreatorQuality {
+  quality: 'standard' | 'pro' | 'pro_seedance';
+  label: string;
+  /** duração em segundos (string) → preço em USDC */
+  prices: Record<string, number>;
+}
+
+export interface CreatorCatalog {
+  enabled: boolean;
+  voices: CreatorVoice[];
+  qualities: CreatorQuality[];
+  durations_s: number[];
+  words_per_s: number;
+  pay_to: string | null;
+}
+
+export interface SyntheticCreator {
+  id: number;
+  name: string;
+  voice_id: string;
+  status: string;
+  image_url: string | null;
+  created_at: string | null;
+}
+
+export interface CreatorVideo {
+  id: number;
+  creator_id: number;
+  quality: CreatorQuality['quality'];
+  duration_s: number;
+  script: string;
+  price_usdc: number;
+  /** paying → queued → voice → video → done | failed */
+  status: string;
+  error: string | null;
+  refund_due: boolean;
+  payment_tx: string | null;
+  video_url: string | null;
+  created_at: string | null;
+}
+
+export function getCreatorCatalog(): Promise<CreatorCatalog> {
+  return apiFetch<CreatorCatalog>('/v1/creators/catalog');
+}
+
+export function listCreators(): Promise<SyntheticCreator[]> {
+  return apiFetch<SyntheticCreator[]>('/v1/creators');
+}
+
+export function createCreator(request: {
+  name: string;
+  voice_id: string;
+  content_type: string;
+  size_bytes: number;
+  rights_confirmed: boolean;
+}): Promise<{ creator: SyntheticCreator; upload_url: string; upload_headers: Record<string, string> }> {
+  return apiFetch('/v1/creators', { method: 'POST', json: request });
+}
+
+export function completeCreator(id: number): Promise<SyntheticCreator> {
+  return apiFetch<SyntheticCreator>(`/v1/creators/${id}/complete`, { method: 'POST' });
+}
+
+export function deleteCreator(id: number): Promise<void> {
+  return apiFetch<void>(`/v1/creators/${id}`, { method: 'DELETE' });
+}
+
+export function writeCreatorScript(request: {
+  creator_id: number;
+  topic: string;
+  duration_s: number;
+}): Promise<{ script: string; max_words: number }> {
+  return apiFetch('/v1/creators/script', { method: 'POST', json: request });
+}
+
+export function createCreatorVideo(
+  creatorId: number,
+  request: {
+    quality: CreatorQuality['quality'];
+    duration_s: number;
+    script: string;
+    payment: RelayAuthorizationRequest;
+  },
+): Promise<CreatorVideo> {
+  return apiFetch<CreatorVideo>(`/v1/creators/${creatorId}/videos`, { method: 'POST', json: request });
+}
+
+export function listCreatorVideos(creatorId?: number): Promise<CreatorVideo[]> {
+  return apiFetch<CreatorVideo[]>(`/v1/creators/videos${creatorId ? `?creator_id=${creatorId}` : ''}`);
+}
