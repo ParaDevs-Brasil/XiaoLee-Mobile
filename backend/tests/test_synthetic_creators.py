@@ -93,7 +93,7 @@ def _relay_ok(monkeypatch, calls):
     class Arc:
         async def relay_transfer_authorization(self, **kw):
             calls.append(kw)
-            return SimpleNamespace(tx_hash="0xtx", confirmed=True, gas_used=1)
+            return SimpleNamespace(tx_hash="0xtx" if len(calls) == 1 else f"0xtx{len(calls)}", confirmed=True, gas_used=1)
 
     monkeypatch.setattr(arc_routes, "_arc_native", lambda: Arc())
 
@@ -294,3 +294,40 @@ async def test_motion_upload_takes_only_videos_under_the_cap(db, monkeypatch):
 
 def test_mimic_failure_tells_what_the_reference_needs():
     assert "head and body" in routes._failure_message("mimic_v3") and "Refund pending" in routes._failure_message("mimic")
+
+
+@pytest.mark.asyncio
+async def test_mimic_audio_choice_is_saved_and_voice_needs_a_script(db, monkeypatch):
+    cid, h = await _persona(db)
+    _relay_ok(monkeypatch, [])
+    _motion_ok(monkeypatch)
+    r = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_mimic_body(audio="original"))
+    assert r.status_code == 200 and r.json()["audio"] == "original"
+    no_script = client.post(f"/v1/creators/{cid}/videos", headers=h,
+                            json=_mimic_body(audio="voice", payment=_payment(700_000, nonce="0x" + "2" * 64)))
+    assert no_script.status_code == 422
+    ok = client.post(f"/v1/creators/{cid}/videos", headers=h,
+                     json=_mimic_body(audio="voice", script="oi " * 50, payment=_payment(700_000, nonce="0x" + "3" * 64)))
+    assert ok.status_code == 200 and ok.json()["audio"] == "voice"
+    assert len(ok.json()["script"].split()) == sc.max_words(5)        # a narração cabe na duração paga
+    bad = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_mimic_body(audio="loud"))
+    assert bad.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_mux_puts_the_audio_track_on_a_silent_video(tmp_path):
+    import shutil
+    import subprocess
+
+    if not shutil.which("ffmpeg"):
+        pytest.skip("ffmpeg not installed")
+    v, a = tmp_path / "v.mp4", tmp_path / "a.m4a"
+    for args in (["-f", "lavfi", "-i", "color=c=gray:s=64x64:d=1", "-pix_fmt", "yuv420p", str(v)],
+                 ["-f", "lavfi", "-i", "sine=frequency=440:duration=1", "-c:a", "aac", str(a)]):
+        subprocess.run(["ffmpeg", "-nostdin", "-v", "error", *args, "-y"], check=True)
+    out = await sc.mux_audio(v.read_bytes(), a.read_bytes())
+    res = tmp_path / "out.mp4"
+    res.write_bytes(out)
+    kinds = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(res)],
+                           capture_output=True, text=True).stdout.split()
+    assert sorted(kinds) == ["audio", "video"]

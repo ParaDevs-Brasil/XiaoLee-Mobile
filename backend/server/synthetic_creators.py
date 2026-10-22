@@ -43,6 +43,7 @@ QUALITIES: dict[str, dict] = {
                      "model": "fal-ai/kling-video/v3/pro/motion-control"},
 }
 
+AUDIO_MODES = ("none", "original", "voice")  # mimic: sem som | som do vídeo de referência | narração com a voz da persona
 MOTION_TYPES = ("video/mp4", "video/quicktime", "video/webm")
 MAX_MOTION_BYTES = 100 * 1024 * 1024
 MIMIC_DEFAULT_PROMPT = "The character performs the same movement as the reference video."
@@ -233,28 +234,61 @@ def _ext(content_type: str) -> str:
     return {"image/png": ".png", "image/webp": ".webp"}.get(content_type, ".jpg")
 
 
+async def mux_audio(video: bytes, audio: bytes) -> bytes:
+    """Cola a faixa de áudio no vídeo gerado (vídeo sem recodificar; o mais curto manda)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        v, a, dst = (os.path.join(tmp, n) for n in ("v.mp4", "a.m4a", "out.mp4"))
+        for path, data in ((v, video), (a, audio)):
+            with open(path, "wb") as f:
+                f.write(data)
+        await clipper.run_ffmpeg(["-i", v, "-i", a, "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "aac",
+                                  "-shortest", "-movflags", "+faststart", "-y", dst], v, 120)
+        with open(dst, "rb") as f:
+            return f.read()
+
+
+async def _motion_and_sound(http: httpx.AsyncClient, motion: bytes, duration_s: int, audio: str, voice_id: str,
+                            script: str) -> tuple[bytes, bytes | None]:
+    """(movimento cortado e SEM áudio para a fal, áudio a colar no resultado ou None)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        src, dst, track = (os.path.join(tmp, n) for n in ("motion_in", "motion.mp4", "orig.m4a"))
+        with open(src, "wb") as f:
+            f.write(motion)
+        await clipper.run_ffmpeg(["-i", src, "-t", str(duration_s), "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                                  "-preset", "veryfast", "-crf", "20", "-movflags", "+faststart", "-y", dst], src, 180)
+        with open(dst, "rb") as f:
+            cut = f.read()
+        if audio == "voice":
+            return cut, await _trim_audio(await _tts(http, voice_id, script), duration_s)
+        if audio == "original":
+            # Referência sem faixa de áudio: o ffmpeg falha e o vídeo segue mudo, em vez de perder o pedido já pago.
+            try:
+                await clipper.run_ffmpeg(["-i", src, "-t", str(duration_s), "-vn", "-c:a", "aac", "-y", track], src, 60)
+                with open(track, "rb") as f:
+                    return cut, f.read()
+            except RuntimeError:
+                pass
+        return cut, None
+
+
 async def render_mimic(*, quality: str, prompt: str, duration_s: int, ref_image_key: str, ref_content_type: str,
-                       motion_key: str, video_key: str, on_step=None) -> None:
-    """Persona + vídeo de movimento → vídeo. O movimento é cortado na duração paga e fica SEM áudio (`-an`):
-    nenhuma música ou voz do vídeo de referência chega ao resultado, em qualquer versão do modelo."""
+                       motion_key: str, video_key: str, audio: str = "none", voice_id: str = "", script: str = "",
+                       on_step=None) -> None:
+    """Persona + vídeo de movimento → vídeo. A fal recebe o movimento cortado na duração paga e SEM áudio (`-an`):
+    a música ou a voz do vídeo de referência só voltam se o usuário escolheu `audio="original"`, e voltam por aqui
+    (ffmpeg), não pelo modelo. `audio="voice"` narra `script` com a voz da persona."""
     if on_step:
         await on_step("video")
     async with httpx.AsyncClient(timeout=120) as http:
         image = (await http.get(media_storage.presign_get(ref_image_key))).raise_for_status().content
         motion = (await http.get(media_storage.presign_get(motion_key))).raise_for_status().content
-        with tempfile.TemporaryDirectory() as tmp:
-            src, dst = os.path.join(tmp, "motion_in"), os.path.join(tmp, "motion.mp4")
-            with open(src, "wb") as f:
-                f.write(motion)
-            await clipper.run_ffmpeg(["-i", src, "-t", str(duration_s), "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p",
-                                      "-preset", "veryfast", "-crf", "20", "-movflags", "+faststart", "-y", dst],
-                                     src, 180)
-            with open(dst, "rb") as f:
-                motion = f.read()
+        cut, sound = await _motion_and_sound(http, motion, duration_s, audio, voice_id, script)
         image_url = await _fal_upload(http, image, ref_content_type, "ref" + _ext(ref_content_type))
-        video_url = await _fal_upload(http, motion, "video/mp4", "motion.mp4")
+        video_url = await _fal_upload(http, cut, "video/mp4", "motion.mp4")
         url = await _fal_video(http, QUALITIES[quality]["model"], mimic_input(image_url, video_url, prompt))
         video = (await http.get(url)).raise_for_status().content
+    if sound:
+        video = await mux_audio(video, sound)
 
     with tempfile.NamedTemporaryFile(suffix=".mp4") as f:
         f.write(video)

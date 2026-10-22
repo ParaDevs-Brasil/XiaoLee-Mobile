@@ -22,7 +22,7 @@ import logging
 import re
 import uuid
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
@@ -107,6 +107,8 @@ class VideoCreate(BaseModel):
     # mimic: vídeo de movimento (de POST /motion) e o termo de que o usuário tem o direito de usá-lo.
     motion_key: Optional[str] = None
     motion_rights_confirmed: bool = False
+    # mimic: sem som, som do vídeo de referência ou narração (`script`) com a voz da persona.
+    audio: Literal["none", "original", "voice"] = "none"
 
 
 class VideoOut(BaseModel):
@@ -121,6 +123,7 @@ class VideoOut(BaseModel):
     refund_due: bool = False
     payment_tx: Optional[str] = None
     video_url: Optional[str] = None
+    audio: str = "none"
     created_at: Optional[str] = None
 
 
@@ -149,7 +152,8 @@ def _video_out(v: CreatorVideo) -> VideoOut:
             pass
     return VideoOut(id=v.id, creator_id=v.creator_id, quality=v.quality, duration_s=v.duration_s, script=v.script,
                     price_usdc=float(v.price_usdc), status=v.status, error=v.error, refund_due=v.refund_due,
-                    payment_tx=v.payment_tx, video_url=url, created_at=to_utc_iso(v.created_at))
+                    payment_tx=v.payment_tx, video_url=url, audio=v.audio,
+                    created_at=to_utc_iso(v.created_at))
 
 
 async def _owned_creator(db: AsyncSession, user_id: int, creator_id: int) -> SyntheticCreator:
@@ -277,9 +281,11 @@ async def create_video(creator_id: int, body: VideoCreate, background: Backgroun
     if body.duration_s not in sc.DURATIONS_S:
         raise HTTPException(422, f"duration_s must be one of {list(sc.DURATIONS_S)}")
     mimic = sc.kind(body.quality) == "mimic"
-    # speech: o roteiro cabe nas palavras da duração paga. mimic: a descrição da cena é só um texto curto.
-    script_text = body.script.strip()[:300] if mimic else sc.clip_words(body.script.strip(), body.duration_s)
-    if not script_text and not mimic:
+    # Fala (speech, ou mimic com voz): o roteiro cabe nas palavras da duração paga. Mimic sem voz: `script` é só
+    # a descrição da cena, um texto curto.
+    narrated = not mimic or body.audio == "voice"
+    script_text = sc.clip_words(body.script.strip(), body.duration_s) if narrated else body.script.strip()[:300]
+    if not script_text and narrated:
         raise HTTPException(422, "script is empty")
 
     user = await _resolve_user(db, authorization, strict=True)
@@ -309,7 +315,7 @@ async def create_video(creator_id: int, body: VideoCreate, background: Backgroun
     v = CreatorVideo(user_id=user.id, creator_id=c.id, quality=body.quality, model=sc.QUALITIES[body.quality]["model"],
                      duration_s=body.duration_s, script=script_text, price_usdc=price,
                      payment_from=p.from_address.lower(), payment_nonce=p.nonce.lower(), status="paying",
-                     motion_key=body.motion_key if mimic else None,
+                     motion_key=body.motion_key if mimic else None, audio=body.audio if mimic else "none",
                      motion_rights_at=datetime.utcnow() if mimic else None)
     db.add(v)
     try:
@@ -404,9 +410,10 @@ async def run_video(video_id: int) -> None:
         key = f"creators/{v.user_id}/videos/{v.id}-{uuid.uuid4().hex[:8]}.mp4"
         try:
             if sc.kind(v.quality) == "mimic":
-                await sc.render_mimic(quality=v.quality, prompt=v.script, duration_s=v.duration_s,
+                await sc.render_mimic(quality=v.quality, prompt="" if v.audio == "voice" else v.script, duration_s=v.duration_s,
                                       ref_image_key=c.ref_image_key, ref_content_type=c.ref_content_type,
-                                      motion_key=v.motion_key, video_key=key, on_step=on_step)
+                                      motion_key=v.motion_key, video_key=key, audio=v.audio, voice_id=c.voice_id,
+                                      script=v.script, on_step=on_step)
             else:
                 await sc.render(quality=v.quality, voice_id=c.voice_id, script=v.script, duration_s=v.duration_s,
                                 ref_image_key=c.ref_image_key, ref_content_type=c.ref_content_type, video_key=key,

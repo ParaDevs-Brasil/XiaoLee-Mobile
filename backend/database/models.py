@@ -456,6 +456,8 @@ class CreatorVideo(Base):
     # Mimic: vídeo de movimento no R2 e quando o usuário declarou ter o direito de usá-lo (prova numa denúncia).
     motion_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     motion_rights_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # Mimic: none | original (som do vídeo de referência) | voice (narração com a voz da persona).
+    audio: Mapped[str] = mapped_column(String(10), default='none', server_default='none')
 
 
 class OnoffIntent(Base):
