@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 import logging
 import math
 import os
 import subprocess
 import tempfile
+from pathlib import Path
 
 import httpx
 
@@ -62,7 +64,7 @@ def kind(quality: str) -> str:
 
 # Vozes prontas (premade) do ElevenLabs — funcionam no plano atual; vozes da biblioteca dão 402.
 # Sem clonagem de voz de propósito: evita deepfake de voz real.
-VOICES: list[dict] = [
+PREMADE_VOICES: list[dict] = [
     {"id": "EXAVITQu4vr4xnSDxMaL", "name": "Sarah", "gender": "female", "description": "Soft and friendly"},
     {"id": "FGY2WhTYpPnrIDTdsKH5", "name": "Laura", "gender": "female", "description": "Upbeat and quirky"},
     {"id": "cgSgspJ2msm6clMCkdW9", "name": "Jessica", "gender": "female", "description": "Bright and playful"},
@@ -72,6 +74,26 @@ VOICES: list[dict] = [
     {"id": "TX3LPaxmHKxFdv7VOQHJ", "name": "Liam", "gender": "male", "description": "Young and clear"},
     {"id": "JBFqnCBsd6RMkjVDRZzb", "name": "George", "gender": "male", "description": "Warm storyteller, British"},
 ]
+for _v in PREMADE_VOICES:
+    _v["category"] = "Classic"
+
+# Lista curada: vozes da biblioteca da ElevenLabs que o time ouviu e escolheu, já adicionadas à conta e testadas
+# (backend/server/data/creator_voices.json, gerado por uma rodada de curadoria). Um catálogo fechado mantém a
+# qualidade, o custo previsível e as vagas de voz da conta sob controle.
+CATEGORY_ORDER = ["Brazilian", "Narrators", "Adventurers", "Villains", "Energetic", "Wise", "Calm", "Playful", "Strong",
+                  "Characters", "Accents", "Sci-fi", "Classic"]
+
+
+def _load_curated() -> list[dict]:
+    try:
+        with open(Path(__file__).parent / "data" / "creator_voices.json", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return []
+
+
+_ORDER = {c: i for i, c in enumerate(CATEGORY_ORDER)}
+VOICES: list[dict] = sorted(_load_curated() + PREMADE_VOICES, key=lambda v: _ORDER.get(v["category"], len(_ORDER)))
 VOICE_IDS = {v["id"] for v in VOICES}
 
 FAL_POLL_S = 5
@@ -541,9 +563,12 @@ async def voice_sample(voice_id: str) -> bytes:
         raise KeyError(voice_id)
     async with _SAMPLE_LOCK:
         if voice_id not in _SAMPLE_CACHE:
-            name = next(v["name"] for v in VOICES if v["id"] == voice_id)
+            voice = next(v for v in VOICES if v["id"] == voice_id)
+            text = (f"Olá, eu sou {voice['name']}. É assim que eu soo quando o seu personagem fala."
+                    if str(voice.get("language") or "").startswith("pt")
+                    else f"Hi, I'm {voice['name']}. This is how I sound when your character talks.")
             async with httpx.AsyncClient(timeout=60) as http:
-                _SAMPLE_CACHE[voice_id] = await _tts(http, voice_id, f"Hi, I'm {name}. This is how I sound when your character talks.")
+                _SAMPLE_CACHE[voice_id] = await _tts(http, voice_id, text)
         return _SAMPLE_CACHE[voice_id]
 
 

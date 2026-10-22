@@ -540,3 +540,30 @@ def test_voice_sample_fails_politely_when_the_provider_is_down(monkeypatch):
     r = client.get(f"/v1/creators/voices/{sc.VOICES[0]['id']}/sample")
     assert r.status_code == 503 and "isn't available" in r.json()["detail"]
     sc._SAMPLE_CACHE.clear()
+
+
+def test_curated_voices_are_valid_unique_and_grouped():
+    ids = [v["id"] for v in sc.VOICES]
+    assert len(ids) == len(set(ids)) and set(ids) == sc.VOICE_IDS
+    assert len(sc.VOICES) >= 30                                            # 8 clássicas + a lista curada
+    assert all(v["category"] and v["name"] and v["description"] and v["gender"] in ("male", "female") for v in sc.VOICES)
+    cats = [v["category"] for v in sc.VOICES]
+    assert cats == sorted(cats, key=lambda c: sc.CATEGORY_ORDER.index(c))   # agrupadas na ordem do app
+    assert {v["id"] for v in sc.PREMADE_VOICES} <= sc.VOICE_IDS             # personagens antigos continuam válidos
+
+
+def test_brazilian_voices_get_a_portuguese_sample_phrase(monkeypatch):
+    sc._SAMPLE_CACHE.clear()
+    said = {}
+
+    async def tts(http, voice_id, text):
+        said[voice_id] = text
+        return b"mp3"
+
+    monkeypatch.setattr(sc, "_tts", tts)
+    pt = next(v for v in sc.VOICES if str(v.get("language") or "").startswith("pt"))
+    en = next(v for v in sc.VOICES if v["category"] == "Classic")
+    for v in (pt, en):
+        assert client.get(f"/v1/creators/voices/{v['id']}/sample").status_code == 200
+    assert said[pt["id"]].startswith("Olá, eu sou") and said[en["id"]].startswith("Hi, I'm")
+    sc._SAMPLE_CACHE.clear()

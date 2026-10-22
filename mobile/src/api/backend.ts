@@ -1131,6 +1131,8 @@ export interface CreatorVoice {
   gender: 'female' | 'male';
   /** Uma frase sobre o jeito da voz. */
   description: string;
+  /** Grupo da voz (Narrators, Villains, Brazilian…), na ordem em que o backend as manda. */
+  category: string;
   /** Caminho (no backend) do áudio de amostra; o app junta com `API_URL`. */
   sample_path: string;
 }

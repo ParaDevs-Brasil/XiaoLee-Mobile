@@ -9,8 +9,8 @@ import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { API_URL } from '@/lib/config';
 
 /**
- * Escolha de voz, simples: uma fileira de nomes. Tocar num nome escolhe a voz E já toca uma amostra, para a pessoa
- * decidir com o ouvido; embaixo, uma linha com a descrição e o botão de ouvir de novo. Um único player (do
+ * Escolha de voz, simples: categorias em cima (Narrators, Villains, Brazilian…) e, embaixo, os nomes daquele grupo. Tocar
+ * num nome escolhe a voz E já toca uma amostra, para a pessoa decidir com o ouvido; embaixo, uma linha com a descrição e o botão de ouvir de novo. Um único player (do
  * `expo-video`, que toca áudio também) serve todas as vozes.
  */
 export function VoicePicker({
@@ -26,7 +26,12 @@ export function VoicePicker({
   const styles = useStyles();
   const player = useVideoPlayer(null);
   const [playing, setPlaying] = useState<string | null>(null);
+  const [picked, setPicked] = useState<string | null>(null);
   const selected = voices.find((v) => v.id === value) ?? null;
+  // Categorias na ordem em que o backend manda; sem escolha manual vale a da voz selecionada, ou a primeira.
+  const categories = [...new Set(voices.map((v) => v.category))];
+  const category = picked && categories.includes(picked) ? picked : (selected?.category ?? categories[0]);
+  const inCategory = voices.filter((v) => v.category === category);
 
   useEffect(() => {
     const sub = player.addListener('playToEnd', () => setPlaying(null));
@@ -56,7 +61,21 @@ export function VoicePicker({
   return (
     <View style={styles.wrap}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pills}>
-        {voices.map((v) => {
+        {categories.map((c) => (
+          <Pressable
+            key={c}
+            onPress={() => setPicked(c)}
+            style={[styles.tab, c === category && styles.tabOn]}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: c === category }}
+          >
+            <Text style={[styles.tabText, c === category && styles.tabTextOn]}>{c}</Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pills}>
+        {inCategory.map((v) => {
           const on = v.id === value;
           return (
             <Pressable
@@ -102,6 +121,10 @@ export function VoicePicker({
 const useStyles = makeStyles((colors) => ({
   wrap: { gap: Spacing.three - 4 },
   pills: { gap: Spacing.two, paddingRight: Spacing.three },
+  tab: { paddingHorizontal: Spacing.two + 2, height: 30, justifyContent: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },
+  tabOn: { borderBottomColor: colors.accent },
+  tabText: { fontFamily: Fonts.bold, fontSize: 13, color: colors.ink3 },
+  tabTextOn: { color: colors.ink },
   pill: {
     paddingHorizontal: Spacing.three,
     height: 38,
