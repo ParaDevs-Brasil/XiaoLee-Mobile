@@ -1132,12 +1132,12 @@ export interface CreatorVoice {
 }
 
 export interface CreatorQuality {
-  quality: 'standard' | 'pro' | 'pro_seedance' | 'mimic' | 'mimic_v3' | 'mimic_v3_pro';
+  quality: 'standard' | 'pro' | 'pro_seedance' | 'mimic' | 'mimic_v3' | 'mimic_v3_pro' | 'swap' | 'swap_pro';
   label: string;
   /** Uma linha curta que ajuda a escolher entre as faixas. */
   hint: string;
   /** `speech`: a persona fala um roteiro. `mimic`: a persona repete o movimento de um vídeo de referência. */
-  kind: 'speech' | 'mimic';
+  kind: 'speech' | 'mimic' | 'swap';
   /** duração em segundos (string) → preço em USDC */
   prices: Record<string, number>;
 }

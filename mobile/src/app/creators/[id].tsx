@@ -108,7 +108,7 @@ export default function CreatorScreen() {
   // Fala = o roteiro é dito em voz alta: o Talk sempre, Mimic/Swap só quando o usuário escolhe "Voice".
   const narrated = !moves || audio === 'voice';
   // O que vale vem do formato: as faixas e durações trocam sozinhas, sem estado a sincronizar.
-  const qualities = catalog?.qualities.filter((q) => q.kind === (moves ? 'mimic' : 'speech')) ?? [];
+  const qualities = catalog?.qualities.filter((q) => q.kind === format) ?? [];
   const quality = qualities.find((q) => q.quality === chosenQuality)?.quality ?? qualities[0]?.quality ?? chosenQuality;
   const durations = catalog ? (moves ? motionDurations(catalog.durations_s, motion?.seconds ?? 0) : catalog.durations_s) : [];
   const duration = durations.includes(chosenDuration) ? chosenDuration : (durations[0] ?? chosenDuration);
@@ -244,7 +244,7 @@ export default function CreatorScreen() {
               <TextInput
                 value={scene}
                 onChangeText={setScene}
-                placeholder="Describe the scene (optional)"
+                placeholder={swap ? 'Anything else to change? (optional)' : 'Describe the scene (optional)'}
                 placeholderTextColor={colors.ink3}
                 maxLength={300}
                 style={styles.input}
@@ -387,7 +387,7 @@ export default function CreatorScreen() {
                   </View>
                   {v.status === 'failed' && v.error ? <Text style={styles.error}>{v.error}</Text> : null}
                   <Text style={styles.desc} numberOfLines={2}>
-                    {v.script || (catalog?.qualities.find((q) => q.quality === v.quality)?.kind === 'mimic' ? 'Mimic' : '')}
+                    {v.script || { mimic: 'Mimic', swap: 'Swap' }[catalog?.qualities.find((q) => q.quality === v.quality)?.kind as string] || ''}
                   </Text>
                   <Text style={styles.desc}>
                     {v.duration_s}s · ${v.price_usdc.toFixed(2)}{v.payment_tx ? ` · ${shortHash(v.payment_tx)}` : ''}
