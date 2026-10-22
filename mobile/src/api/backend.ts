@@ -1129,11 +1129,21 @@ export interface CreatorVoice {
   id: string;
   name: string;
   gender: 'female' | 'male';
+  /** Uma frase sobre o jeito da voz. */
+  description: string;
+  /** Grupo da voz (Narrators, Villains, Brazilian…), na ordem em que o backend as manda. */
+  category: string;
+  /** Caminho (no backend) do áudio de amostra; o app junta com `API_URL`. */
+  sample_path: string;
 }
 
 export interface CreatorQuality {
-  quality: 'standard' | 'pro' | 'pro_seedance';
+  quality: 'standard' | 'pro' | 'pro_seedance' | 'mimic' | 'mimic_v3' | 'mimic_v3_pro' | 'swap' | 'swap_pro';
   label: string;
+  /** Uma linha curta que ajuda a escolher entre as faixas. */
+  hint: string;
+  /** `speech`: a persona fala um roteiro. `mimic`: a persona repete o movimento de um vídeo de referência. */
+  kind: 'speech' | 'mimic' | 'swap';
   /** duração em segundos (string) → preço em USDC */
   prices: Record<string, number>;
 }
@@ -1168,6 +1178,7 @@ export interface CreatorVideo {
   error: string | null;
   refund_due: boolean;
   payment_tx: string | null;
+  audio: 'none' | 'original' | 'voice';
   video_url: string | null;
   created_at: string | null;
 }
@@ -1211,11 +1222,46 @@ export function createCreatorVideo(
   request: {
     quality: CreatorQuality['quality'];
     duration_s: number;
-    script: string;
+    /** `speech`: o roteiro falado. `mimic`: descrição opcional da cena. */
+    script?: string;
     payment: RelayAuthorizationRequest;
+    /** Só no `mimic`: o vídeo de `createMotionUpload` e o termo de direito de uso. */
+    motion_key?: string;
+    motion_rights_confirmed?: boolean;
+    /** Só no `mimic`: sem som, o som do vídeo de referência, ou a narração do `script` com a voz da persona. */
+    audio?: 'none' | 'original' | 'voice';
+    /** Só no Swap: a prévia aprovada; o vídeo sai do quadro dela. */
+    preview_id?: number;
   },
 ): Promise<CreatorVideo> {
   return apiFetch<CreatorVideo>(`/v1/creators/${creatorId}/videos`, { method: 'POST', json: request });
+}
+
+export interface CreatorPreview {
+  id: number;
+  /** working → ready | failed */
+  status: 'working' | 'ready' | 'failed';
+  frame_url: string | null;
+  error: string | null;
+}
+
+/** Swap: quadro de prévia (personagem no lugar da pessoa do vídeo). Grátis, com limite diário. */
+export function createSwapPreview(
+  creatorId: number,
+  request: { motion_key: string; motion_rights_confirmed: boolean },
+): Promise<CreatorPreview> {
+  return apiFetch<CreatorPreview>(`/v1/creators/${creatorId}/previews`, { method: 'POST', json: request });
+}
+
+export function getSwapPreview(previewId: number): Promise<CreatorPreview> {
+  return apiFetch<CreatorPreview>(`/v1/creators/previews/${previewId}`);
+}
+
+export function createMotionUpload(request: {
+  content_type: string;
+  size_bytes: number;
+}): Promise<{ motion_key: string; upload_url: string; upload_headers: Record<string, string> }> {
+  return apiFetch('/v1/creators/motion', { method: 'POST', json: request });
 }
 
 export function listCreatorVideos(creatorId?: number): Promise<CreatorVideo[]> {

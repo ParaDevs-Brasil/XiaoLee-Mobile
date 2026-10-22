@@ -12,7 +12,7 @@ import {
 import { ApiError } from '@/api/client';
 import { ConnectWalletButton, EmptyState } from '@/components/feedback';
 import { IconBag, IconCheck } from '@/components/icons';
-import { PageHeading, ScreenShell } from '@/components/screen-shell';
+import { FAB_CLEARANCE, PageHeading, ScreenShell } from '@/components/screen-shell';
 import { SectionCard } from '@/components/section-card';
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
@@ -31,6 +31,9 @@ import { shortHash } from '@/lib/format';
 /** A assinatura PQC (ML-DSA) tem ~5 mil caracteres: o recibo mostra só o tamanho, o valor vai no payload. */
 const shortenSignature = (key: string, value: unknown) =>
   key === 'receipt_pqc' && typeof value === 'string' ? `${value.slice(0, 16)}… (${value.length} chars, ML-DSA)` : value;
+
+/** Pontos de partida para quem abre a tela sem saber o que procurar. */
+const SUGGESTIONS = ['transcribe', 'translate', 'summarize', 'captions', 'image', 'video'];
 
 const shortAddr = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
@@ -53,13 +56,14 @@ export default function MarketplaceScreen() {
 
   const fail = (e: unknown) => setError(e instanceof ApiError ? e.message : 'Something went wrong. Try again.');
 
-  async function search() {
-    if (!query.trim() || searching) return;
+  async function search(term: string = query) {
+    if (!term.trim() || searching) return;
+    setQuery(term);
     setSearching(true);
     setError(null);
     setSelected(null);
     try {
-      setItems(await searchMarketplace(query));
+      setItems(await searchMarketplace(term));
     } catch (e) {
       fail(e);
     } finally {
@@ -117,7 +121,7 @@ export default function MarketplaceScreen() {
   return (
     <ScreenShell>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: Spacing.four + insets.bottom }]}
+        contentContainerStyle={[styles.content, { paddingBottom: FAB_CLEARANCE + insets.bottom }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
@@ -136,7 +140,7 @@ export default function MarketplaceScreen() {
               <TextInput
                 value={query}
                 onChangeText={setQuery}
-                onSubmitEditing={search}
+                onSubmitEditing={() => search()}
                 placeholder="Search services"
                 placeholderTextColor={colors.ink3}
                 autoCapitalize="none"
@@ -144,12 +148,36 @@ export default function MarketplaceScreen() {
                 returnKeyType="search"
                 style={styles.input}
               />
-              <Pressable onPress={search} disabled={searching} style={styles.searchBtn} accessibilityRole="button">
+              <Pressable onPress={() => search()} disabled={searching} style={styles.searchBtn} accessibilityRole="button">
                 {searching ? <ActivityIndicator color={colors.onAccent} /> : <Text style={styles.btnText}>Search</Text>}
               </Pressable>
             </View>
 
             {error ? <Text style={styles.error}>{error}</Text> : null}
+
+            {/* Antes da primeira busca a tela era só uma caixa de texto: diz o que é e dá por onde começar. */}
+            {items === null && !searching ? (
+              <View style={styles.intro}>
+                <Text style={styles.desc}>
+                  Pay another AI agent to do a task for you, like transcribing, translating or summarizing a video. You see the
+                  price first and approve every spend.
+                </Text>
+                <Text style={styles.label}>Try searching for</Text>
+                <View style={styles.chips}>
+                  {SUGGESTIONS.map((term) => (
+                    <Pressable
+                      key={term}
+                      onPress={() => search(term)}
+                      style={styles.chip}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Search ${term}`}
+                    >
+                      <Text style={styles.chipText}>{term}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            ) : null}
 
             {items && items.length === 0 ? (
               <EmptyState Icon={IconBag} title="No services found" text="Try another keyword." />
@@ -274,6 +302,19 @@ const useStyles = makeStyles((colors) => ({
   provider: { flex: 1, fontFamily: Fonts.bold, fontSize: 13, color: colors.ink },
   price: { fontFamily: Fonts.bold, fontSize: 13, color: colors.accent },
   desc: { fontFamily: Fonts.sans, fontSize: 12, lineHeight: 18, color: colors.ink2 },
+  intro: { gap: Spacing.three - 4, paddingHorizontal: Spacing.one },
+  label: { fontFamily: Fonts.bold, fontSize: 12, color: colors.ink2 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
+  chip: {
+    paddingHorizontal: Spacing.three,
+    height: 36,
+    justifyContent: 'center',
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+  },
+  chipText: { fontFamily: Fonts.bold, fontSize: 13, color: colors.ink },
   quote: { gap: Spacing.two, paddingTop: Spacing.two },
   quoteTitle: { fontFamily: Fonts.bold, fontSize: 14, color: colors.ink },
   resultText: { fontFamily: Fonts.sans, fontSize: 12, lineHeight: 18, color: colors.ink2 },

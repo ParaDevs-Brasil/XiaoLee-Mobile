@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 from server.arc_swap import ARC_SWAP_TOKENS, validate_arc_swap
 from server.caller_trust import unverified_caller
 from server.campaign_match import rank_for_interests
+from server.chat_language import conversation_language, language_rule
 from server.integrations import marketplace_client
 from server.integrations.gemini_client import GeminiClient
 from server.integrations.solana_client import SolanaClient
@@ -650,7 +651,8 @@ class OrchestrationService:
     # ------------------------------------------------------------------
 
     def _build_agentic_system_prompt(
-        self, stellar_wallet: str | None, platform: str, evm_wallet: str | None = None
+        self, stellar_wallet: str | None, platform: str, evm_wallet: str | None = None,
+        language: str | None = None,
     ) -> str:
         # Contexto ancorado na wallet conectada: EVM → Arc-first; só Stellar → Stellar;
         # nenhuma → perguntar a chain (nunca assumir Freighter).
@@ -696,7 +698,7 @@ class OrchestrationService:
             "Para saudações, dúvidas sobre campanhas, SEP-24, x402 ou crypto em geral, responda "
             "direto com sua personalidade, sem ferramentas. Se uma operação Stellar exigir carteira e ela "
             "não estiver conectada, peça para conectar via 'Connect Wallet' na navbar (qualquer wallet "
-            "compatível: MetaMask, Rabby, Phantom, Freighter). Responda SEMPRE no idioma do usuário."
+            "compatível: MetaMask, Rabby, Phantom, Freighter). " + language_rule(language)
             + (f"\n\nPUBLICAR NAS REDES:\n{social_chat_tools.SOCIAL_PROMPT}" if self._social_on(stellar_wallet) else "")
         )
 
@@ -1099,7 +1101,10 @@ class OrchestrationService:
         clean_text = self._clean_text(text)
         captured: Dict[str, Any] = {"actions": [], "execution": None, "last_swap_args": {}, "animation_name": None}
 
-        system_prompt = self._build_agentic_system_prompt(stellar_wallet, platform, evm_wallet=evm_wallet)
+        system_prompt = self._build_agentic_system_prompt(
+            stellar_wallet, platform, evm_wallet=evm_wallet,
+            language=conversation_language(history, clean_text),
+        )
         executor = self._make_stellar_executor(
             stellar_wallet, captured, evm_wallet=evm_wallet, user_id=user_id,
         )

@@ -23,7 +23,7 @@ os.environ.setdefault("JWT_SECRET", "route-test-jwt-secret-32-chars-ok")
 os.environ.setdefault("ENCRYPTION_KEY", "route-test-encryption-key-xxxxxx")
 
 from database.database import get_db_session
-from database.models import ArcTransfer, CreatorVideo, SyntheticCreator, User, WebSession
+from database.models import ArcTransfer, CreatorPreview, CreatorVideo, SyntheticCreator, User, WebSession
 from server import synthetic_creators as sc
 
 app_module = importlib.import_module("server.app")
@@ -93,7 +93,7 @@ def _relay_ok(monkeypatch, calls):
     class Arc:
         async def relay_transfer_authorization(self, **kw):
             calls.append(kw)
-            return SimpleNamespace(tx_hash="0xtx", confirmed=True, gas_used=1)
+            return SimpleNamespace(tx_hash="0xtx" if len(calls) == 1 else f"0xtx{len(calls)}", confirmed=True, gas_used=1)
 
     monkeypatch.setattr(arc_routes, "_arc_native", lambda: Arc())
 
@@ -187,5 +187,383 @@ async def test_persona_needs_the_image_rights_term(db, monkeypatch):
 
 
 def test_seedance_failure_points_to_the_models_that_accept_the_image():
-    assert "OmniHuman" in routes._failure_message("pro_seedance")
-    assert "Refund pending" in routes._failure_message("standard")
+    assert "Standard or Pro" in routes._failure_message("pro_seedance")
+    assert "refunded" in routes._failure_message("standard")
+
+
+# --- mimic (motion swap) -------------------------------------------------------------------------------------
+
+MOTION = "creators/1/motion/abc123"
+
+
+def _mimic_body(value=700_000, **over):
+    return {"quality": "mimic", "duration_s": 5, "payment": _payment(value), "motion_key": MOTION,
+            "motion_rights_confirmed": True, **over}
+
+
+def _motion_ok(monkeypatch, length=12.0):
+    async def size(key):
+        return 1000
+
+    async def probe(url):
+        return length
+
+    monkeypatch.setattr(routes.media_storage, "object_size", size)
+    monkeypatch.setattr(routes.sc, "probe_duration", probe)
+
+
+def test_mimic_prices_follow_the_fal_page_x2():
+    assert sc.price_usdc("mimic", 5) == 0.7 and sc.price_usdc("mimic", 15) == 2.1
+    assert sc.price_usdc("mimic_v3", 5) == 1.26
+    assert sc.price_usdc("mimic_v3_pro", 5) == 1.68
+    assert {q["quality"]: q["kind"] for q in sc.pricing()}["mimic_v3"] == "mimic"
+    assert sc.kind("standard") == "speech"
+
+
+def test_mimic_input_follows_the_video_orientation():
+    body = sc.mimic_input("img", "vid", "")
+    assert body["image_url"] == "img" and body["video_url"] == "vid" and body["character_orientation"] == "video"
+    assert body["prompt"] == sc.MIMIC_DEFAULT_PROMPT
+
+
+@pytest.mark.asyncio
+async def test_mimic_pays_and_keeps_the_motion_and_the_rights_timestamp(db, monkeypatch):
+    cid, h = await _persona(db)
+    calls = []
+    _relay_ok(monkeypatch, calls)
+    _motion_ok(monkeypatch)
+    r = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_mimic_body())
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "queued" and r.json()["script"] == "" and calls[0]["value"] == 700_000
+    v = (await db.execute(select(CreatorVideo))).scalars().one()
+    assert v.motion_key == MOTION and v.motion_rights_at is not None and v.model.endswith("v2.6/standard/motion-control")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("over,code", [
+    ({"motion_rights_confirmed": False}, 422),
+    ({"motion_key": "creators/2/motion/abc"}, 422),          # vídeo de outro usuário
+    ({"motion_key": "creators/1/motion/../../2/x"}, 422),
+    ({"motion_key": None}, 422),
+])
+async def test_mimic_rejects_before_charging(db, monkeypatch, over, code):
+    cid, h = await _persona(db)
+    calls = []
+    _relay_ok(monkeypatch, calls)
+    _motion_ok(monkeypatch)
+    r = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_mimic_body(**over))
+    assert r.status_code == code and calls == []
+    assert (await db.execute(select(CreatorVideo))).scalars().all() == []
+
+
+@pytest.mark.asyncio
+async def test_mimic_needs_an_uploaded_video_at_least_as_long_as_the_paid_duration(db, monkeypatch):
+    cid, h = await _persona(db)
+    calls = []
+    _relay_ok(monkeypatch, calls)
+
+    async def missing(key):
+        return None
+
+    monkeypatch.setattr(routes.media_storage, "object_size", missing)
+    assert client.post(f"/v1/creators/{cid}/videos", headers=h, json=_mimic_body()).status_code == 409
+
+    _motion_ok(monkeypatch, length=3.0)
+    short = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_mimic_body())
+    assert short.status_code == 422 and "shorter" in short.json()["detail"] and calls == []
+
+
+@pytest.mark.asyncio
+async def test_speech_still_needs_a_script(db, monkeypatch):
+    cid, h = await _persona(db)
+    r = client.post(f"/v1/creators/{cid}/videos", headers=h,
+                    json={"quality": "standard", "duration_s": 5, "payment": _payment(800_000)})
+    assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_motion_upload_takes_only_videos_under_the_cap(db, monkeypatch):
+    _, h = await _persona(db)
+    monkeypatch.setattr(routes.media_storage, "presign_put", lambda key, ct, size, expires=3600: "https://r2/put")
+    ok = client.post("/v1/creators/motion", headers=h, json={"content_type": "video/mp4", "size_bytes": 5000})
+    assert ok.status_code == 200 and ok.json()["motion_key"].startswith("creators/1/motion/")
+    assert client.post("/v1/creators/motion", headers=h, json={"content_type": "image/png", "size_bytes": 5}).status_code == 422
+    assert client.post("/v1/creators/motion", headers=h,
+                       json={"content_type": "video/mp4", "size_bytes": sc.MAX_MOTION_BYTES + 1}).status_code == 413
+
+
+def test_mimic_failure_tells_what_the_reference_needs():
+    assert "full view" in routes._failure_message("mimic_v3") and "refunded" in routes._failure_message("mimic")
+
+
+@pytest.mark.asyncio
+async def test_mimic_audio_choice_is_saved_and_voice_needs_a_script(db, monkeypatch):
+    cid, h = await _persona(db)
+    _relay_ok(monkeypatch, [])
+    _motion_ok(monkeypatch)
+    r = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_mimic_body(audio="original"))
+    assert r.status_code == 200 and r.json()["audio"] == "original"
+    no_script = client.post(f"/v1/creators/{cid}/videos", headers=h,
+                            json=_mimic_body(audio="voice", payment=_payment(700_000, nonce="0x" + "2" * 64)))
+    assert no_script.status_code == 422
+    ok = client.post(f"/v1/creators/{cid}/videos", headers=h,
+                     json=_mimic_body(audio="voice", script="oi " * 50, payment=_payment(700_000, nonce="0x" + "3" * 64)))
+    assert ok.status_code == 200 and ok.json()["audio"] == "voice"
+    assert len(ok.json()["script"].split()) == sc.max_words(5)        # a narração cabe na duração paga
+    bad = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_mimic_body(audio="loud"))
+    assert bad.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_mux_puts_the_audio_track_on_a_silent_video(tmp_path):
+    import shutil
+    import subprocess
+
+    if not shutil.which("ffmpeg"):
+        pytest.skip("ffmpeg not installed")
+    v, a = tmp_path / "v.mp4", tmp_path / "a.m4a"
+    for args in (["-f", "lavfi", "-i", "color=c=gray:s=64x64:d=1", "-pix_fmt", "yuv420p", str(v)],
+                 ["-f", "lavfi", "-i", "sine=frequency=440:duration=1", "-c:a", "aac", str(a)]):
+        subprocess.run(["ffmpeg", "-nostdin", "-v", "error", *args, "-y"], check=True)
+    out = await sc.mux_audio(v.read_bytes(), a.read_bytes())
+    res = tmp_path / "out.mp4"
+    res.write_bytes(out)
+    kinds = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(res)],
+                           capture_output=True, text=True).stdout.split()
+    assert sorted(kinds) == ["audio", "video"]
+
+
+# --- swap: prévia do quadro + trava de foto real ---------------------------------------------------------------
+
+def _swap_env(monkeypatch, kind="character"):
+    async def read(key):
+        return b"img"
+
+    async def image_kind(image, content_type):
+        return kind
+
+    monkeypatch.setattr(routes.sc, "read_object", read)
+    monkeypatch.setattr(routes.sc, "image_kind", image_kind)
+    monkeypatch.setattr(routes, "run_preview", _noop)
+    _motion_ok(monkeypatch)
+
+
+def _preview_body(**over):
+    return {"motion_key": MOTION, "motion_rights_confirmed": True, **over}
+
+
+def test_closest_aspect_matches_the_video():
+    assert sc.closest_aspect(720, 1280) == "9:16"
+    assert sc.closest_aspect(1920, 1080) == "16:9"
+    assert sc.closest_aspect(1000, 1000) == "1:1"
+
+
+@pytest.mark.asyncio
+async def test_preview_is_created_for_a_character_and_needs_the_rights_term(db, monkeypatch):
+    cid, h = await _persona(db)
+    _swap_env(monkeypatch)
+    r = client.post(f"/v1/creators/{cid}/previews", headers=h, json=_preview_body())
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "working" and r.json()["frame_url"] is None
+    p = (await db.execute(select(CreatorPreview))).scalars().one()
+    assert p.motion_key == MOTION and p.creator_id == cid
+    no_term = client.post(f"/v1/creators/{cid}/previews", headers=h, json=_preview_body(motion_rights_confirmed=False))
+    assert no_term.status_code == 422
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind,msg", [("real_person_photo", "real people"), ("unsure", "couldn't check")])
+async def test_preview_gate_blocks_real_people_and_fails_closed(db, monkeypatch, kind, msg):
+    cid, h = await _persona(db)
+    _swap_env(monkeypatch, kind=kind)
+    r = client.post(f"/v1/creators/{cid}/previews", headers=h, json=_preview_body())
+    assert r.status_code == 422 and msg in r.json()["detail"]
+    assert (await db.execute(select(CreatorPreview))).scalars().all() == []
+
+
+@pytest.mark.asyncio
+async def test_preview_has_a_daily_limit(db, monkeypatch):
+    cid, h = await _persona(db)
+    _swap_env(monkeypatch)
+    for _ in range(routes.settings.creators_daily_previews_per_user):
+        db.add(CreatorPreview(user_id=1, creator_id=cid, motion_key=MOTION, status="ready", frame_key="k"))
+    await db.commit()
+    r = client.post(f"/v1/creators/{cid}/previews", headers=h, json=_preview_body())
+    assert r.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_run_preview_stores_the_frame_or_marks_failure(db, monkeypatch):
+    cid, _ = await _persona(db)
+    p = CreatorPreview(user_id=1, creator_id=cid, motion_key=MOTION, status="working")
+    db.add(p)
+    await db.commit()
+    uploaded = []
+
+    async def compose(**kw):
+        return b"png"
+
+    async def upload(path, key, content_type):
+        uploaded.append((key, content_type))
+
+    monkeypatch.setattr(routes.sc, "compose_frame", compose)
+    monkeypatch.setattr(routes.media_storage, "upload_file", upload)
+    monkeypatch.setattr(routes._dbmod, "SessionLocal", lambda: _Ctx(db))
+    await _real_run_preview(p.id)
+    await db.refresh(p)
+    assert p.status == "ready" and p.frame_key.startswith("creators/1/previews/") and uploaded[0][1] == "image/png"
+
+    async def boom(**kw):
+        raise RuntimeError("fal down")
+
+    monkeypatch.setattr(routes.sc, "compose_frame", boom)
+    q = CreatorPreview(user_id=1, creator_id=cid, motion_key=MOTION, status="working")
+    db.add(q)
+    await db.commit()
+    await _real_run_preview(q.id)
+    await db.refresh(q)
+    assert q.status == "failed" and "couldn't make the preview" in q.error
+
+
+_real_run_preview = routes.run_preview
+
+
+def _swap_video_body(**over):
+    return {"quality": "swap", "duration_s": 5, "payment": _payment(1_260_000), "motion_key": MOTION,
+            "motion_rights_confirmed": True, **over}
+
+
+def test_swap_prices_follow_the_o3_edit_rates_x2():
+    assert sc.price_usdc("swap", 5) == 1.26 and sc.price_usdc("swap", 15) == 3.78
+    assert sc.price_usdc("swap_pro", 5) == 1.68 and sc.price_usdc("swap_pro", 15) == 5.04
+    assert {q["quality"]: q["kind"] for q in sc.pricing()}["swap_pro"] == "swap"
+    assert sc.QUALITIES["swap"]["model"].endswith("o3/standard/video-to-video/edit")
+
+
+def test_swap_prompt_keeps_the_scene_and_appends_the_users_request():
+    base = sc.swap_prompt()
+    assert "@Video1" in base and "@Element1" in base and "exactly the same" in base
+    assert sc.swap_prompt("make it snow").endswith("Also: make it snow")
+    assert sc.swap_prompt("   ") == base
+
+
+@pytest.mark.asyncio
+async def test_swap_video_needs_a_ready_preview_of_the_same_character_and_video(db, monkeypatch):
+    cid, h = await _persona(db)
+    _relay_ok(monkeypatch, [])
+    _motion_ok(monkeypatch)
+    ready = CreatorPreview(user_id=1, creator_id=cid, motion_key=MOTION, status="ready", frame_key="creators/1/previews/1-a.png")
+    working = CreatorPreview(user_id=1, creator_id=cid, motion_key=MOTION, status="working")
+    other_video = CreatorPreview(user_id=1, creator_id=cid, motion_key="creators/1/motion/other", status="ready", frame_key="k")
+    db.add_all([ready, working, other_video])
+    await db.commit()
+
+    assert client.post(f"/v1/creators/{cid}/videos", headers=h, json=_swap_video_body()).status_code == 422   # sem prévia
+    r = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_swap_video_body(preview_id=working.id))
+    assert r.status_code == 409
+    r = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_swap_video_body(preview_id=other_video.id))
+    assert r.status_code == 422
+    r = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_swap_video_body(preview_id=999))
+    assert r.status_code == 422
+    ok = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_swap_video_body(preview_id=ready.id))
+    assert ok.status_code == 200, ok.text
+    v = (await db.execute(select(CreatorVideo))).scalars().one()
+    assert v.preview_id == ready.id and v.quality == "swap" and v.model.endswith("o3/standard/video-to-video/edit")
+
+
+@pytest.mark.asyncio
+async def test_a_plain_mimic_does_not_take_a_preview(db, monkeypatch):
+    cid, h = await _persona(db)
+    _relay_ok(monkeypatch, [])
+    _motion_ok(monkeypatch)
+    pv = CreatorPreview(user_id=1, creator_id=cid, motion_key=MOTION, status="ready", frame_key="k")
+    db.add(pv)
+    await db.commit()
+    r = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_mimic_body(preview_id=pv.id))
+    assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_swap_video_renders_with_the_edit_engine_and_the_approved_frame(db, monkeypatch):
+    cid, _ = await _persona(db)
+    pv = CreatorPreview(user_id=1, creator_id=cid, motion_key=MOTION, status="ready", frame_key="creators/1/previews/1-a.png")
+    db.add(pv)
+    await db.flush()
+    v = CreatorVideo(user_id=1, creator_id=cid, quality="swap_pro", model="m", duration_s=5, script="make it snow",
+                     price_usdc=1.68, payment_from=PAYER, payment_nonce="n9", payment_tx="0xtx", status="queued",
+                     motion_key=MOTION, preview_id=pv.id, audio="original")
+    db.add(v)
+    await db.commit()
+    seen = {}
+
+    async def render_swap(**kw):
+        seen.update(kw)
+
+    monkeypatch.setattr(routes.sc, "render_swap", render_swap)
+    monkeypatch.setattr(routes._dbmod, "SessionLocal", lambda: _Ctx(db))
+    await _real_run_video(v.id)
+    assert seen["frame_key"] == "creators/1/previews/1-a.png" and seen["quality"] == "swap_pro"
+    assert seen["ref_image_key"] == "creators/1/x/ref.jpg" and seen["instructions"] == "make it snow"
+
+
+def test_catalog_voices_have_a_description_and_a_sample_path():
+    voices = client.get("/v1/creators/catalog").json()["voices"]
+    assert len(voices) == len(sc.VOICES) and all(v["description"] for v in voices)
+    assert voices[0]["sample_path"] == f"/v1/creators/voices/{sc.VOICES[0]['id']}/sample"
+
+
+def test_voice_sample_is_generated_once_per_voice_and_served_as_audio(monkeypatch):
+    sc._SAMPLE_CACHE.clear()
+    calls = []
+
+    async def tts(http, voice_id, text):
+        calls.append((voice_id, text))
+        return b"mp3-bytes"
+
+    monkeypatch.setattr(sc, "_tts", tts)
+    vid = sc.VOICES[4]["id"]
+    for _ in range(2):
+        r = client.get(f"/v1/creators/voices/{vid}/sample")
+        assert r.status_code == 200 and r.headers["content-type"] == "audio/mpeg" and r.content == b"mp3-bytes"
+    assert len(calls) == 1 and sc.VOICES[4]["name"] in calls[0][1]
+    assert client.get("/v1/creators/voices/not-a-voice/sample").status_code == 404
+    sc._SAMPLE_CACHE.clear()
+
+
+def test_voice_sample_fails_politely_when_the_provider_is_down(monkeypatch):
+    sc._SAMPLE_CACHE.clear()
+
+    async def tts(http, voice_id, text):
+        raise RuntimeError("elevenlabs down")
+
+    monkeypatch.setattr(sc, "_tts", tts)
+    r = client.get(f"/v1/creators/voices/{sc.VOICES[0]['id']}/sample")
+    assert r.status_code == 503 and "isn't available" in r.json()["detail"]
+    sc._SAMPLE_CACHE.clear()
+
+
+def test_curated_voices_are_valid_unique_and_grouped():
+    ids = [v["id"] for v in sc.VOICES]
+    assert len(ids) == len(set(ids)) and set(ids) == sc.VOICE_IDS
+    assert len(sc.VOICES) >= 30                                            # 8 clássicas + a lista curada
+    assert all(v["category"] and v["name"] and v["description"] and v["gender"] in ("male", "female") for v in sc.VOICES)
+    cats = [v["category"] for v in sc.VOICES]
+    assert cats == sorted(cats, key=lambda c: sc.CATEGORY_ORDER.index(c))   # agrupadas na ordem do app
+    assert {v["id"] for v in sc.PREMADE_VOICES} <= sc.VOICE_IDS             # personagens antigos continuam válidos
+
+
+def test_brazilian_voices_get_a_portuguese_sample_phrase(monkeypatch):
+    sc._SAMPLE_CACHE.clear()
+    said = {}
+
+    async def tts(http, voice_id, text):
+        said[voice_id] = text
+        return b"mp3"
+
+    monkeypatch.setattr(sc, "_tts", tts)
+    pt = next(v for v in sc.VOICES if str(v.get("language") or "").startswith("pt"))
+    en = next(v for v in sc.VOICES if v["category"] == "Classic")
+    for v in (pt, en):
+        assert client.get(f"/v1/creators/voices/{v['id']}/sample").status_code == 200
+    assert said[pt["id"]].startswith("Olá, eu sou") and said[en["id"]].startswith("Hi, I'm")
+    sc._SAMPLE_CACHE.clear()

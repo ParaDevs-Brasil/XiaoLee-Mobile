@@ -10,12 +10,12 @@ export function maxWords(durationS: number, wordsPerS: number): number {
 }
 
 const STATUS_LABEL: Record<string, string> = {
-  paying: 'Confirming payment…',
-  queued: 'Queued',
+  paying: 'Confirming your payment…',
+  queued: 'Waiting to start…',
   voice: 'Recording the voice…',
-  video: 'Animating the video… (a few minutes)',
+  video: 'Making your video… this takes a few minutes',
   done: 'Ready',
-  failed: 'Failed',
+  failed: 'Couldn’t make this video',
 };
 
 export function videoStatusLabel(status: string): string {
@@ -24,4 +24,12 @@ export function videoStatusLabel(status: string): string {
 
 export function isVideoPending(status: string): boolean {
   return !['done', 'failed'].includes(status);
+}
+
+/**
+ * Durações que o vídeo de movimento aguenta: o backend corta o vídeo na duração paga e recusa um vídeo mais
+ * curto que ela (`_check_motion`, com 0,5 s de folga). `seconds` 0 = ainda sem vídeo escolhido.
+ */
+export function motionDurations(durations: number[], seconds: number): number[] {
+  return durations.filter((d) => d <= seconds + 0.5);
 }

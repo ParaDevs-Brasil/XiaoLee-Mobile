@@ -27,7 +27,7 @@ import {
   IconZap,
   type IconProps,
 } from '@/components/icons';
-import { PageHeading, ScreenShell } from '@/components/screen-shell';
+import { FAB_CLEARANCE, PageHeading, ScreenShell } from '@/components/screen-shell';
 import { SectionCard } from '@/components/section-card';
 import { MiniStat, StatCard } from '@/components/stat-card';
 import { Fonts, Radius, Spacing } from '@/constants/theme';
@@ -94,10 +94,14 @@ export default function DashboardScreen() {
   const { hasSession } = useSession();
   const { data, error, loading, refreshing, reload } = useBackendData(fetchDashboard);
 
+  // Saldo de sandbox é valor fixo de teste, não dinheiro: num build de release ele não aparece (e se só houver sandbox, o
+  // bloco inteiro some). Em desenvolvimento segue visível, com o aviso "sandbox" que o próprio bloco já desenha.
+  const treasury = __DEV__ ? (data?.treasury ?? []) : (data?.treasury ?? []).filter((item) => !item.sandbox);
+
   return (
     <ScreenShell>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: Spacing.four + insets.bottom }]}
+        contentContainerStyle={[styles.content, { paddingBottom: FAB_CLEARANCE + insets.bottom }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -121,8 +125,12 @@ export default function DashboardScreen() {
 
         {data ? (
           <>
-            <PortfolioHero balances={data.treasury} />
-            <ChainsSection balances={data.treasury} />
+            {treasury.length > 0 ? (
+              <>
+                <PortfolioHero balances={treasury} />
+                <ChainsSection balances={treasury} />
+              </>
+            ) : null}
             <NetworkLink network={data.network} />
             <MyCampaignsSection campaigns={data.mine} hasSession={hasSession} />
             <ProtocolSection />

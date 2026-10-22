@@ -143,6 +143,8 @@ class Settings:
     # Endereço Arc que recebe o USDC dos vídeos. Vazio = feature desligada (503).
     creators_pay_to:    str = os.getenv("CREATORS_PAY_TO", "")
     creators_daily_videos_per_user: int = int(os.getenv("CREATORS_DAILY_VIDEOS_PER_USER", "10"))
+    # Prévias do Swap são grátis para o usuário (uns centavos para nós): o teto diário limita o gasto.
+    creators_daily_previews_per_user: int = int(os.getenv("CREATORS_DAILY_PREVIEWS_PER_USER", "8"))
     # Dias até apagar o vídeo original e os cortes do bucket (0 = nunca). Uploads que nunca foram concluídos: 2 dias.
     media_retention_days: int = int(os.getenv("MEDIA_RETENTION_DAYS", "30"))
     # Relatório de 30 dias por creator (server/creator_report.py). false = o job não roda (nem chama a IA).

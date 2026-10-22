@@ -453,6 +453,26 @@ class CreatorVideo(Base):
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     refund_due: Mapped[bool] = mapped_column(Boolean, default=False)
     video_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Mimic: vídeo de movimento no R2 e quando o usuário declarou ter o direito de usá-lo (prova numa denúncia).
+    motion_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    motion_rights_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # Mimic: none | original (som do vídeo de referência) | voice (narração com a voz da persona).
+    audio: Mapped[str] = mapped_column(String(10), default='none', server_default='none')
+    # Swap: a prévia aprovada (`creator_previews.id`) cujo quadro vira a imagem do vídeo.
+    preview_id: Mapped[Optional[int]] = mapped_column(nullable=True, index=True)
+
+
+class CreatorPreview(Base):
+    """Prévia do Swap: o primeiro quadro do vídeo de referência com o personagem no lugar da pessoa. Grátis para o
+    usuário (limite diário); o vídeo só é cobrado e gerado depois de aprovada. status: working → ready | failed."""
+    __tablename__ = 'creator_previews'
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    creator_id: Mapped[int] = mapped_column(ForeignKey("synthetic_creators.id"), index=True)
+    motion_key: Mapped[str] = mapped_column(Text)
+    frame_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default='working')
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 class OnoffIntent(Base):

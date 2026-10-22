@@ -68,6 +68,7 @@ import {
   IconWallet,
   type IconProps,
 } from '@/components/icons';
+import { RichText } from '@/components/rich-text';
 import { ScreenShell } from '@/components/screen-shell';
 import { SessionsPanel } from '@/components/sessions-panel';
 import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
@@ -1097,7 +1098,7 @@ function Bubble({
       />
       <View style={styles.bubbleWrap}>
         <View style={[styles.bubble, styles.bubbleXiaolee]}>
-          <Text style={styles.bubbleText}>{message.text}</Text>
+          <RichText text={message.text} style={styles.bubbleText} />
           {message.transfer || message.txHash ? (
             <SignTxButton message={message} onSigned={onSigned} />
           ) : null}

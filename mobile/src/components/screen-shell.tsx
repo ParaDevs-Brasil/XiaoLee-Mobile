@@ -26,6 +26,12 @@ import { useWallet } from '@/hooks/use-wallet';
  * ligue em todas as telas.
  */
 
+/**
+ * Quanto o atalho flutuante do Chat ocupa no fim da tela (altura 44 + margem + folga). Toda tela com lista soma isto ao
+ * `paddingBottom` (mais `insets.bottom`) para o fim do conteúdo ficar à vista, em vez de cada uma chutar um valor.
+ */
+export const FAB_CLEARANCE = 44 + Spacing.three + Spacing.four;
+
 /** Qual painel do header está aberto — só um por vez, como no Figma. */
 type OpenPanel = 'none' | 'menu' | 'profile';
 

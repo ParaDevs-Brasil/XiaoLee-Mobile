@@ -23,7 +23,7 @@ import {
 import { ApiError } from '@/api/client';
 import { EmptyState, ErrorState, Skeleton } from '@/components/feedback';
 import { IconCheck, IconShare } from '@/components/icons';
-import { PageHeading, ScreenShell } from '@/components/screen-shell';
+import { FAB_CLEARANCE, PageHeading, ScreenShell } from '@/components/screen-shell';
 import { SectionCard } from '@/components/section-card';
 import { SocialLogo } from '@/components/social-logos';
 import { Fonts, Radius, Spacing } from '@/constants/theme';
@@ -102,7 +102,7 @@ export default function AccountsScreen() {
   return (
     <ScreenShell>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: Spacing.four + insets.bottom + 56 }]}
+        contentContainerStyle={[styles.content, { paddingBottom: FAB_CLEARANCE + insets.bottom }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         refreshControl={

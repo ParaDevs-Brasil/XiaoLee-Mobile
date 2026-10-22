@@ -6,7 +6,7 @@ import { listCreatorReports, type CreatorReportSummary } from '@/api/backend';
 import { EmptyState, ErrorState, Skeleton } from '@/components/feedback';
 import { IconChevronRight, IconClipboard } from '@/components/icons';
 import { Reveal } from '@/components/motion';
-import { PageHeading, ScreenShell } from '@/components/screen-shell';
+import { FAB_CLEARANCE, PageHeading, ScreenShell } from '@/components/screen-shell';
 import { SectionCard } from '@/components/section-card';
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
@@ -34,7 +34,7 @@ export default function ReportsScreen() {
   return (
     <ScreenShell>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: Spacing.four + insets.bottom }]}
+        contentContainerStyle={[styles.content, { paddingBottom: FAB_CLEARANCE + insets.bottom }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
