@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -30,13 +30,21 @@ import { parseTimestamp, shortHash, timeAgo } from '@/lib/format';
  * `sessionId` muda — entrar ou sair troca qual gaveta esta tela lê, sem
  * precisar de nada especial aqui.
  *
- * A ordem de leitura é a de uma conversa, não a de um extrato: mais antiga
- * primeiro, como o web (`Historico.tsx` ordena por `timestamp` crescente) e ao
- * contrário de Traction, Notifications e Transactions, que lideram com o mais
- * novo. Inverter aqui faria a resposta aparecer acima da pergunta.
+ * Ordem: as trocas mais recentes em cima, como Traction, Notifications e Transactions. Dentro de cada troca a pergunta
+ * continua acima da resposta (ver `newestFirst`): inverter mensagem a mensagem poria a resposta antes da pergunta.
  */
 
 type Filter = StoredMessage['role'] | 'all';
+
+/** Inverte a ordem das trocas, preservando a ordem de dentro de cada uma (pergunta → resposta). */
+function newestFirst(chrono: StoredMessage[]): StoredMessage[] {
+  const turns: StoredMessage[][] = [];
+  for (const message of chrono) {
+    if (message.role === 'user' || turns.length === 0) turns.push([message]);
+    else turns[turns.length - 1].push(message);
+  }
+  return turns.reverse().flat();
+}
 
 const dayKey = (iso: string) => new Date(parseTimestamp(iso)).toDateString();
 
@@ -68,12 +76,10 @@ export default function HistoryScreen() {
   const [search, setSearch] = useState('');
   // Relógio lido uma vez: o React Compiler trata `Date.now()` no render como impuro.
   const [now] = useState(() => Date.now());
-  // A lista é cronológica (a resposta fica abaixo da pergunta), então a mensagem de hoje é a última: abrir já no fim, como
-  // um app de conversa, em vez de fazer o usuário rolar dias de histórico. Só na primeira carga.
-  const scrollRef = useRef<ScrollView>(null);
-  const jumped = useRef(false);
 
-  const messages = data ?? [];
+  // Mais recente primeiro. O que chega é cronológico; vira uma lista de trocas (uma pergunta e as respostas dela) e só as
+  // trocas se invertem, então a resposta continua abaixo da pergunta que a gerou.
+  const messages = newestFirst(data ?? []);
   const counts = {
     all: messages.length,
     user: messages.filter((item) => item.role === 'user').length,
@@ -87,13 +93,6 @@ export default function HistoryScreen() {
   return (
     <ScreenShell>
       <ScrollView
-        ref={scrollRef}
-        onContentSizeChange={() => {
-          if (!jumped.current && messages.length > 0) {
-            jumped.current = true;
-            scrollRef.current?.scrollToEnd({ animated: false });
-          }
-        }}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={[styles.content, { paddingBottom: FAB_CLEARANCE + insets.bottom }]}
         showsVerticalScrollIndicator={false}
@@ -131,7 +130,7 @@ export default function HistoryScreen() {
         ) : null}
 
         {data ? (
-          <SectionCard title="Conversation" subtitle={term ? `${visible.length} found` : 'Oldest first · opens at the latest'}>
+          <SectionCard title="Conversation" subtitle={term ? `${visible.length} found` : 'Newest first'}>
             {/* Só um vazio, para a lista inteira — não um por aba como em
                 Transactions. Um filtro sem mensagem fica desabilitado no chip
                 acima, então não há como entrar numa aba vazia para precisar de
