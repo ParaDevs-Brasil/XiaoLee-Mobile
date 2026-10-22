@@ -94,6 +94,10 @@ export default function DashboardScreen() {
   const { hasSession } = useSession();
   const { data, error, loading, refreshing, reload } = useBackendData(fetchDashboard);
 
+  // Saldo de sandbox é valor fixo de teste, não dinheiro: num build de release ele não aparece (e se só houver sandbox, o
+  // bloco inteiro some). Em desenvolvimento segue visível, com o aviso "sandbox" que o próprio bloco já desenha.
+  const treasury = __DEV__ ? (data?.treasury ?? []) : (data?.treasury ?? []).filter((item) => !item.sandbox);
+
   return (
     <ScreenShell>
       <ScrollView
@@ -121,8 +125,12 @@ export default function DashboardScreen() {
 
         {data ? (
           <>
-            <PortfolioHero balances={data.treasury} />
-            <ChainsSection balances={data.treasury} />
+            {treasury.length > 0 ? (
+              <>
+                <PortfolioHero balances={treasury} />
+                <ChainsSection balances={treasury} />
+              </>
+            ) : null}
             <NetworkLink network={data.network} />
             <MyCampaignsSection campaigns={data.mine} hasSession={hasSession} />
             <ProtocolSection />
