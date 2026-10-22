@@ -1,19 +1,20 @@
 import { Pressable, Text, View } from 'react-native';
 
-import { IconPlay, IconSpark } from '@/components/icons';
+import { IconPlay, IconSpark, IconSwap } from '@/components/icons';
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
 
 /**
- * O que a persona vai fazer no vídeo — dois formatos lado a lado, como o seletor de formato dos estúdios de
+ * O que a persona vai fazer no vídeo — três formatos lado a lado, como o seletor de formato dos estúdios de
  * vídeo. Talk: fala o roteiro com a voz escolhida. Mimic: repete o movimento de um vídeo de referência.
  */
 
-export type CreatorFormat = 'speech' | 'mimic';
+export type CreatorFormat = 'speech' | 'mimic' | 'swap';
 
 const FORMATS: { id: CreatorFormat; title: string; text: string; Icon: typeof IconSpark }[] = [
-  { id: 'speech', title: 'Talk', text: 'Your character says what you write', Icon: IconSpark },
-  { id: 'mimic', title: 'Mimic', text: 'Your character copies the moves from a video', Icon: IconPlay },
+  { id: 'speech', title: 'Talk', text: 'Says what you write', Icon: IconSpark },
+  { id: 'mimic', title: 'Mimic', text: 'Copies the moves from a video', Icon: IconPlay },
+  { id: 'swap', title: 'Swap', text: 'Takes someone’s place in a video', Icon: IconSwap },
 ];
 
 export function CreatorFormatPicker({ value, onChange }: { value: CreatorFormat; onChange: (f: CreatorFormat) => void }) {

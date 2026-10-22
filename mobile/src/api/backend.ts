@@ -1224,9 +1224,31 @@ export function createCreatorVideo(
     motion_rights_confirmed?: boolean;
     /** Só no `mimic`: sem som, o som do vídeo de referência, ou a narração do `script` com a voz da persona. */
     audio?: 'none' | 'original' | 'voice';
+    /** Só no Swap: a prévia aprovada; o vídeo sai do quadro dela. */
+    preview_id?: number;
   },
 ): Promise<CreatorVideo> {
   return apiFetch<CreatorVideo>(`/v1/creators/${creatorId}/videos`, { method: 'POST', json: request });
+}
+
+export interface CreatorPreview {
+  id: number;
+  /** working → ready | failed */
+  status: 'working' | 'ready' | 'failed';
+  frame_url: string | null;
+  error: string | null;
+}
+
+/** Swap: quadro de prévia (personagem no lugar da pessoa do vídeo). Grátis, com limite diário. */
+export function createSwapPreview(
+  creatorId: number,
+  request: { motion_key: string; motion_rights_confirmed: boolean },
+): Promise<CreatorPreview> {
+  return apiFetch<CreatorPreview>(`/v1/creators/${creatorId}/previews`, { method: 'POST', json: request });
+}
+
+export function getSwapPreview(previewId: number): Promise<CreatorPreview> {
+  return apiFetch<CreatorPreview>(`/v1/creators/previews/${previewId}`);
 }
 
 export function createMotionUpload(request: {

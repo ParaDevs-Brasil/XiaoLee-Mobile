@@ -12,6 +12,7 @@ import {
   listCreators,
   writeCreatorScript,
   type CreatorCatalog,
+  type CreatorPreview,
   type CreatorQuality,
   type CreatorVideo,
   type SyntheticCreator,
@@ -19,6 +20,7 @@ import {
 import { ApiError } from '@/api/client';
 import { useCreatorStyles as useStyles } from '@/components/creator-styles';
 import { CreatorFormatPicker, type CreatorFormat } from '@/components/creator-format-picker';
+import { SwapPreview } from '@/components/swap-preview';
 import { EmptyState } from '@/components/feedback';
 import { IconCheck, IconClose, IconPlay, IconSpark, IconUser } from '@/components/icons';
 import { PageHeading, ScreenShell } from '@/components/screen-shell';
@@ -41,7 +43,8 @@ const SOUNDS: { id: 'none' | 'original' | 'voice'; label: string; hint: string }
 const CHAT_FAB_CLEARANCE = 72;
 
 /**
- * Tela de uma persona: escolhe o formato (Talk: fala um roteiro; Mimic: repete o movimento de um vídeo),
+ * Tela de um personagem: escolhe o formato (Talk: fala um roteiro; Mimic: copia o movimento de um vídeo; Swap: entra
+ * no lugar de alguém num vídeo, com prévia grátis antes de pagar),
  * a duração e a qualidade, vê o preço e paga em USDC. A assinatura EIP-3009 vai junto do pedido; o backend
  * confere valor/destino, faz o relay e só então gera.
  */
@@ -64,6 +67,8 @@ export default function CreatorScreen() {
   const [format, setFormat] = useState<CreatorFormat>('speech');
   const [motion, setMotion] = useState<PickedMotion | null>(null);
   const [motionRights, setMotionRights] = useState(false);
+  const [motionKey, setMotionKey] = useState<string | null>(null);
+  const [preview, setPreview] = useState<CreatorPreview | null>(null);
   const [scene, setScene] = useState('');
   const [audio, setAudio] = useState<'none' | 'original' | 'voice'>('original');
   const [chosenDuration, setDuration] = useState(5);
@@ -97,25 +102,34 @@ export default function CreatorScreen() {
     return () => clearInterval(t);
   }, [pending, creatorId]);
 
-  const mimic = format === 'mimic';
-  // Fala = o roteiro é dito em voz alta: o Talk sempre, o Mimic só quando o usuário escolhe "Voice".
-  const narrated = !mimic || audio === 'voice';
+  const swap = format === 'swap';
+  // Mimic e Swap partem de um vídeo de referência; o Talk parte de um roteiro.
+  const moves = format !== 'speech';
+  // Fala = o roteiro é dito em voz alta: o Talk sempre, Mimic/Swap só quando o usuário escolhe "Voice".
+  const narrated = !moves || audio === 'voice';
   // O que vale vem do formato: as faixas e durações trocam sozinhas, sem estado a sincronizar.
-  const qualities = catalog?.qualities.filter((q) => q.kind === format) ?? [];
+  const qualities = catalog?.qualities.filter((q) => q.kind === (moves ? 'mimic' : 'speech')) ?? [];
   const quality = qualities.find((q) => q.quality === chosenQuality)?.quality ?? qualities[0]?.quality ?? chosenQuality;
-  const durations = catalog ? (mimic ? motionDurations(catalog.durations_s, motion?.seconds ?? 0) : catalog.durations_s) : [];
+  const durations = catalog ? (moves ? motionDurations(catalog.durations_s, motion?.seconds ?? 0) : catalog.durations_s) : [];
   const duration = durations.includes(chosenDuration) ? chosenDuration : (durations[0] ?? chosenDuration);
   const limit = catalog ? maxWords(duration, catalog.words_per_s) : 0;
   const words = wordCount(script);
   const price = qualities.find((q) => q.quality === quality)?.prices[String(duration)] ?? null;
   const scriptOk = words > 0 && words <= limit;
-  const ready = mimic ? Boolean(motion && motionRights && durations.includes(duration)) && (!narrated || scriptOk) : scriptOk;
+  const ready = moves
+    ? Boolean(motion && motionRights && durations.includes(duration)) && (!narrated || scriptOk) && (!swap || preview?.status === 'ready')
+    : scriptOk;
   const canPay = Boolean(catalog?.enabled && catalog.pay_to && price && ready) && !paying;
 
   async function pickMotion() {
     try {
       const picked = await pickMotionVideo();
-      if (picked) setMotion(picked);
+      if (picked) {
+        setMotion(picked);
+        // Outro vídeo = outro arquivo no storage e outra prévia.
+        setMotionKey(null);
+        setPreview(null);
+      }
     } catch (e) {
       fail(e);
     }
@@ -141,14 +155,15 @@ export default function CreatorScreen() {
     setError(null);
     try {
       // Sobe o vídeo de movimento antes de assinar: a assinatura tem prazo e o upload pode demorar.
-      const motionKey = mimic && motion ? await uploadMotion(motion) : undefined;
+      const key = moves && motion ? (motionKey ?? (await uploadMotion(motion))) : undefined;
       const payment = await wallet.signUsdcAuthorization(catalog.pay_to, price);
       const video = await createCreatorVideo(creatorId, {
         quality,
         duration_s: duration,
         script: narrated ? script : scene,
         payment,
-        ...(motionKey ? { motion_key: motionKey, motion_rights_confirmed: true, audio } : {}),
+        ...(key ? { motion_key: key, motion_rights_confirmed: true, audio } : {}),
+        ...(swap && preview ? { preview_id: preview.id } : {}),
       });
       setVideos((list) => [video, ...list]);
       setConfirming(false);
@@ -157,6 +172,8 @@ export default function CreatorScreen() {
       setScene('');
       setMotion(null);
       setMotionRights(false);
+      setMotionKey(null);
+      setPreview(null);
     } catch (e) {
       fail(e);
     } finally {
@@ -191,8 +208,11 @@ export default function CreatorScreen() {
 
         <CreatorFormatPicker value={format} onChange={(f) => { setFormat(f); setConfirming(false); }} />
 
-        {mimic ? (
-          <SectionCard title="Movement" subtitle="Your character copies the moves from a video you choose.">
+        {moves ? (
+          <SectionCard
+            title={swap ? 'Video' : 'Movement'}
+            subtitle={swap ? 'Your character takes the place of the person in a video you choose.' : 'Your character copies the moves from a video you choose.'}
+          >
             <Pressable
               onPress={pickMotion}
               style={[styles.photoPick, { height: 132, gap: Spacing.two, paddingHorizontal: Spacing.three }]}
@@ -249,8 +269,21 @@ export default function CreatorScreen() {
           </SectionCard>
         ) : null}
 
+        {swap ? (
+          <SwapPreview
+            creatorId={creatorId}
+            motion={motion}
+            rights={motionRights}
+            motionKey={motionKey}
+            onMotionKey={setMotionKey}
+            preview={preview}
+            onPreview={setPreview}
+            onError={fail}
+          />
+        ) : null}
+
         {narrated ? (
-        <SectionCard title={mimic ? 'What your character says' : 'Script'} subtitle={`${words} of ${limit} words · ${duration}s`}>
+        <SectionCard title={moves ? 'What your character says' : 'Script'} subtitle={`${words} of ${limit} words · ${duration}s`}>
           <View style={styles.rowTop}>
             <TextInput
               value={topic}
@@ -283,7 +316,7 @@ export default function CreatorScreen() {
         </SectionCard>
         ) : null}
 
-        <SectionCard title="Length" subtitle={mimic && !motion ? 'Choose your video first.' : undefined}>
+        <SectionCard title="Length" subtitle={moves && !motion ? 'Choose your video first.' : undefined}>
           <View style={styles.chips}>
             {durations.map((d) => (
               <Pressable
