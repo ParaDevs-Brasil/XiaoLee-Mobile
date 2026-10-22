@@ -21,6 +21,7 @@ import { ApiError } from '@/api/client';
 import { useCreatorStyles as useStyles } from '@/components/creator-styles';
 import { CreatorFormatPicker, type CreatorFormat } from '@/components/creator-format-picker';
 import { SwapPreview } from '@/components/swap-preview';
+import { UploadTile } from '@/components/upload-tile';
 import { EmptyState } from '@/components/feedback';
 import { IconCheck, IconClose, IconPlay, IconSpark, IconUser } from '@/components/icons';
 import { PageHeading, ScreenShell } from '@/components/screen-shell';
@@ -222,22 +223,20 @@ export default function CreatorScreen() {
                 : 'Your character copies the moves from a video. The scene comes from the character’s photo.'
             }
           >
-            <Pressable
+            <UploadTile
+              title="Choose a video"
+              hint={
+                swap
+                  ? 'The person you want to replace should be clearly in view.'
+                  : 'One person, full body, staying in place, steady camera.'
+              }
               onPress={pickMotion}
-              style={[styles.photoPick, { height: 132, gap: Spacing.two, paddingHorizontal: Spacing.three }]}
-              accessibilityRole="button"
+              Icon={IconPlay}
+              chosen={Boolean(motion)}
+              chosenTitle={motion ? `Video chosen · ${Math.round(motion.seconds)}s` : undefined}
+              height={150}
               accessibilityLabel="Choose a video"
-            >
-              {motion ? <IconCheck size={28} color={colors.accent} /> : <IconPlay size={28} color={colors.accent} />}
-              <Text style={styles.provider}>{motion ? `Video chosen · ${Math.round(motion.seconds)}s` : 'Choose a video'}</Text>
-              <Text style={[styles.desc, { textAlign: 'center' }]}>
-                {motion
-                  ? 'Tap to change it.'
-                  : swap
-                    ? 'The person you want to replace should be clearly in view.'
-                    : 'One person, full body, staying in place, steady camera.'}
-              </Text>
-            </Pressable>
+            />
             <Text style={styles.label}>Sound</Text>
             <View style={styles.chips}>
               {SOUNDS.map((o) => (

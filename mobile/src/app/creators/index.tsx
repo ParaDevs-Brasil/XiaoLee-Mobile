@@ -16,6 +16,7 @@ import { IconCheck, IconChevronRight, IconPlus, IconUser } from '@/components/ic
 import { PageHeading, ScreenShell } from '@/components/screen-shell';
 import { SectionCard } from '@/components/section-card';
 import { useCreatorStyles as useStyles } from '@/components/creator-styles';
+import { UploadTile } from '@/components/upload-tile';
 import { VoicePicker } from '@/components/voice-picker';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -132,13 +133,15 @@ export default function CreatorsScreen() {
               </Pressable>
             ) : (
               <SectionCard title="New character" subtitle="Use your own photo or a character. No sexual content, no minors, and no pretending to be someone else.">
-                <Pressable onPress={pick} style={styles.photoPick} accessibilityRole="button" accessibilityLabel="Choose a photo">
-                  {image ? (
-                    <Image source={{ uri: image.uri }} style={styles.photo} contentFit="cover" />
-                  ) : (
-                    <Text style={[styles.desc, { textAlign: 'center', paddingHorizontal: Spacing.three }]}>Choose a photo. Vertical and full body works best.</Text>
-                  )}
-                </Pressable>
+                <UploadTile
+                  title="Add a photo"
+                  hint="Vertical and full body works best."
+                  onPress={pick}
+                  previewUri={image?.uri}
+                  changeLabel="Change photo"
+                  height={image ? 320 : 190}
+                  accessibilityLabel="Add a photo of your character"
+                />
 
                 <TextInput
                   value={name}
