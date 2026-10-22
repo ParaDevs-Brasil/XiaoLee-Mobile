@@ -16,6 +16,7 @@ import { IconCheck, IconChevronRight, IconPlus, IconUser } from '@/components/ic
 import { PageHeading, ScreenShell } from '@/components/screen-shell';
 import { SectionCard } from '@/components/section-card';
 import { useCreatorStyles as useStyles } from '@/components/creator-styles';
+import { VoicePicker } from '@/components/voice-picker';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useSession } from '@/hooks/use-session';
@@ -149,21 +150,7 @@ export default function CreatorsScreen() {
                 />
 
                 <Text style={styles.label}>Voice for talking videos</Text>
-                <View style={styles.chips}>
-                  {catalog?.voices.map((v) => (
-                    <Pressable
-                      key={v.id}
-                      onPress={() => setVoiceId(v.id)}
-                      style={[styles.chip, voiceId === v.id && styles.chipActive]}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: voiceId === v.id }}
-                    >
-                      <Text style={[styles.chipText, voiceId === v.id && styles.chipTextActive]}>
-                        {v.name} · {v.gender === 'female' ? 'F' : 'M'}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
+                <VoicePicker voices={catalog?.voices ?? []} value={voiceId} onChange={setVoiceId} />
 
                 <Pressable
                   onPress={() => setRights((v) => !v)}

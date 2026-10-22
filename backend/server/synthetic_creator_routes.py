@@ -185,7 +185,7 @@ async def _owned_creator(db: AsyncSession, user_id: int, creator_id: int) -> Syn
 async def catalog():
     return {
         "enabled": sc.enabled(),
-        "voices": sc.VOICES,
+        "voices": await sc.voices_catalog(),
         "qualities": sc.pricing(),
         "durations_s": list(sc.DURATIONS_S),
         "words_per_s": sc.WORDS_PER_S,

@@ -504,3 +504,31 @@ async def test_swap_video_renders_with_the_edit_engine_and_the_approved_frame(db
     await _real_run_video(v.id)
     assert seen["frame_key"] == "creators/1/previews/1-a.png" and seen["quality"] == "swap_pro"
     assert seen["ref_image_key"] == "creators/1/x/ref.jpg" and seen["instructions"] == "make it snow"
+
+
+@pytest.mark.asyncio
+async def test_catalog_voices_have_a_description_and_a_sample_url(db, monkeypatch):
+    async def previews():
+        return {sc.VOICES[0]["id"]: "https://samples/sarah.mp3"}
+
+    monkeypatch.setattr(routes.sc, "voice_previews", previews)
+    voices = client.get("/v1/creators/catalog").json()["voices"]
+    assert len(voices) == len(sc.VOICES) and all(v["description"] for v in voices)
+    assert voices[0]["preview_url"] == "https://samples/sarah.mp3" and voices[1]["preview_url"] is None
+
+
+@pytest.mark.asyncio
+async def test_voice_previews_survive_the_provider_being_down(monkeypatch):
+    sc._PREVIEW_CACHE.clear()
+
+    class Down:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def get(self, *a, **k): raise RuntimeError("elevenlabs down")
+
+    monkeypatch.setattr(sc.httpx, "AsyncClient", Down)
+    monkeypatch.setattr(sc, "settings", dataclasses.replace(sc.settings, elevenlabs_api_key="el"))
+    out = await sc.voice_previews()
+    assert set(out.values()) == {None} and len(out) == len(sc.VOICES)
+    sc._PREVIEW_CACHE.clear()

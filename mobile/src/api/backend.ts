@@ -1129,6 +1129,10 @@ export interface CreatorVoice {
   id: string;
   name: string;
   gender: 'female' | 'male';
+  /** Uma frase sobre o jeito da voz. */
+  description: string;
+  /** Amostra para ouvir antes de escolher; `null` se a ElevenLabs não respondeu. */
+  preview_url: string | null;
 }
 
 export interface CreatorQuality {
