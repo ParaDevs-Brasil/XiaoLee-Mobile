@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { listOnoffIntents, type OnoffIntent, type OnoffStatus } from '@/api/backend';
 import { EmptyState, ErrorState, Skeleton } from '@/components/feedback';
 import { IconChevronLeft, IconCreditCard, IconInbox, IconPix, IconPlus, IconUpload, PIX_COLOR } from '@/components/icons';
+import { FAB_CLEARANCE } from '@/components/screen-shell';
 import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
 import { useBackendData } from '@/hooks/use-backend-data';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
@@ -65,7 +66,7 @@ export function OnoffActivityView({ onBack }: { onBack: () => void }) {
 
   return (
     <ScrollView
-      contentContainerStyle={[styles.content, { paddingBottom: Spacing.six + insets.bottom }]}
+      contentContainerStyle={[styles.content, { paddingBottom: FAB_CLEARANCE + insets.bottom }]}
       showsVerticalScrollIndicator={false}
       refreshControl={<RefreshControl refreshing={data.refreshing} onRefresh={data.reload} tintColor={colors.accent} colors={[colors.accent]} />}
     >

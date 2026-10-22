@@ -14,7 +14,7 @@ import { AddMoneySheet } from '@/components/add-money-sheet';
 import { WithdrawSheet } from '@/components/withdraw-sheet';
 import { getOnoffConfig } from '@/api/backend';
 import { useBackendData } from '@/hooks/use-backend-data';
-import { PageHeading } from '@/components/screen-shell';
+import { FAB_CLEARANCE, PageHeading } from '@/components/screen-shell';
 import { SectionCard } from '@/components/section-card';
 import { WalletActions } from '@/components/wallet-actions';
 import { WalletAddressCard } from '@/components/wallet-address-card';
@@ -138,7 +138,7 @@ export function WalletHomeView({
   return (
     <>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: Spacing.six + insets.bottom }]}
+        contentContainerStyle={[styles.content, { paddingBottom: FAB_CLEARANCE + insets.bottom }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
