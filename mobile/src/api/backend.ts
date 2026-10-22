@@ -1256,6 +1256,7 @@ export interface OnoffIntent {
   max_fee_usdc: number | null;
   url: string | null;
   burn: import('@/lib/onoff-burn').BurnParams | null;
+  created_at: string | null;
 }
 
 export function startDeposit(amountUsdc: number, method: string, fiatCurrency: string): Promise<OnoffIntent> {
@@ -1286,6 +1287,10 @@ export async function registerBurn(intentId: string, txHash: string): Promise<On
     json: { tx_hash: txHash },
   });
   return 'intent_id' in res ? res : null;
+}
+
+export function listOnoffIntents(): Promise<OnoffIntent[]> {
+  return apiFetch<OnoffIntent[]>('/v1/onoff/intents');
 }
 
 export function getOnoffIntent(intentId: string): Promise<OnoffIntent> {

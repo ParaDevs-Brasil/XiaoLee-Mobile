@@ -58,6 +58,7 @@ export interface WalletHomeViewProps {
   isConnected: boolean;
   onSignOut: () => void;
   onSeeAllReceipts: () => void;
+  onSeeActivity: () => void;
   onOpenBreakdown: () => void;
 }
 
@@ -111,6 +112,7 @@ export function WalletHomeView({
   isConnected,
   onSignOut,
   onSeeAllReceipts,
+  onSeeActivity,
   onOpenBreakdown,
 }: WalletHomeViewProps) {
   const colors = useTheme();
@@ -200,7 +202,7 @@ export function WalletHomeView({
                 onAdd={() => setAddOpen(true)}
                 onWithdraw={() => setWithdrawOpen(true)}
                 onReceive={() => setReceiveOpen(true)}
-                onActivity={onSeeAllReceipts}
+                onActivity={onSeeActivity}
               />
             ) : null}
 

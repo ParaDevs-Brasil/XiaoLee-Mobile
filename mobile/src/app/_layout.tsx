@@ -108,6 +108,7 @@ function RootNavigator() {
         <Stack.Screen name="campaigns/index" options={{ headerShown: false }} />
         <Stack.Screen name="wallet/index" options={{ headerShown: false }} />
         <Stack.Screen name="wallet/receipts" options={{ headerShown: false }} />
+        <Stack.Screen name="wallet/activity" options={{ headerShown: false }} />
         <Stack.Screen name="wallet/breakdown" options={{ headerShown: false }} />
         <Stack.Screen name="transactions" options={{ headerShown: false }} />
         <Stack.Screen name="history" options={{ headerShown: false }} />
