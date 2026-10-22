@@ -201,7 +201,12 @@ export default function CreatorScreen() {
         <PageHeading title={creator?.name ?? 'Character'} subtitle="Choose what it does, then pay to make the video." />
 
         {creator?.image_url ? (
-          <Image source={{ uri: creator.image_url }} style={[styles.photo, { height: 260, borderRadius: 12 }]} contentFit="cover" />
+          <Image
+            source={{ uri: creator.image_url }}
+            style={[styles.photo, { height: 260, borderRadius: 12 }]}
+            contentFit="cover"
+            contentPosition="top"
+          />
         ) : null}
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -222,7 +227,11 @@ export default function CreatorScreen() {
               {motion ? <IconCheck size={28} color={colors.accent} /> : <IconPlay size={28} color={colors.accent} />}
               <Text style={styles.provider}>{motion ? `Video chosen · ${Math.round(motion.seconds)}s` : 'Choose a video'}</Text>
               <Text style={[styles.desc, { textAlign: 'center' }]}>
-                {motion ? 'Tap to change it.' : 'One person, full body, staying in place, steady camera.'}
+                {motion
+                  ? 'Tap to change it.'
+                  : swap
+                    ? 'The person you want to replace should be clearly in view.'
+                    : 'One person, full body, staying in place, steady camera.'}
               </Text>
             </Pressable>
             <Text style={styles.label}>Sound</Text>
