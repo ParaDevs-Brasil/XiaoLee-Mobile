@@ -28,18 +28,18 @@ WORDS_PER_S = 2.6  # fala natural; o roteiro é cortado nesse teto para caber na
 
 # quality -> modelo na fal, custo por segundo (US$, página do modelo em 2026-10-20) e campos extras.
 QUALITIES: dict[str, dict] = {
-    "standard": {"label": "Standard", "model": "veed/fabric-1.0", "usd_per_s": 0.08,
+    "standard": {"label": "Standard", "hint": "480p", "model": "veed/fabric-1.0", "usd_per_s": 0.08,
                  "extra": {"resolution": "480p"}},
-    "pro": {"label": "Pro · OmniHuman", "model": "fal-ai/bytedance/omnihuman", "usd_per_s": 0.14, "extra": {}},
-    "pro_seedance": {"label": "Pro · Seedance 2.0", "model": "bytedance/seedance-2.0/reference-to-video",
+    "pro": {"label": "Pro", "hint": "Higher quality", "model": "fal-ai/bytedance/omnihuman", "usd_per_s": 0.14, "extra": {}},
+    "pro_seedance": {"label": "Pro+", "hint": "720p. No real people or known characters", "model": "bytedance/seedance-2.0/reference-to-video",
                      "usd_per_s": 0.3034, "extra": {"resolution": "720p", "aspect_ratio": "9:16"}},
     # Mimic (motion swap): o personagem da foto repete o movimento de um vídeo de referência. Sem voz sintética —
     # o áudio do vídeo de referência é removido antes de ir à fal. Preços da página da fal em 2026-10-22.
-    "mimic": {"label": "Mimic · Standard", "kind": "mimic", "usd_per_s": 0.07, "extra": {},
+    "mimic": {"label": "Standard", "hint": "Lowest price", "kind": "mimic", "usd_per_s": 0.07, "extra": {},
               "model": "fal-ai/kling-video/v2.6/standard/motion-control"},
-    "mimic_v3": {"label": "Mimic · v3", "kind": "mimic", "usd_per_s": 0.126, "extra": {},
+    "mimic_v3": {"label": "Plus", "hint": "Newer model", "kind": "mimic", "usd_per_s": 0.126, "extra": {},
                  "model": "fal-ai/kling-video/v3/standard/motion-control"},
-    "mimic_v3_pro": {"label": "Mimic · v3 Pro", "kind": "mimic", "usd_per_s": 0.168, "extra": {},
+    "mimic_v3_pro": {"label": "Pro", "hint": "Top quality", "kind": "mimic", "usd_per_s": 0.168, "extra": {},
                      "model": "fal-ai/kling-video/v3/pro/motion-control"},
 }
 
@@ -84,7 +84,7 @@ def max_words(duration_s: int) -> int:
 
 def pricing() -> list[dict]:
     return [
-        {"quality": k, "label": q["label"], "kind": kind(k), "prices": {str(d): price_usdc(k, d) for d in DURATIONS_S}}
+        {"quality": k, "label": q["label"], "hint": q["hint"], "kind": kind(k), "prices": {str(d): price_usdc(k, d) for d in DURATIONS_S}}
         for k, q in QUALITIES.items()
     ]
 

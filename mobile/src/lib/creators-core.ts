@@ -10,12 +10,12 @@ export function maxWords(durationS: number, wordsPerS: number): number {
 }
 
 const STATUS_LABEL: Record<string, string> = {
-  paying: 'Confirming payment…',
-  queued: 'Queued',
+  paying: 'Confirming your payment…',
+  queued: 'Waiting to start…',
   voice: 'Recording the voice…',
-  video: 'Animating the video… (a few minutes)',
+  video: 'Making your video… this takes a few minutes',
   done: 'Ready',
-  failed: 'Failed',
+  failed: 'Couldn’t make this video',
 };
 
 export function videoStatusLabel(status: string): string {

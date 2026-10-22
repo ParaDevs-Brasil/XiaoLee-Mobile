@@ -12,8 +12,8 @@ import { makeStyles, useTheme } from '@/hooks/use-theme';
 export type CreatorFormat = 'speech' | 'mimic';
 
 const FORMATS: { id: CreatorFormat; title: string; text: string; Icon: typeof IconSpark }[] = [
-  { id: 'speech', title: 'Talk', text: 'Says your script, with a voice', Icon: IconSpark },
-  { id: 'mimic', title: 'Mimic', text: 'Repeats the moves of any video', Icon: IconPlay },
+  { id: 'speech', title: 'Talk', text: 'Your character says what you write', Icon: IconSpark },
+  { id: 'mimic', title: 'Mimic', text: 'Your character copies the moves from a video', Icon: IconPlay },
 ];
 
 export function CreatorFormatPicker({ value, onChange }: { value: CreatorFormat; onChange: (f: CreatorFormat) => void }) {

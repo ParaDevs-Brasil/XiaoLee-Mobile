@@ -33,9 +33,9 @@ import { usePrivyWallet } from '@/lib/wallet';
 const POLL_MS = 5000;
 
 const SOUNDS: { id: 'none' | 'original' | 'voice'; label: string; hint: string }[] = [
-  { id: 'original', label: 'Original sound', hint: "Keeps the reference video's own audio." },
-  { id: 'voice', label: 'Voice', hint: "The character's voice says your script." },
-  { id: 'none', label: 'Silent', hint: 'No audio — add your own music when you post.' },
+  { id: 'original', label: 'Original sound', hint: 'Keeps the sound from your video.' },
+  { id: 'voice', label: 'Voice', hint: 'Your character says what you write.' },
+  { id: 'none', label: 'Silent', hint: 'No sound. Add your own music when you post.' },
 ];
 /** O botão flutuante do Chat cobre o fim da lista: a folga extra deixa o botão de pagar à vista. */
 const CHAT_FAB_CLEARANCE = 72;
@@ -168,7 +168,7 @@ export default function CreatorScreen() {
     return (
       <ScreenShell>
         <View style={styles.content}>
-          <EmptyState Icon={IconUser} title="Persona not found" text="It may have been deleted." />
+          <EmptyState Icon={IconUser} title="Character not found" text="It may have been deleted." />
         </View>
       </ScreenShell>
     );
@@ -181,7 +181,7 @@ export default function CreatorScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <PageHeading title={creator?.name ?? 'Persona'} subtitle="Pick a format, choose length and model, pay in USDC." />
+        <PageHeading title={creator?.name ?? 'Character'} subtitle="Choose what it does, then pay to make the video." />
 
         {creator?.image_url ? (
           <Image source={{ uri: creator.image_url }} style={[styles.photo, { height: 260, borderRadius: 12 }]} contentFit="cover" />
@@ -192,16 +192,17 @@ export default function CreatorScreen() {
         <CreatorFormatPicker value={format} onChange={(f) => { setFormat(f); setConfirming(false); }} />
 
         {mimic ? (
-          <SectionCard title="Movement" subtitle="The character repeats this video's moves.">
+          <SectionCard title="Movement" subtitle="Your character copies the moves from a video you choose.">
             <Pressable
               onPress={pickMotion}
               style={[styles.photoPick, { height: 132, gap: Spacing.two, paddingHorizontal: Spacing.three }]}
               accessibilityRole="button"
-              accessibilityLabel="Choose the movement video"
+              accessibilityLabel="Choose a video"
             >
               {motion ? <IconCheck size={28} color={colors.accent} /> : <IconPlay size={28} color={colors.accent} />}
+              <Text style={styles.provider}>{motion ? `Video chosen · ${Math.round(motion.seconds)}s` : 'Choose a video'}</Text>
               <Text style={[styles.desc, { textAlign: 'center' }]}>
-                {motion ? `Video chosen · ${Math.round(motion.seconds)}s — tap to change` : 'Choose a video: one person, full body in view, staying in place, steady camera'}
+                {motion ? 'Tap to change it.' : 'One person, full body, staying in place, steady camera.'}
               </Text>
             </Pressable>
             <Text style={styles.label}>Sound</Text>
@@ -223,7 +224,7 @@ export default function CreatorScreen() {
               <TextInput
                 value={scene}
                 onChangeText={setScene}
-                placeholder="Optional: describe the scene"
+                placeholder="Describe the scene (optional)"
                 placeholderTextColor={colors.ink3}
                 maxLength={300}
                 style={styles.input}
@@ -249,12 +250,12 @@ export default function CreatorScreen() {
         ) : null}
 
         {narrated ? (
-        <SectionCard title={mimic ? 'What they say' : 'Script'} subtitle={`${words}/${limit} words for ${duration}s`}>
+        <SectionCard title={mimic ? 'What your character says' : 'Script'} subtitle={`${words} of ${limit} words · ${duration}s`}>
           <View style={styles.rowTop}>
             <TextInput
               value={topic}
               onChangeText={setTopic}
-              placeholder="Topic — Xiaolee writes it for you"
+              placeholder="Give a topic and Xiaolee writes it"
               placeholderTextColor={colors.ink3}
               maxLength={500}
               style={[styles.input, { flex: 1 }]}
@@ -272,17 +273,17 @@ export default function CreatorScreen() {
           <TextInput
             value={script}
             onChangeText={setScript}
-            placeholder="Or type exactly what the persona says"
+            placeholder="Or write what your character says"
             placeholderTextColor={colors.ink3}
             multiline
             maxLength={2000}
             style={[styles.input, { minHeight: 110, borderRadius: 12, textAlignVertical: 'top' }]}
           />
-          {words > limit ? <Text style={styles.error}>Too long for {duration}s — cut to {limit} words or pick a longer video.</Text> : null}
+          {words > limit ? <Text style={styles.error}>Too long for {duration} seconds. Cut it to {limit} words or pick a longer length.</Text> : null}
         </SectionCard>
         ) : null}
 
-        <SectionCard title="Length" subtitle={mimic && !motion ? 'Choose the movement video first.' : undefined}>
+        <SectionCard title="Length" subtitle={mimic && !motion ? 'Choose your video first.' : undefined}>
           <View style={styles.chips}>
             {durations.map((d) => (
               <Pressable
@@ -298,10 +299,7 @@ export default function CreatorScreen() {
           </View>
         </SectionCard>
 
-        <SectionCard
-          title={mimic ? 'Model' : 'Quality'}
-          subtitle={mimic ? undefined : 'Seedance 2.0 refuses real people and copyrighted characters — use Standard or OmniHuman for those.'}
-        >
+        <SectionCard title="Quality">
           {qualities.map((q) => (
             <Pressable
               key={q.quality}
@@ -312,6 +310,7 @@ export default function CreatorScreen() {
             >
               <View style={styles.rowBody}>
                 <Text style={styles.provider}>{q.label}</Text>
+                <Text style={styles.desc}>{q.hint}</Text>
               </View>
               <Text style={[styles.provider, { color: colors.accent }]}>${q.prices[String(duration)]?.toFixed(2)}</Text>
             </Pressable>
@@ -328,7 +327,7 @@ export default function CreatorScreen() {
             <Text style={styles.btnText}>Create video{price !== null ? ` · $${price.toFixed(2)}` : ''}</Text>
           </Pressable>
         ) : (
-          <SectionCard title={`Pay $${price?.toFixed(2)} USDC?`} subtitle="From your wallet on Arc. Generation starts after the payment confirms.">
+          <SectionCard title={`Pay $${price?.toFixed(2)} in USDC?`} subtitle="Paid from your wallet. We start as soon as the payment goes through.">
             <Pressable onPress={pay} disabled={paying} style={styles.primary} accessibilityRole="button">
               {paying ? <ActivityIndicator color={colors.onAccent} /> : <Text style={styles.btnText}>Confirm &amp; pay</Text>}
             </Pressable>

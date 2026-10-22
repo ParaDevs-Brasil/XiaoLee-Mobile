@@ -187,8 +187,8 @@ async def test_persona_needs_the_image_rights_term(db, monkeypatch):
 
 
 def test_seedance_failure_points_to_the_models_that_accept_the_image():
-    assert "OmniHuman" in routes._failure_message("pro_seedance")
-    assert "Refund pending" in routes._failure_message("standard")
+    assert "Standard or Pro" in routes._failure_message("pro_seedance")
+    assert "refunded" in routes._failure_message("standard")
 
 
 # --- mimic (motion swap) -------------------------------------------------------------------------------------
@@ -293,7 +293,7 @@ async def test_motion_upload_takes_only_videos_under_the_cap(db, monkeypatch):
 
 
 def test_mimic_failure_tells_what_the_reference_needs():
-    assert "head and body" in routes._failure_message("mimic_v3") and "Refund pending" in routes._failure_message("mimic")
+    assert "full view" in routes._failure_message("mimic_v3") and "refunded" in routes._failure_message("mimic")
 
 
 @pytest.mark.asyncio

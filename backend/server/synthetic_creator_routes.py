@@ -129,7 +129,7 @@ class VideoOut(BaseModel):
 
 def _require_enabled() -> None:
     if not sc.enabled():
-        raise HTTPException(503, "synthetic creators are not configured")
+        raise HTTPException(503, "AI Creators aren't available right now.")
 
 
 def _creator_out(c: SyntheticCreator) -> CreatorOut:
@@ -160,7 +160,7 @@ async def _owned_creator(db: AsyncSession, user_id: int, creator_id: int) -> Syn
     c = (await db.execute(select(SyntheticCreator).where(
         SyntheticCreator.id == creator_id, SyntheticCreator.user_id == user_id))).scalars().first()
     if not c:
-        raise HTTPException(404, "creator not found")
+        raise HTTPException(404, "Character not found.")
     return c
 
 
@@ -181,19 +181,19 @@ async def create_creator(body: CreatorCreate, authorization: Optional[str] = Hea
                          db: AsyncSession = Depends(get_db_session)):
     _require_enabled()
     if body.voice_id not in sc.VOICE_IDS:
-        raise HTTPException(422, "unknown voice")
+        raise HTTPException(422, "Pick a voice from the list.")
     if body.content_type not in IMAGE_TYPES:
-        raise HTTPException(422, "reference must be a JPEG, PNG or WebP image")
+        raise HTTPException(422, "Use a JPEG, PNG or WebP image.")
     if body.size_bytes > MAX_IMAGE_BYTES:
-        raise HTTPException(413, "image too large (max 15 MB)")
+        raise HTTPException(413, "That image is too large. The limit is 15 MB.")
     if not body.rights_confirmed:
-        raise HTTPException(422, "confirm you have the right to use this image")
+        raise HTTPException(422, "Confirm you have the right to use this image.")
     user = await _resolve_user(db, authorization, strict=True)
     key = f"creators/{user.id}/{uuid.uuid4().hex}/ref{sc._ext(body.content_type)}"
     try:
         url = media_storage.presign_put(key, body.content_type, body.size_bytes)
     except media_storage.StorageNotConfigured as exc:
-        raise HTTPException(503, f"storage unavailable: {exc}")
+        raise HTTPException(503, "Uploads are unavailable right now. Try again later.")
     c = SyntheticCreator(user_id=user.id, name=body.name.strip(), voice_id=body.voice_id, ref_image_key=key,
                          ref_content_type=body.content_type, status="pending", rights_confirmed_at=datetime.utcnow())
     db.add(c)
@@ -209,9 +209,9 @@ async def complete_creator(creator_id: int, authorization: Optional[str] = Heade
     try:
         size = await media_storage.object_size(c.ref_image_key)
     except media_storage.StorageNotConfigured as exc:
-        raise HTTPException(503, f"storage unavailable: {exc}")
+        raise HTTPException(503, "Uploads are unavailable right now. Try again later.")
     if size is None:
-        raise HTTPException(409, "reference image not uploaded")
+        raise HTTPException(409, "The photo didn't finish uploading. Try again.")
     c.status = "ready"
     await db.commit()
     return _creator_out(c)
@@ -242,15 +242,15 @@ async def create_motion_upload(body: MotionCreate, authorization: Optional[str] 
                                db: AsyncSession = Depends(get_db_session)):
     _require_enabled()
     if body.content_type not in sc.MOTION_TYPES:
-        raise HTTPException(422, "reference must be an MP4, MOV or WebM video")
+        raise HTTPException(422, "Use an MP4, MOV or WebM video.")
     if body.size_bytes > sc.MAX_MOTION_BYTES:
-        raise HTTPException(413, "video too large (max 100 MB)")
+        raise HTTPException(413, "That video is too large. The limit is 100 MB.")
     user = await _resolve_user(db, authorization, strict=True)
     key = f"creators/{user.id}/motion/{uuid.uuid4().hex}"
     try:
         url = media_storage.presign_put(key, body.content_type, body.size_bytes)
     except media_storage.StorageNotConfigured as exc:
-        raise HTTPException(503, f"storage unavailable: {exc}")
+        raise HTTPException(503, "Uploads are unavailable right now. Try again later.")
     return MotionUpload(motion_key=key, upload_url=url, upload_headers={"Content-Type": body.content_type})
 
 
@@ -262,12 +262,12 @@ async def script(body: ScriptIn, authorization: Optional[str] = Header(default=N
     user = await _resolve_user(db, authorization, strict=True)
     c = await _owned_creator(db, user.id, body.creator_id)
     if not settings.anthropic_api_key:
-        raise HTTPException(503, "script writer is not configured")
+        raise HTTPException(503, "Xiaolee can't write scripts right now. Write it yourself.")
     try:
         text = await sc.write_script(body.topic, body.duration_s, c.name)
     except Exception as exc:
         logger.warning("creator script failed: %s", type(exc).__name__)
-        raise HTTPException(503, "script writer temporarily unavailable")
+        raise HTTPException(503, "Xiaolee couldn't write the script right now. Try again, or write it yourself.")
     return {"script": text, "max_words": sc.max_words(body.duration_s)}
 
 
@@ -286,12 +286,12 @@ async def create_video(creator_id: int, body: VideoCreate, background: Backgroun
     narrated = not mimic or body.audio == "voice"
     script_text = sc.clip_words(body.script.strip(), body.duration_s) if narrated else body.script.strip()[:300]
     if not script_text and narrated:
-        raise HTTPException(422, "script is empty")
+        raise HTTPException(422, "Write what your character says first.")
 
     user = await _resolve_user(db, authorization, strict=True)
     c = await _owned_creator(db, user.id, creator_id)
     if c.status != "ready":
-        raise HTTPException(409, "creator is not ready")
+        raise HTTPException(409, "This character isn't ready yet.")
     if mimic:
         await _check_motion(user.id, body)
 
@@ -309,7 +309,7 @@ async def create_video(creator_id: int, body: VideoCreate, background: Backgroun
         CreatorVideo.user_id == user.id, CreatorVideo.created_at >= since,
         CreatorVideo.status != "failed"))).scalar_one()
     if today >= settings.creators_daily_videos_per_user:
-        raise HTTPException(429, "daily video limit reached")
+        raise HTTPException(429, "You've reached today's video limit. Try again tomorrow.")
 
     # Intent log antes do relay: nonce único barra o mesmo pagamento duas vezes.
     v = CreatorVideo(user_id=user.id, creator_id=c.id, quality=body.quality, model=sc.QUALITIES[body.quality]["model"],
@@ -322,7 +322,7 @@ async def create_video(creator_id: int, body: VideoCreate, background: Backgroun
         await db.commit()
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(409, "payment already used")
+        raise HTTPException(409, "That payment was already used. Try again.")
 
     from server.routes.arc_routes import _arc_native
     try:
@@ -334,7 +334,7 @@ async def create_video(creator_id: int, body: VideoCreate, background: Backgroun
         logger.warning("creator video payment relay failed: %s", exc)
         v.status, v.error = "failed", "payment failed"
         await db.commit()
-        raise HTTPException(402, f"payment failed: {exc}")
+        raise HTTPException(402, "The payment didn't go through. Check your USDC balance and try again.")
 
     v.payment_tx, v.status = result.tx_hash, "queued"
     db.add(ArcTransfer(from_address=p.from_address.lower(), to_address=p.to_address.lower(),
@@ -347,20 +347,20 @@ async def create_video(creator_id: int, body: VideoCreate, background: Backgroun
 async def _check_motion(user_id: int, body: VideoCreate) -> None:
     """Tudo que dá para conferir do vídeo de movimento ANTES de cobrar: termo, dono, existência e duração."""
     if not body.motion_rights_confirmed:
-        raise HTTPException(422, "confirm you have the right to use this video")
+        raise HTTPException(422, "Confirm you have the right to use this video.")
     key = body.motion_key or ""
     if not key.startswith(f"creators/{user_id}/motion/") or ".." in key:
-        raise HTTPException(422, "unknown motion video")
+        raise HTTPException(422, "We couldn't find that video. Choose it again.")
     try:
         if await media_storage.object_size(key) is None:
-            raise HTTPException(409, "motion video not uploaded")
+            raise HTTPException(409, "The video didn't finish uploading. Try again.")
         length = await sc.probe_duration(media_storage.presign_get(key))
     except media_storage.StorageNotConfigured as exc:
-        raise HTTPException(503, f"storage unavailable: {exc}")
+        raise HTTPException(503, "Uploads are unavailable right now. Try again later.")
     except ValueError:
-        raise HTTPException(422, "could not read the motion video")
+        raise HTTPException(422, "We couldn't read that video. Try another file.")
     if length < body.duration_s - 0.5:
-        raise HTTPException(422, f"the motion video is {length:.0f}s long, shorter than the {body.duration_s}s you chose")
+        raise HTTPException(422, f"Your video is {length:.0f}s long, shorter than the {body.duration_s}s you chose. Pick a longer video or a shorter length.")
 
 
 @router.get("/videos", response_model=list[VideoOut])
@@ -381,19 +381,18 @@ async def get_video(video_id: int, authorization: Optional[str] = Header(default
     v = (await db.execute(select(CreatorVideo).where(
         CreatorVideo.id == video_id, CreatorVideo.user_id == user.id))).scalars().first()
     if not v:
-        raise HTTPException(404, "video not found")
+        raise HTTPException(404, "Video not found.")
     return _video_out(v)
 
 
 def _failure_message(quality: str) -> str:
     if quality == "pro_seedance":
         # A fal recusa no Seedance pessoa real e personagem com direitos; regra do provedor, não contornamos.
-        return "Seedance refused this image (real people and copyrighted characters aren't allowed there). " \
-               "Try Standard or Pro · OmniHuman. Refund pending."
+        return "Pro+ doesn't accept real people or known characters. Try Standard or Pro. Your payment will be refunded."
     if sc.kind(quality) == "mimic":
-        return ("The mimic failed. The reference video needs one clear person with head and body in view, and the "
-                "photo a clear full character. Refund pending.")
-    return "Generation failed. Refund pending."
+        return ("We couldn't make this video. It works best with one person in full view in the video, and a clear "
+                "full-body character photo. Your payment will be refunded.")
+    return "We couldn't make this video. Your payment will be refunded."
 
 
 async def run_video(video_id: int) -> None:

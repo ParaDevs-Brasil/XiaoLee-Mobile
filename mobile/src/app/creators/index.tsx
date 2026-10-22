@@ -101,19 +101,19 @@ export default function CreatorsScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <PageHeading title="AI Creators" subtitle="Your face, a character or a meme saying your script on video. Paid in USDC, per video." />
+        <PageHeading title="AI Creators" subtitle="Make videos with your own characters. You pay per video, in USDC." />
 
         {!hasSession ? (
           <EmptyState
             Icon={IconUser}
-            title="Sign in to create personas"
-            text="Personas and videos are tied to your account."
+            title="Sign in to make videos"
+            text="Your characters and videos are saved to your account."
             action={<ConnectWalletButton label="Connect Wallet" />}
           />
         ) : (
           <>
             {catalog && !catalog.enabled ? (
-              <Text style={styles.note}>AI Creators are not available right now.</Text>
+              <Text style={styles.note}>AI Creators aren’t available right now.</Text>
             ) : null}
             {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -126,29 +126,29 @@ export default function CreatorsScreen() {
               >
                 <View style={styles.rowTop}>
                   <IconPlus size={16} color={colors.onAccent} />
-                  <Text style={styles.btnText}>New persona</Text>
+                  <Text style={styles.btnText}>New character</Text>
                 </View>
               </Pressable>
             ) : (
-              <SectionCard title="New persona" subtitle="Your face, a character or a meme. No sexual content, no minors, no pretending to be someone to fool people.">
-                <Pressable onPress={pick} style={styles.photoPick} accessibilityRole="button" accessibilityLabel="Choose reference photo">
+              <SectionCard title="New character" subtitle="Use your own photo or a character. No sexual content, no minors, and no pretending to be someone else.">
+                <Pressable onPress={pick} style={styles.photoPick} accessibilityRole="button" accessibilityLabel="Choose a photo">
                   {image ? (
                     <Image source={{ uri: image.uri }} style={styles.photo} contentFit="cover" />
                   ) : (
-                    <Text style={styles.desc}>Choose a reference photo (vertical, face visible)</Text>
+                    <Text style={[styles.desc, { textAlign: 'center', paddingHorizontal: Spacing.three }]}>Choose a photo. Vertical and full body works best.</Text>
                   )}
                 </Pressable>
 
                 <TextInput
                   value={name}
                   onChangeText={setName}
-                  placeholder="Persona name"
+                  placeholder="Character name"
                   placeholderTextColor={colors.ink3}
                   maxLength={60}
                   style={styles.input}
                 />
 
-                <Text style={styles.label}>Voice</Text>
+                <Text style={styles.label}>Voice for talking videos</Text>
                 <View style={styles.chips}>
                   {catalog?.voices.map((v) => (
                     <Pressable
@@ -175,7 +175,7 @@ export default function CreatorsScreen() {
                     {rights ? <IconCheck size={14} color={colors.onAccent} /> : null}
                   </View>
                   <Text style={[styles.desc, { flex: 1 }]}>
-                    This image is mine, or it&apos;s parody / fan content, and I won&apos;t use it to deceive or harass anyone.
+                    This image is mine, or it&apos;s fan art or parody. I won&apos;t use it to deceive or harass anyone.
                   </Text>
                 </Pressable>
 
@@ -185,7 +185,7 @@ export default function CreatorsScreen() {
                   style={[styles.primary, !canSave && styles.disabled]}
                   accessibilityRole="button"
                 >
-                  {saving ? <ActivityIndicator color={colors.onAccent} /> : <Text style={styles.btnText}>Create persona</Text>}
+                  {saving ? <ActivityIndicator color={colors.onAccent} /> : <Text style={styles.btnText}>Create character</Text>}
                 </Pressable>
                 <Pressable onPress={() => setCreating(false)} disabled={saving} accessibilityRole="button">
                   <Text style={styles.cancel}>Cancel</Text>
@@ -196,9 +196,9 @@ export default function CreatorsScreen() {
             {creators === null ? (
               <ActivityIndicator color={colors.accent} />
             ) : creators.length === 0 ? (
-              <EmptyState Icon={IconUser} title="No personas yet" text="Create one with a photo and a voice." />
+              <EmptyState Icon={IconUser} title="No characters yet" text="Add a photo and pick a voice to make your first one." />
             ) : (
-              <SectionCard title="Your personas" subtitle={`${creators.length}`}>
+              <SectionCard title="Your characters" subtitle={`${creators.length}`}>
                 {creators.map((c) => (
                   <Pressable
                     key={c.id}
