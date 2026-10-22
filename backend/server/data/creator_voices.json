@@ -268,5 +268,75 @@
   "age": "young",
   "accent": "american",
   "language": "en"
+ },
+ {
+  "id": "8EY2gK6oUxZCDZAlvUpZ",
+  "name": "Pri",
+  "description": "Warm & Natural Brazilian Portuguese",
+  "gender": "female",
+  "category": "Brazilian",
+  "age": "middle_aged",
+  "accent": "brazilian",
+  "language": "pt"
+ },
+ {
+  "id": "PznTnBc8X6pvixs9UkQm",
+  "name": "Dani",
+  "description": "Warm Brazilian Social Media Voice",
+  "gender": "female",
+  "category": "Brazilian",
+  "age": "middle_aged",
+  "accent": "brazilian",
+  "language": "pt"
+ },
+ {
+  "id": "oxbYD1TO2CqZp6MJoeD0",
+  "name": "Serena",
+  "description": "Cute, Relaxed",
+  "gender": "female",
+  "category": "Brazilian",
+  "age": "young",
+  "accent": "brazilian",
+  "language": "pt"
+ },
+ {
+  "id": "BQzELs93jJsUOf5rCb9p",
+  "name": "Vanessa",
+  "description": "Confident",
+  "gender": "female",
+  "category": "Brazilian",
+  "age": "middle_aged",
+  "accent": "brazilian",
+  "language": "pt"
+ },
+ {
+  "id": "XBqltNZ5pAkMg6TB8lGM",
+  "name": "Sulamita",
+  "description": "Mature, Firm",
+  "gender": "female",
+  "category": "Brazilian",
+  "age": "middle_aged",
+  "accent": "brazilian",
+  "language": "pt"
+ },
+ {
+  "id": "MPDBOuBk4rkLBByX9RF4",
+  "name": "Keren",
+  "description": "Soft Brazilian Female",
+  "gender": "female",
+  "category": "Brazilian",
+  "age": "young",
+  "accent": "brazilian",
+  "language": "pt"
+ },
+ {
+  "id": "Fy0y2P2qP6NrsDcvbxmJ",
+  "name": "Thayane",
+  "description": "Northern Brazilian accent",
+  "gender": "female",
+  "category": "Brazilian",
+  "age": "middle_aged",
+  "accent": "brazilian",
+  "language": "pt"
  }
 ]
