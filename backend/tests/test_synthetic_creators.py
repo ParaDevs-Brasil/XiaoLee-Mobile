@@ -23,7 +23,7 @@ os.environ.setdefault("JWT_SECRET", "route-test-jwt-secret-32-chars-ok")
 os.environ.setdefault("ENCRYPTION_KEY", "route-test-encryption-key-xxxxxx")
 
 from database.database import get_db_session
-from database.models import ArcTransfer, CreatorVideo, SyntheticCreator, User, WebSession
+from database.models import ArcTransfer, CreatorPreview, CreatorVideo, SyntheticCreator, User, WebSession
 from server import synthetic_creators as sc
 
 app_module = importlib.import_module("server.app")
@@ -331,3 +331,143 @@ async def test_mux_puts_the_audio_track_on_a_silent_video(tmp_path):
     kinds = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(res)],
                            capture_output=True, text=True).stdout.split()
     assert sorted(kinds) == ["audio", "video"]
+
+
+# --- swap: prévia do quadro + trava de foto real ---------------------------------------------------------------
+
+def _swap_env(monkeypatch, kind="character"):
+    async def read(key):
+        return b"img"
+
+    async def image_kind(image, content_type):
+        return kind
+
+    monkeypatch.setattr(routes.sc, "read_object", read)
+    monkeypatch.setattr(routes.sc, "image_kind", image_kind)
+    monkeypatch.setattr(routes, "run_preview", _noop)
+    _motion_ok(monkeypatch)
+
+
+def _preview_body(**over):
+    return {"motion_key": MOTION, "motion_rights_confirmed": True, **over}
+
+
+def test_closest_aspect_matches_the_video():
+    assert sc.closest_aspect(720, 1280) == "9:16"
+    assert sc.closest_aspect(1920, 1080) == "16:9"
+    assert sc.closest_aspect(1000, 1000) == "1:1"
+
+
+@pytest.mark.asyncio
+async def test_preview_is_created_for_a_character_and_needs_the_rights_term(db, monkeypatch):
+    cid, h = await _persona(db)
+    _swap_env(monkeypatch)
+    r = client.post(f"/v1/creators/{cid}/previews", headers=h, json=_preview_body())
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "working" and r.json()["frame_url"] is None
+    p = (await db.execute(select(CreatorPreview))).scalars().one()
+    assert p.motion_key == MOTION and p.creator_id == cid
+    no_term = client.post(f"/v1/creators/{cid}/previews", headers=h, json=_preview_body(motion_rights_confirmed=False))
+    assert no_term.status_code == 422
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind,msg", [("real_person_photo", "real people"), ("unsure", "couldn't check")])
+async def test_preview_gate_blocks_real_people_and_fails_closed(db, monkeypatch, kind, msg):
+    cid, h = await _persona(db)
+    _swap_env(monkeypatch, kind=kind)
+    r = client.post(f"/v1/creators/{cid}/previews", headers=h, json=_preview_body())
+    assert r.status_code == 422 and msg in r.json()["detail"]
+    assert (await db.execute(select(CreatorPreview))).scalars().all() == []
+
+
+@pytest.mark.asyncio
+async def test_preview_has_a_daily_limit(db, monkeypatch):
+    cid, h = await _persona(db)
+    _swap_env(monkeypatch)
+    for _ in range(routes.settings.creators_daily_previews_per_user):
+        db.add(CreatorPreview(user_id=1, creator_id=cid, motion_key=MOTION, status="ready", frame_key="k"))
+    await db.commit()
+    r = client.post(f"/v1/creators/{cid}/previews", headers=h, json=_preview_body())
+    assert r.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_run_preview_stores_the_frame_or_marks_failure(db, monkeypatch):
+    cid, _ = await _persona(db)
+    p = CreatorPreview(user_id=1, creator_id=cid, motion_key=MOTION, status="working")
+    db.add(p)
+    await db.commit()
+    uploaded = []
+
+    async def compose(**kw):
+        return b"png"
+
+    async def upload(path, key, content_type):
+        uploaded.append((key, content_type))
+
+    monkeypatch.setattr(routes.sc, "compose_frame", compose)
+    monkeypatch.setattr(routes.media_storage, "upload_file", upload)
+    monkeypatch.setattr(routes._dbmod, "SessionLocal", lambda: _Ctx(db))
+    await _real_run_preview(p.id)
+    await db.refresh(p)
+    assert p.status == "ready" and p.frame_key.startswith("creators/1/previews/") and uploaded[0][1] == "image/png"
+
+    async def boom(**kw):
+        raise RuntimeError("fal down")
+
+    monkeypatch.setattr(routes.sc, "compose_frame", boom)
+    q = CreatorPreview(user_id=1, creator_id=cid, motion_key=MOTION, status="working")
+    db.add(q)
+    await db.commit()
+    await _real_run_preview(q.id)
+    await db.refresh(q)
+    assert q.status == "failed" and "couldn't make the preview" in q.error
+
+
+_real_run_preview = routes.run_preview
+
+
+@pytest.mark.asyncio
+async def test_swap_video_needs_a_ready_preview_of_the_same_character_and_video(db, monkeypatch):
+    cid, h = await _persona(db)
+    _relay_ok(monkeypatch, [])
+    _motion_ok(monkeypatch)
+    ready = CreatorPreview(user_id=1, creator_id=cid, motion_key=MOTION, status="ready", frame_key="creators/1/previews/1-a.png")
+    working = CreatorPreview(user_id=1, creator_id=cid, motion_key=MOTION, status="working")
+    other_video = CreatorPreview(user_id=1, creator_id=cid, motion_key="creators/1/motion/other", status="ready", frame_key="k")
+    db.add_all([ready, working, other_video])
+    await db.commit()
+
+    r = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_mimic_body(preview_id=working.id))
+    assert r.status_code == 409
+    r = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_mimic_body(preview_id=other_video.id))
+    assert r.status_code == 422
+    r = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_mimic_body(preview_id=999))
+    assert r.status_code == 422
+    ok = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_mimic_body(preview_id=ready.id))
+    assert ok.status_code == 200, ok.text
+    v = (await db.execute(select(CreatorVideo))).scalars().one()
+    assert v.preview_id == ready.id
+
+
+@pytest.mark.asyncio
+async def test_swap_video_renders_from_the_approved_frame(db, monkeypatch):
+    cid, _ = await _persona(db)
+    pv = CreatorPreview(user_id=1, creator_id=cid, motion_key=MOTION, status="ready", frame_key="creators/1/previews/1-a.png")
+    db.add(pv)
+    await db.flush()
+    v = CreatorVideo(user_id=1, creator_id=cid, quality="mimic", model="m", duration_s=5, script="", price_usdc=0.7,
+                     payment_from=PAYER, payment_nonce="n9", payment_tx="0xtx", status="queued", motion_key=MOTION,
+                     preview_id=pv.id)
+    db.add(v)
+    await db.commit()
+    seen = {}
+
+    async def render_mimic(**kw):
+        seen.update(kw)
+
+    monkeypatch.setattr(routes.sc, "render_mimic", render_mimic)
+    monkeypatch.setattr(routes._dbmod, "SessionLocal", lambda: _Ctx(db))
+    await _real_run_video(v.id)
+    assert seen["ref_image_key"] == "creators/1/previews/1-a.png" and seen["ref_content_type"] == "image/png"

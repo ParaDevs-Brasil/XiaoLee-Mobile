@@ -9,6 +9,7 @@ Persona pode ser o próprio rosto, personagem ou meme (termo de direitos aceito 
 from __future__ import annotations
 
 import asyncio
+import base64
 import logging
 import math
 import os
@@ -183,13 +184,14 @@ def fal_input(quality: str, image_url: str, audio_url: str, duration_s: int) -> 
     return {"image_url": image_url, "audio_url": audio_url, **q["extra"]}
 
 
-async def _fal_video(http: httpx.AsyncClient, model: str, payload: dict) -> str:
+async def _fal_run(http: httpx.AsyncClient, model: str, payload: dict, timeout_s: int = FAL_TIMEOUT_S) -> dict:
+    """Fila da fal: envia, espera terminar e devolve o JSON do resultado."""
     fal = {"Authorization": f"Key {settings.fal_key}"}
     r = await http.post(f"https://queue.fal.run/{model}", headers=fal, json=payload)
     r.raise_for_status()
     job = r.json()
     # ponytail: poll de 5 s no processo (workers=1); webhook da fal se houver mais de um worker
-    for _ in range(FAL_TIMEOUT_S // FAL_POLL_S):
+    for _ in range(timeout_s // FAL_POLL_S):
         s = (await http.get(job["status_url"], headers=fal)).json()
         if s["status"] == "COMPLETED":
             break
@@ -198,7 +200,11 @@ async def _fal_video(http: httpx.AsyncClient, model: str, payload: dict) -> str:
         await asyncio.sleep(FAL_POLL_S)
     else:
         raise TimeoutError("fal timeout")
-    result = (await http.get(job["response_url"], headers=fal)).json()
+    return (await http.get(job["response_url"], headers=fal)).json()
+
+
+async def _fal_video(http: httpx.AsyncClient, model: str, payload: dict) -> str:
+    result = await _fal_run(http, model, payload)
     url = (result.get("video") or {}).get("url")
     if not url:
         # `detail` é o motivo que a fal dá (validação, moderação); vai só para o log, nunca para o app.
@@ -294,3 +300,103 @@ async def render_mimic(*, quality: str, prompt: str, duration_s: int, ref_image_
         f.write(video)
         f.flush()
         await media_storage.upload_file(f.name, video_key, "video/mp4")
+
+
+# --- Swap: quadro de prévia + trava de foto real ---------------------------------------------------------------
+# Como o Mimic 2 do Creathoon: um modelo de imagem compõe o personagem no lugar da pessoa do primeiro quadro do vídeo;
+# o usuário aprova esse quadro e só então o vídeo é gerado (Kling) a partir dele, com o cenário já certo.
+
+FRAME_MODEL = "fal-ai/nano-banana/edit"
+FRAME_ASPECTS = {"21:9": 21 / 9, "16:9": 16 / 9, "3:2": 3 / 2, "4:3": 4 / 3, "5:4": 5 / 4, "1:1": 1.0, "4:5": 4 / 5,
+                 "3:4": 3 / 4, "2:3": 2 / 3, "9:16": 9 / 16}
+FRAME_PROMPT = ("Replace the person in the center of the first image with the character from the second image. Keep the "
+                "background, the lighting, the camera framing, the body pose and everything else in the first image "
+                "exactly as it is. The character keeps its own face, hair, clothes and style. Photorealistic result.")
+
+
+def closest_aspect(width: int, height: int) -> str:
+    """O aspect_ratio aceito pelo modelo de imagem mais próximo do vídeo (o quadro sai no formato do vídeo)."""
+    ratio = width / height
+    return min(FRAME_ASPECTS, key=lambda k: abs(FRAME_ASPECTS[k] - ratio))
+
+
+async def read_object(key: str) -> bytes:
+    """Bytes de um arquivo do R2 (pela URL de leitura temporária)."""
+    async with httpx.AsyncClient(timeout=60) as http:
+        return (await http.get(media_storage.presign_get(key))).raise_for_status().content
+
+
+async def probe_size(url: str) -> tuple[int, int]:
+    def _run():
+        return subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", url],
+            stdin=subprocess.DEVNULL, capture_output=True, timeout=30,
+        )
+
+    try:
+        w, h = (await asyncio.to_thread(_run)).stdout.decode().strip().split(",")[:2]
+        return int(w), int(h)
+    except (subprocess.TimeoutExpired, ValueError):
+        raise ValueError("could not read the reference video")
+
+
+async def compose_frame(*, motion_key: str, ref_image_key: str, ref_content_type: str) -> bytes:
+    """PNG do primeiro quadro do vídeo com o personagem no lugar da pessoa. O ffmpeg lê o vídeo pela URL pré-assinada
+    (só o começo; nada de baixar 100 MB)."""
+    video_url = media_storage.presign_get(motion_key)
+    width, height = await probe_size(video_url)
+    with tempfile.TemporaryDirectory() as tmp:
+        frame = os.path.join(tmp, "frame.png")
+        await clipper.run_ffmpeg(["-ss", "0.5", "-i", video_url, "-frames:v", "1", "-y", frame], video_url, 60)
+        with open(frame, "rb") as f:
+            frame_png = f.read()
+    image = await read_object(ref_image_key)
+    async with httpx.AsyncClient(timeout=120) as http:
+        frame_url = await _fal_upload(http, frame_png, "image/png", "frame.png")
+        char_url = await _fal_upload(http, image, ref_content_type, "char" + _ext(ref_content_type))
+        result = await _fal_run(http, FRAME_MODEL, {
+            "prompt": FRAME_PROMPT, "image_urls": [frame_url, char_url], "output_format": "png", "num_images": 1,
+            "aspect_ratio": closest_aspect(width, height),
+        }, timeout_s=180)
+        images = result.get("images") or []
+        if not images:
+            raise RuntimeError(f"fal response without images ({str(result.get('detail', list(result)))[:300]})")
+        return (await http.get(images[0]["url"])).raise_for_status().content
+
+
+_KIND_SYSTEM = (
+    "You are a content-safety filter. Look at ONE image and say what kind it is. Never try to identify who anyone is. "
+    "'real_person_photo': a photograph, or a photorealistic image, of a real human being (selfie, portrait, event photo, "
+    "screenshot of a real person). 'character': an illustration, cartoon, anime, mascot, or a 3D / game / film render of a "
+    "fictional character. 'unsure': you cannot tell."
+)
+_KIND_TOOL = {
+    "name": "report_kind",
+    "description": "Report the kind of image.",
+    "input_schema": {"type": "object", "properties": {"kind": {"type": "string", "enum": ["real_person_photo", "character", "unsure"]}},
+                     "required": ["kind"]},
+}
+
+
+async def image_kind(image: bytes, content_type: str) -> str:
+    """`real_person_photo` | `character` | `unsure`. Sem chave ou com falha devolve `unsure`: quem chama bloqueia (a trava
+    falha fechada). Não identifica ninguém; só separa foto de gente de personagem."""
+    import anthropic
+
+    if not settings.anthropic_api_key:
+        return "unsure"
+    try:
+        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=30, max_retries=1)
+        msg = await client.messages.create(
+            model=settings.anthropic_model, max_tokens=100, system=_KIND_SYSTEM, tools=[_KIND_TOOL],
+            tool_choice={"type": "tool", "name": "report_kind"},
+            messages=[{"role": "user", "content": [
+                {"type": "image", "source": {"type": "base64", "media_type": content_type, "data": base64.b64encode(image).decode()}},
+                {"type": "text", "text": "What kind of image is this?"}]}],
+        )
+        block = next((b for b in msg.content if b.type == "tool_use"), None)
+        kind_ = block.input.get("kind") if block else None
+        return kind_ if kind_ in ("real_person_photo", "character", "unsure") else "unsure"
+    except Exception as exc:
+        logger.warning("image kind check failed: %s", type(exc).__name__)
+        return "unsure"
