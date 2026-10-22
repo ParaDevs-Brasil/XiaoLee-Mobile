@@ -1170,6 +1170,7 @@ export interface CreatorVideo {
   error: string | null;
   refund_due: boolean;
   payment_tx: string | null;
+  audio: 'none' | 'original' | 'voice';
   video_url: string | null;
   created_at: string | null;
 }
@@ -1219,6 +1220,8 @@ export function createCreatorVideo(
     /** Só no `mimic`: o vídeo de `createMotionUpload` e o termo de direito de uso. */
     motion_key?: string;
     motion_rights_confirmed?: boolean;
+    /** Só no `mimic`: sem som, o som do vídeo de referência, ou a narração do `script` com a voz da persona. */
+    audio?: 'none' | 'original' | 'voice';
   },
 ): Promise<CreatorVideo> {
   return apiFetch<CreatorVideo>(`/v1/creators/${creatorId}/videos`, { method: 'POST', json: request });

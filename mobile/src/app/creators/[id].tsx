@@ -31,6 +31,12 @@ import { shortHash } from '@/lib/format';
 import { usePrivyWallet } from '@/lib/wallet';
 
 const POLL_MS = 5000;
+
+const SOUNDS: { id: 'none' | 'original' | 'voice'; label: string; hint: string }[] = [
+  { id: 'original', label: 'Original sound', hint: "Keeps the reference video's own audio." },
+  { id: 'voice', label: 'Voice', hint: "The character's voice says your script." },
+  { id: 'none', label: 'Silent', hint: 'No audio — add your own music when you post.' },
+];
 /** O botão flutuante do Chat cobre o fim da lista: a folga extra deixa o botão de pagar à vista. */
 const CHAT_FAB_CLEARANCE = 72;
 
@@ -59,6 +65,7 @@ export default function CreatorScreen() {
   const [motion, setMotion] = useState<PickedMotion | null>(null);
   const [motionRights, setMotionRights] = useState(false);
   const [scene, setScene] = useState('');
+  const [audio, setAudio] = useState<'none' | 'original' | 'voice'>('original');
   const [chosenDuration, setDuration] = useState(5);
   const [chosenQuality, setQuality] = useState<CreatorQuality['quality']>('standard');
   const [confirming, setConfirming] = useState(false);
@@ -91,6 +98,8 @@ export default function CreatorScreen() {
   }, [pending, creatorId]);
 
   const mimic = format === 'mimic';
+  // Fala = o roteiro é dito em voz alta: o Talk sempre, o Mimic só quando o usuário escolhe "Voice".
+  const narrated = !mimic || audio === 'voice';
   // O que vale vem do formato: as faixas e durações trocam sozinhas, sem estado a sincronizar.
   const qualities = catalog?.qualities.filter((q) => q.kind === format) ?? [];
   const quality = qualities.find((q) => q.quality === chosenQuality)?.quality ?? qualities[0]?.quality ?? chosenQuality;
@@ -99,7 +108,8 @@ export default function CreatorScreen() {
   const limit = catalog ? maxWords(duration, catalog.words_per_s) : 0;
   const words = wordCount(script);
   const price = qualities.find((q) => q.quality === quality)?.prices[String(duration)] ?? null;
-  const ready = mimic ? Boolean(motion && motionRights && durations.includes(duration)) : words > 0 && words <= limit;
+  const scriptOk = words > 0 && words <= limit;
+  const ready = mimic ? Boolean(motion && motionRights && durations.includes(duration)) && (!narrated || scriptOk) : scriptOk;
   const canPay = Boolean(catalog?.enabled && catalog.pay_to && price && ready) && !paying;
 
   async function pickMotion() {
@@ -136,9 +146,9 @@ export default function CreatorScreen() {
       const video = await createCreatorVideo(creatorId, {
         quality,
         duration_s: duration,
-        script: mimic ? scene : script,
+        script: narrated ? script : scene,
         payment,
-        ...(motionKey ? { motion_key: motionKey, motion_rights_confirmed: true } : {}),
+        ...(motionKey ? { motion_key: motionKey, motion_rights_confirmed: true, audio } : {}),
       });
       setVideos((list) => [video, ...list]);
       setConfirming(false);
@@ -182,21 +192,38 @@ export default function CreatorScreen() {
         <CreatorFormatPicker value={format} onChange={(f) => { setFormat(f); setConfirming(false); }} />
 
         {mimic ? (
-          <SectionCard title="Movement" subtitle="The character repeats this video's moves. Its sound is removed.">
+          <SectionCard title="Movement" subtitle="The character repeats this video's moves.">
             <Pressable onPress={pickMotion} style={styles.photoPick} accessibilityRole="button" accessibilityLabel="Choose the movement video">
               <IconPlay size={28} color={colors.accent} />
               <Text style={styles.desc}>
-                {motion ? `Video chosen · ${Math.round(motion.seconds)}s — tap to change` : 'Choose a video (one person, head and body in view)'}
+                {motion ? `Video chosen · ${Math.round(motion.seconds)}s — tap to change` : 'Choose a video: one person, full body in view, staying in place, steady camera'}
               </Text>
             </Pressable>
-            <TextInput
-              value={scene}
-              onChangeText={setScene}
-              placeholder="Optional: describe the scene"
-              placeholderTextColor={colors.ink3}
-              maxLength={300}
-              style={styles.input}
-            />
+            <Text style={styles.label}>Sound</Text>
+            <View style={styles.chips}>
+              {SOUNDS.map((o) => (
+                <Pressable
+                  key={o.id}
+                  onPress={() => setAudio(o.id)}
+                  style={[styles.chip, audio === o.id && styles.chipActive]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: audio === o.id }}
+                >
+                  <Text style={[styles.chipText, audio === o.id && styles.chipTextActive]}>{o.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <Text style={styles.desc}>{SOUNDS.find((o) => o.id === audio)?.hint}</Text>
+            {audio !== 'voice' ? (
+              <TextInput
+                value={scene}
+                onChangeText={setScene}
+                placeholder="Optional: describe the scene"
+                placeholderTextColor={colors.ink3}
+                maxLength={300}
+                style={styles.input}
+              />
+            ) : null}
             <Pressable
               onPress={() => setMotionRights((v) => !v)}
               style={styles.rowTop}
@@ -207,15 +234,17 @@ export default function CreatorScreen() {
                 {motionRights ? <IconCheck size={14} color={colors.onAccent} /> : null}
               </View>
               <Text style={[styles.desc, { flex: 1 }]}>
-                I have the right to use this video. The result is made with AI and I won&apos;t use it to deceive or harass anyone.
+                I have the right to use this video and its sound. The result is made with AI and I won&apos;t use it to deceive or harass anyone.
               </Text>
             </Pressable>
             {motion && durations.length === 0 ? (
               <Text style={styles.error}>This video is shorter than {catalog?.durations_s[0]}s. Pick a longer one.</Text>
             ) : null}
           </SectionCard>
-        ) : (
-        <SectionCard title="Script" subtitle={`${words}/${limit} words for ${duration}s`}>
+        ) : null}
+
+        {narrated ? (
+        <SectionCard title={mimic ? 'What they say' : 'Script'} subtitle={`${words}/${limit} words for ${duration}s`}>
           <View style={styles.rowTop}>
             <TextInput
               value={topic}
@@ -246,7 +275,7 @@ export default function CreatorScreen() {
           />
           {words > limit ? <Text style={styles.error}>Too long for {duration}s — cut to {limit} words or pick a longer video.</Text> : null}
         </SectionCard>
-        )}
+        ) : null}
 
         <SectionCard title="Length" subtitle={mimic && !motion ? 'Choose the movement video first.' : undefined}>
           <View style={styles.chips}>
