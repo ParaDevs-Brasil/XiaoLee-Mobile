@@ -51,6 +51,7 @@ function WalletHome({ address, addressLoading }: { address: string | undefined; 
         isConnected={isConnected}
         onSignOut={disconnect}
         onSeeAllReceipts={() => router.push('/wallet/receipts')}
+        onSeeActivity={() => router.push('/wallet/activity')}
         onOpenBreakdown={() => router.push('/wallet/breakdown')}
       />
     </ScreenShell>

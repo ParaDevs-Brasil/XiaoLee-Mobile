@@ -15,15 +15,15 @@ export const PIPELINE_STEPS = ['Upload', 'Transcribe', 'Pick moments', 'Cut & ca
 const DOT = 28;
 
 /** `current` é o índice do passo em andamento; os anteriores estão feitos, os seguintes por vir. */
-export function PipelineSteps({ current }: { current: number }) {
+export function PipelineSteps({ current, steps = PIPELINE_STEPS }: { current: number; steps?: readonly string[] }) {
   const styles = useStyles();
   return (
     <View
       style={styles.row}
       accessible
-      accessibilityLabel={`Step ${current + 1} of ${PIPELINE_STEPS.length}: ${PIPELINE_STEPS[current]}`}
+      accessibilityLabel={`Step ${current + 1} of ${steps.length}: ${steps[current]}`}
     >
-      {PIPELINE_STEPS.map((label, i) => {
+      {steps.map((label, i) => {
         const state = i < current ? 'done' : i === current ? 'active' : 'todo';
         return (
           <View key={label} style={styles.step}>
@@ -34,7 +34,7 @@ export function PipelineSteps({ current }: { current: number }) {
                 style={[
                   styles.line,
                   i < current && styles.lineDone,
-                  i === PIPELINE_STEPS.length - 1 && styles.lineHidden,
+                  i === steps.length - 1 && styles.lineHidden,
                 ]}
               />
             </View>

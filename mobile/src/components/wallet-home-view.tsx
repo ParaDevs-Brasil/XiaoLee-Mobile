@@ -10,8 +10,13 @@ import { IconChevronRight, IconUser } from '@/components/icons';
 import { NetworkMismatchCard } from '@/components/network-badge';
 import { ReceiptRow } from '@/components/receipt-row';
 import { ReceiveSheet } from '@/components/receive-sheet';
+import { AddMoneySheet } from '@/components/add-money-sheet';
+import { WithdrawSheet } from '@/components/withdraw-sheet';
+import { getOnoffConfig } from '@/api/backend';
+import { useBackendData } from '@/hooks/use-backend-data';
 import { PageHeading } from '@/components/screen-shell';
 import { SectionCard } from '@/components/section-card';
+import { WalletActions } from '@/components/wallet-actions';
 import { WalletAddressCard } from '@/components/wallet-address-card';
 import { WalletBalanceCard } from '@/components/wallet-balance-card';
 import { WalletMockSwitcher } from '@/components/wallet-mock-switcher';
@@ -53,6 +58,7 @@ export interface WalletHomeViewProps {
   isConnected: boolean;
   onSignOut: () => void;
   onSeeAllReceipts: () => void;
+  onSeeActivity: () => void;
   onOpenBreakdown: () => void;
 }
 
@@ -106,6 +112,7 @@ export function WalletHomeView({
   isConnected,
   onSignOut,
   onSeeAllReceipts,
+  onSeeActivity,
   onOpenBreakdown,
 }: WalletHomeViewProps) {
   const colors = useTheme();
@@ -113,6 +120,12 @@ export function WalletHomeView({
   // Barra de gestos do Android come o fim da lista sem este inset.
   const insets = useSafeAreaInsets();
   const [receiveOpen, setReceiveOpen] = useState(false);
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  // Saque só aparece com o on/off-ramp ligado no backend (ONOFF_ENABLED); falha de rede = esconde, nunca quebra a tela.
+  const onoff = useBackendData(() => getOnoffConfig().catch(() => null));
+  const canDeposit = hasSession && wallet.status === 'ready' && onoff.data?.deposit_enabled === true;
+  const canWithdraw = hasSession && wallet.status === 'ready' && onoff.data?.withdraw_enabled === true;
 
   const showGuest = !hasSession && !wallet.isMock;
   // Saldo e recompensas vêm do mesmo backend: quando um cai, o outro quase
@@ -182,6 +195,17 @@ export function WalletHomeView({
               />
             ) : null}
 
+            {wallet.status === 'ready' ? (
+              <WalletActions
+                canAdd={canDeposit}
+                canWithdraw={canWithdraw}
+                onAdd={() => setAddOpen(true)}
+                onWithdraw={() => setWithdrawOpen(true)}
+                onReceive={() => setReceiveOpen(true)}
+                onActivity={onSeeActivity}
+              />
+            ) : null}
+
             <WalletAddressCard address={wallet.address} onShowQr={() => setReceiveOpen(true)} />
 
             {!ARC_NETWORK.isMainnet && !wallet.isMock ? <FaucetButton address={wallet.address} /> : null}
@@ -209,6 +233,11 @@ export function WalletHomeView({
 
         <WalletFooter isConnected={isConnected} onSignOut={onSignOut} />
       </ScrollView>
+
+      {addOpen && onoff.data ? (
+        <AddMoneySheet config={onoff.data} onReceive={() => setReceiveOpen(true)} onClose={() => setAddOpen(false)} />
+      ) : null}
+      {withdrawOpen ? <WithdrawSheet maxUsdc={wallet.balanceUsdc ?? null} onClose={() => setWithdrawOpen(false)} /> : null}
 
       {wallet.address ? (
         <ReceiveSheet visible={receiveOpen} address={wallet.address} onClose={() => setReceiveOpen(false)} />

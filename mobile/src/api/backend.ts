@@ -1221,3 +1221,78 @@ export function createCreatorVideo(
 export function listCreatorVideos(creatorId?: number): Promise<CreatorVideo[]> {
   return apiFetch<CreatorVideo[]>(`/v1/creators/videos${creatorId ? `?creator_id=${creatorId}` : ''}`);
 }
+
+/**
+ * On/off-ramp — `server/onoff_routes.py`. O saque entre redes é assinado pela carteira do usuário
+ * (`lib/onoff-burn.ts`); o backend cota a taxa, confere o burn na Circle e acompanha até o mint.
+ *
+ *   GET  /v1/onoff/config
+ *   POST /v1/onoff/withdraw                 (method=chain)
+ *   POST /v1/onoff/intents/{id}/burn        (202 enquanto a Circle ainda não viu a tx)
+ *   GET  /v1/onoff/intents/{id}
+ */
+export interface OnoffConfig {
+  enabled: boolean;
+  deposit_enabled: boolean;
+  withdraw_enabled: boolean;
+  limits_usdc: { per_tx: number; per_day: number; per_month: number };
+  chain_networks: string[];
+  providers: { name: string; methods: string[]; directions: string[] }[];
+}
+
+export type OnoffStatus =
+  | 'created' | 'pending_provider' | 'funds_received' | 'sent_to_provider'
+  | 'settled' | 'paid_out' | 'rejected' | 'expired' | 'failed' | 'refunded' | 'review';
+
+export interface OnoffIntent {
+  intent_id: string;
+  direction: 'deposit' | 'withdraw';
+  method: string;
+  amount_usdc: number;
+  status: OnoffStatus;
+  dest_network: string | null;
+  onchain_tx: string | null;
+  forward_tx: string | null;
+  max_fee_usdc: number | null;
+  url: string | null;
+  burn: import('@/lib/onoff-burn').BurnParams | null;
+  created_at: string | null;
+}
+
+export function startDeposit(amountUsdc: number, method: string, fiatCurrency: string): Promise<OnoffIntent> {
+  return apiFetch<OnoffIntent>('/v1/onoff/deposit', {
+    method: 'POST',
+    json: { amount_usdc: amountUsdc, method, fiat_currency: fiatCurrency },
+  });
+}
+
+export function getOnoffConfig(): Promise<OnoffConfig> {
+  return apiFetch<OnoffConfig>('/v1/onoff/config');
+}
+
+export function startChainWithdraw(amountUsdc: number, network: string, address: string): Promise<OnoffIntent> {
+  return apiFetch<OnoffIntent>('/v1/onoff/withdraw', {
+    method: 'POST',
+    json: { amount_usdc: amountUsdc, method: 'chain', dest_network: network, dest_address: address },
+  });
+}
+
+/**
+ * Resolve `null` quando a Circle ainda não indexou a tx: o backend responde 202 com `detail` no lugar do
+ * intent (2xx não vira `ApiError`), e quem chama tenta de novo.
+ */
+export async function registerBurn(intentId: string, txHash: string): Promise<OnoffIntent | null> {
+  const res = await apiFetch<OnoffIntent | { detail: unknown }>(`/v1/onoff/intents/${intentId}/burn`, {
+    method: 'POST',
+    json: { tx_hash: txHash },
+  });
+  return 'intent_id' in res ? res : null;
+}
+
+export function listOnoffIntents(): Promise<OnoffIntent[]> {
+  return apiFetch<OnoffIntent[]>('/v1/onoff/intents');
+}
+
+export function getOnoffIntent(intentId: string): Promise<OnoffIntent> {
+  return apiFetch<OnoffIntent>(`/v1/onoff/intents/${intentId}`);
+}
