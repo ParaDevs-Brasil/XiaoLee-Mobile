@@ -11,7 +11,7 @@ O app tem boas peças (Chat, Clips, AI Creators, Wallet, Reports), mas hoje são
 
 1. **Testnet e mainnet misturados no texto.** Dashboard diz "registered on Arc Testnet"; Campaigns diz "Join campaigns on Arc Testnet"; Wallet tem "Get testnet USDC" e, no meu ambiente, o aviso **"Wrong network"** (o app em testnet falando com servidor em mainnet, e a carteira escondeu o saldo). O aviso foi culpa do meu Metro sem `EXPO_PUBLIC_ARC_NETWORK=mainnet`, mas mostra o risco: **conferir que o build da demo sobe em mainnet** e padronizar os textos.
 2. **Dashboard mostra números de sandbox** ("$1,000.00 USDC in portfolio · SANDBOX", "Arc DISABLED", "$0.00 settled · 0 creators"). É o que o júri e o criador veem. Esconder o sandbox ou trocar por dados reais do criador (ver P1-3).
-3. **Accounts diz "Posting is not available yet".** É o elo que falta do ciclo, e hoje é um beco sem saída. A publicação existe na branch `feat/social-accounts`, que não está na `develop`.
+3. ~~**Accounts diz "Posting is not available yet".**~~ **Falso alarme (corrigido):** a publicação já está na `develop`, funciona e foi validada pelo user. O aviso só aparece no backend local porque a flag `social_tools_enabled` está desligada lá (o servidor responde 404 de propósito). Em produção, com a flag ligada, a tela mostra as redes. Não há trabalho aqui.
 4. **History mostra markdown cru** (`**85.1 USDC**`, `` `0xe8ECA…` ``) e vem em **"Oldest first"**: com 121 mensagens, o criador tem que rolar 16 dias para achar a de hoje. Trocar para mais recentes primeiro, com busca.
 5. **A Xiaolee responde misturando inglês e português** na mesma resposta ("…todas com zero participantes… não é hora boa de entrar!"). Definir o idioma pela preferência do usuário.
 6. **O botão flutuante do Chat cobre o fim das listas** (em Clips o "Your uploads show up here" fica cortado). Falta margem inferior nas telas.
@@ -20,7 +20,7 @@ O app tem boas peças (Chat, Clips, AI Creators, Wallet, Reports), mas hoje são
 
 ## P1 — O que mais agregaria ao criador
 
-1. **Fechar o ciclo criar → publicar → ganhar → medir.** Quando um vídeo de IA ou um clip fica pronto, oferecer na mesma tela: **Postar no X/Telegram**, **Usar numa campanha**, **Baixar/Compartilhar**. Hoje o criador gera e não tem o que fazer em seguida.
+1. **Fechar o ciclo criar → publicar → ganhar → medir.** (Publicar já existe e funciona; o que falta é ligar a criação a ele.) Quando um vídeo de IA ou um clip fica pronto, oferecer na mesma tela: **Postar no X/Telegram**, **Usar numa campanha**, **Baixar/Compartilhar**. Hoje o criador gera e não tem o que fazer em seguida.
 2. **A Xiaolee (a "home") só sabe DeFi.** As ferramentas dela são swap, saque, transferência e campanhas; **nenhuma** para AI Creators, Clips, Relatórios ou publicação. Ensinar o chat a fazer o que o app faz: "faz um vídeo de 10 s do Joel dizendo X", "corta esse vídeo em clips", "posta no X", "como foi meu mês?". E trocar os atalhos da home (hoje: Make a swap, Create a campaign, View dashboard, Check balance) por ações de criador.
 3. **Dashboard do criador, não da economia.** Mostrar: ganhos em USDC, vídeos gerados, clips feitos, gasto com IA, progresso nas campanhas, saldo.
 4. **Avisar quando o vídeo fica pronto.** A geração leva alguns minutos e o usuário sai da tela. Falta notificação (push ou pelo menos um aviso dentro do app). Hoje Notifications só mostra "receipts".
