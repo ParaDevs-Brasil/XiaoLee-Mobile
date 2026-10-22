@@ -1,5 +1,5 @@
 import { useVideoPlayer } from 'expo-video';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import type { CreatorVoice } from '@/api/backend';
@@ -33,6 +33,13 @@ export function VoicePicker({
   const category = picked && categories.includes(picked) ? picked : (selected?.category ?? categories[0]);
   const inCategory = voices.filter((v) => v.category === category);
 
+  // A aba ativa sempre fica à vista: ao trocar de categoria (ou ao abrir com uma voz já escolhida) a fileira rola até ela.
+  const tabsRef = useRef<ScrollView>(null);
+  const tabX = useRef<Record<string, number>>({});
+  useEffect(() => {
+    tabsRef.current?.scrollTo({ x: Math.max(0, (tabX.current[category] ?? 0) - 24), animated: true });
+  }, [category]);
+
   useEffect(() => {
     const sub = player.addListener('playToEnd', () => setPlaying(null));
     return () => sub.remove();
@@ -60,10 +67,13 @@ export function VoicePicker({
 
   return (
     <View style={styles.wrap}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pills}>
+      <ScrollView ref={tabsRef} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pills}>
         {categories.map((c) => (
           <Pressable
             key={c}
+            onLayout={(e) => {
+              tabX.current[c] = e.nativeEvent.layout.x;
+            }}
             onPress={() => setPicked(c)}
             style={[styles.tab, c === category && styles.tabOn]}
             accessibilityRole="tab"
@@ -105,7 +115,8 @@ export function VoicePicker({
             </Pressable>
             <View style={styles.text}>
               <Text style={styles.name}>
-                {selected.name} <Text style={styles.gender}>· {selected.gender === 'female' ? 'Female' : 'Male'}</Text>
+                {selected.name}{' '}
+                <Text style={styles.gender}>· {selected.gender === 'female' ? 'Female' : 'Male'} · {selected.category}</Text>
               </Text>
               <Text style={styles.desc}>{selected.description}</Text>
             </View>
