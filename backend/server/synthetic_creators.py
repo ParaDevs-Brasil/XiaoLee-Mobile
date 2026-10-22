@@ -200,7 +200,8 @@ async def _fal_video(http: httpx.AsyncClient, model: str, payload: dict) -> str:
     result = (await http.get(job["response_url"], headers=fal)).json()
     url = (result.get("video") or {}).get("url")
     if not url:
-        raise RuntimeError(f"fal response without video.url ({list(result)})")
+        # `detail` é o motivo que a fal dá (validação, moderação); vai só para o log, nunca para o app.
+        raise RuntimeError(f"fal response without video.url ({str(result.get('detail', list(result)))[:300]})")
     return url
 
 
