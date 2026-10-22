@@ -40,6 +40,11 @@ QUALITIES: dict[str, dict] = {
               "model": "fal-ai/kling-video/v2.6/standard/motion-control"},
     "mimic_v3": {"label": "Plus", "hint": "Newer model", "kind": "mimic", "usd_per_s": 0.126, "extra": {},
                  "model": "fal-ai/kling-video/v3/standard/motion-control"},
+    # Swap: o Kling O3 EDITA o vídeo do usuário (cena e pessoas ao redor ficam as do vídeo) trocando só o personagem.
+    "swap": {"label": "Plus", "hint": "Standard quality", "kind": "swap", "usd_per_s": 0.126, "extra": {},
+             "model": "fal-ai/kling-video/o3/standard/video-to-video/edit"},
+    "swap_pro": {"label": "Pro", "hint": "Top quality", "kind": "swap", "usd_per_s": 0.168, "extra": {},
+                 "model": "fal-ai/kling-video/o3/pro/video-to-video/edit"},
     "mimic_v3_pro": {"label": "Pro", "hint": "Top quality", "kind": "mimic", "usd_per_s": 0.168, "extra": {},
                      "model": "fal-ai/kling-video/v3/pro/motion-control"},
 }
@@ -51,7 +56,8 @@ MIMIC_DEFAULT_PROMPT = "The character performs the same movement as the referenc
 
 
 def kind(quality: str) -> str:
-    """`speech`: persona fala um roteiro (voz + vídeo). `mimic`: persona repete o movimento de um vídeo."""
+    """`speech`: persona fala um roteiro (voz + vídeo). `mimic`: persona repete o movimento de um vídeo, no cenário da
+    própria imagem. `swap`: o personagem entra no lugar de alguém num vídeo, que é editado (a cena é a do vídeo)."""
     return QUALITIES[quality].get("kind", "speech")
 
 # Vozes prontas (premade) do ElevenLabs — funcionam no plano atual; vozes da biblioteca dão 402.
@@ -400,3 +406,123 @@ async def image_kind(image: bytes, content_type: str) -> str:
     except Exception as exc:
         logger.warning("image kind check failed: %s", type(exc).__name__)
         return "unsure"
+
+
+# --- Swap: Kling O3 Edit --------------------------------------------------------------------------------------------
+SWAP_PROMPT = (
+    "Replace the main person in @Video1 (the one most in focus) with @Element1. Keep everything else in @Video1 exactly the "
+    "same: the background, the people around, the camera, the lighting and the audio. The new character must copy the "
+    "original person's movements, expressions and speech timing. @Image1 shows how the new character should look in this scene."
+)
+ANGLE_PROMPTS = (
+    "Show the same character from the image in a three-quarter view turned slightly to the left, same face, same hair, same "
+    "clothes, neutral plain background, waist-up portrait, photorealistic.",
+    "Show the same character from the image in a close-up portrait of the face looking at the camera, same face, same hair "
+    "and beard, same clothes, neutral plain background, photorealistic.",
+)
+
+
+def swap_prompt(extra: str = "") -> str:
+    extra = extra.strip()
+    return SWAP_PROMPT + (f" Also: {extra}" if extra else "")
+
+
+async def _angles(http: httpx.AsyncClient, char_url: str) -> list[str]:
+    """Ângulos extras do personagem (Nano Banana a partir da imagem do usuário) — mais referências = rosto mais fiel.
+    Qualquer falha cai na própria imagem: o vídeo já foi pago e não pode travar por causa disso."""
+    urls: list[str] = []
+    for prompt in ANGLE_PROMPTS:
+        try:
+            res = await _fal_run(http, FRAME_MODEL, {"prompt": prompt, "image_urls": [char_url], "output_format": "png",
+                                                      "num_images": 1, "aspect_ratio": "3:4"}, timeout_s=180)
+            urls.append(res["images"][0]["url"])
+        except Exception as exc:
+            logger.warning("swap angle failed: %s", type(exc).__name__)
+    return urls or [char_url]
+
+
+async def _trim_with_audio(source: bytes, duration_s: int) -> bytes:
+    with tempfile.TemporaryDirectory() as tmp:
+        src, dst = os.path.join(tmp, "in"), os.path.join(tmp, "cut.mp4")
+        with open(src, "wb") as f:
+            f.write(source)
+        await clipper.run_ffmpeg(["-i", src, "-t", str(duration_s), "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset",
+                                  "veryfast", "-crf", "18", "-c:a", "aac", "-movflags", "+faststart", "-y", dst], src, 240)
+        with open(dst, "rb") as f:
+            return f.read()
+
+
+async def _strip_audio(video: bytes) -> bytes:
+    with tempfile.TemporaryDirectory() as tmp:
+        src, dst = os.path.join(tmp, "in.mp4"), os.path.join(tmp, "out.mp4")
+        with open(src, "wb") as f:
+            f.write(video)
+        await clipper.run_ffmpeg(["-i", src, "-an", "-c:v", "copy", "-y", dst], src, 120)
+        with open(dst, "rb") as f:
+            return f.read()
+
+
+async def _has_audio(video: bytes) -> bool:
+    def _run(path):
+        return subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=codec_type",
+                               "-of", "csv=p=0", path], stdin=subprocess.DEVNULL, capture_output=True, timeout=30)
+
+    with tempfile.NamedTemporaryFile(suffix=".mp4") as f:
+        f.write(video)
+        f.flush()
+        return bool((await asyncio.to_thread(_run, f.name)).stdout.strip())
+
+
+async def _source_audio(source: bytes, duration_s: int) -> bytes | None:
+    with tempfile.TemporaryDirectory() as tmp:
+        src, dst = os.path.join(tmp, "in"), os.path.join(tmp, "a.m4a")
+        with open(src, "wb") as f:
+            f.write(source)
+        try:
+            await clipper.run_ffmpeg(["-i", src, "-t", str(duration_s), "-vn", "-c:a", "aac", "-y", dst], src, 60)
+        except RuntimeError:
+            return None
+        with open(dst, "rb") as f:
+            return f.read()
+
+
+async def render_swap(*, quality: str, instructions: str, duration_s: int, ref_image_key: str, ref_content_type: str,
+                      frame_key: str, motion_key: str, video_key: str, audio: str = "original", voice_id: str = "",
+                      script: str = "", on_step=None) -> None:
+    """Edita o vídeo do usuário trocando a pessoa principal pelo personagem (Kling O3 Edit). O personagem vai como
+    `element` (a imagem + ângulos extras gerados) e o quadro aprovado na prévia guia a aparência na cena. Som: `original`
+    fica o do vídeo (o modelo o mantém; se não vier, religamos o do trecho), `none` tira, `voice` narra `script`."""
+    if on_step:
+        await on_step("video")
+    source = await read_object(motion_key)
+    image = await read_object(ref_image_key)
+    frame = await read_object(frame_key)
+    cut = await _trim_with_audio(source, duration_s)
+    async with httpx.AsyncClient(timeout=180) as http:
+        video_url = await _fal_upload(http, cut, "video/mp4", "scene.mp4")
+        char_url = await _fal_upload(http, image, ref_content_type, "char" + _ext(ref_content_type))
+        frame_url = await _fal_upload(http, frame, "image/png", "frame.png")
+        angles = await _angles(http, char_url)
+        result = await _fal_run(http, QUALITIES[quality]["model"], {
+            "prompt": swap_prompt(instructions), "video_url": video_url, "image_urls": [frame_url],
+            "elements": [{"frontal_image_url": char_url, "reference_image_urls": angles}],
+        })
+        url = (result.get("video") or {}).get("url")
+        if not url:
+            raise RuntimeError(f"fal response without video.url ({str(result.get('detail', list(result)))[:300]})")
+        video = (await http.get(url)).raise_for_status().content
+        voice = await _trim_audio(await _tts(http, voice_id, script), duration_s) if audio == "voice" else None
+
+    if audio == "none":
+        video = await _strip_audio(video)
+    elif voice:
+        video = await mux_audio(video, voice)
+    elif not await _has_audio(video):
+        original = await _source_audio(source, duration_s)
+        if original:
+            video = await mux_audio(video, original)
+
+    with tempfile.NamedTemporaryFile(suffix=".mp4") as f:
+        f.write(video)
+        f.flush()
+        await media_storage.upload_file(f.name, video_key, "video/mp4")

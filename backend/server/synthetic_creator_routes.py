@@ -297,7 +297,8 @@ async def create_video(creator_id: int, body: VideoCreate, background: Backgroun
         raise HTTPException(422, "unknown quality")
     if body.duration_s not in sc.DURATIONS_S:
         raise HTTPException(422, f"duration_s must be one of {list(sc.DURATIONS_S)}")
-    mimic = sc.kind(body.quality) == "mimic"
+    swap = sc.kind(body.quality) == "swap"
+    mimic = sc.kind(body.quality) in ("mimic", "swap")      # ambos partem de um vídeo de referência
     # Fala (speech, ou mimic com voz): o roteiro cabe nas palavras da duração paga. Mimic sem voz: `script` é só
     # a descrição da cena, um texto curto.
     narrated = not mimic or body.audio == "voice"
@@ -312,6 +313,10 @@ async def create_video(creator_id: int, body: VideoCreate, background: Backgroun
     preview = None
     if mimic:
         await _check_motion(user.id, body)
+        if swap and body.preview_id is None:
+            raise HTTPException(422, "Make a preview first, then create the video.")
+        if not swap and body.preview_id is not None:
+            raise HTTPException(422, "Previews are only for Swap.")
         if body.preview_id is not None:
             preview = (await db.execute(select(CreatorPreview).where(
                 CreatorPreview.id == body.preview_id, CreatorPreview.user_id == user.id))).scalars().first()
@@ -478,6 +483,9 @@ def _failure_message(quality: str) -> str:
     if quality == "pro_seedance":
         # A fal recusa no Seedance pessoa real e personagem com direitos; regra do provedor, não contornamos.
         return "Pro+ doesn't accept real people or known characters. Try Standard or Pro. Your payment will be refunded."
+    if sc.kind(quality) == "swap":
+        return ("We couldn't make this video. It works best when the person you replace is clearly in view. "
+                "Your payment will be refunded.")
     if sc.kind(quality) == "mimic":
         return ("We couldn't make this video. It works best with one person in full view in the video, and a clear "
                 "full-body character photo. Your payment will be refunded.")
@@ -497,13 +505,19 @@ async def run_video(video_id: int) -> None:
 
         key = f"creators/{v.user_id}/videos/{v.id}-{uuid.uuid4().hex[:8]}.mp4"
         try:
-            if sc.kind(v.quality) == "mimic":
-                preview = await db.get(CreatorPreview, v.preview_id) if v.preview_id else None
-                await sc.render_mimic(quality=v.quality, prompt="" if v.audio == "voice" else v.script, duration_s=v.duration_s,
-                                      ref_image_key=preview.frame_key if preview else c.ref_image_key,
-                                      ref_content_type="image/png" if preview else c.ref_content_type,
-                                      motion_key=v.motion_key, video_key=key, audio=v.audio, voice_id=c.voice_id,
-                                      script=v.script, on_step=on_step)
+            if sc.kind(v.quality) in ("mimic", "swap"):
+                if sc.kind(v.quality) == "swap":
+                    preview = await db.get(CreatorPreview, v.preview_id)
+                    await sc.render_swap(quality=v.quality, instructions="" if v.audio == "voice" else v.script,
+                                         duration_s=v.duration_s, ref_image_key=c.ref_image_key,
+                                         ref_content_type=c.ref_content_type, frame_key=preview.frame_key,
+                                         motion_key=v.motion_key, video_key=key, audio=v.audio, voice_id=c.voice_id,
+                                         script=v.script, on_step=on_step)
+                else:
+                    await sc.render_mimic(quality=v.quality, prompt="" if v.audio == "voice" else v.script,
+                                          duration_s=v.duration_s, ref_image_key=c.ref_image_key,
+                                          ref_content_type=c.ref_content_type, motion_key=v.motion_key, video_key=key,
+                                          audio=v.audio, voice_id=c.voice_id, script=v.script, on_step=on_step)
             else:
                 await sc.render(quality=v.quality, voice_id=c.voice_id, script=v.script, duration_s=v.duration_s,
                                 ref_image_key=c.ref_image_key, ref_content_type=c.ref_content_type, video_key=key,

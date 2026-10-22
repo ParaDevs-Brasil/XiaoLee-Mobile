@@ -428,6 +428,25 @@ async def test_run_preview_stores_the_frame_or_marks_failure(db, monkeypatch):
 _real_run_preview = routes.run_preview
 
 
+def _swap_video_body(**over):
+    return {"quality": "swap", "duration_s": 5, "payment": _payment(1_260_000), "motion_key": MOTION,
+            "motion_rights_confirmed": True, **over}
+
+
+def test_swap_prices_follow_the_o3_edit_rates_x2():
+    assert sc.price_usdc("swap", 5) == 1.26 and sc.price_usdc("swap", 15) == 3.78
+    assert sc.price_usdc("swap_pro", 5) == 1.68 and sc.price_usdc("swap_pro", 15) == 5.04
+    assert {q["quality"]: q["kind"] for q in sc.pricing()}["swap_pro"] == "swap"
+    assert sc.QUALITIES["swap"]["model"].endswith("o3/standard/video-to-video/edit")
+
+
+def test_swap_prompt_keeps_the_scene_and_appends_the_users_request():
+    base = sc.swap_prompt()
+    assert "@Video1" in base and "@Element1" in base and "exactly the same" in base
+    assert sc.swap_prompt("make it snow").endswith("Also: make it snow")
+    assert sc.swap_prompt("   ") == base
+
+
 @pytest.mark.asyncio
 async def test_swap_video_needs_a_ready_preview_of_the_same_character_and_video(db, monkeypatch):
     cid, h = await _persona(db)
@@ -439,35 +458,49 @@ async def test_swap_video_needs_a_ready_preview_of_the_same_character_and_video(
     db.add_all([ready, working, other_video])
     await db.commit()
 
-    r = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_mimic_body(preview_id=working.id))
+    assert client.post(f"/v1/creators/{cid}/videos", headers=h, json=_swap_video_body()).status_code == 422   # sem prévia
+    r = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_swap_video_body(preview_id=working.id))
     assert r.status_code == 409
-    r = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_mimic_body(preview_id=other_video.id))
+    r = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_swap_video_body(preview_id=other_video.id))
     assert r.status_code == 422
-    r = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_mimic_body(preview_id=999))
+    r = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_swap_video_body(preview_id=999))
     assert r.status_code == 422
-    ok = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_mimic_body(preview_id=ready.id))
+    ok = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_swap_video_body(preview_id=ready.id))
     assert ok.status_code == 200, ok.text
     v = (await db.execute(select(CreatorVideo))).scalars().one()
-    assert v.preview_id == ready.id
+    assert v.preview_id == ready.id and v.quality == "swap" and v.model.endswith("o3/standard/video-to-video/edit")
 
 
 @pytest.mark.asyncio
-async def test_swap_video_renders_from_the_approved_frame(db, monkeypatch):
+async def test_a_plain_mimic_does_not_take_a_preview(db, monkeypatch):
+    cid, h = await _persona(db)
+    _relay_ok(monkeypatch, [])
+    _motion_ok(monkeypatch)
+    pv = CreatorPreview(user_id=1, creator_id=cid, motion_key=MOTION, status="ready", frame_key="k")
+    db.add(pv)
+    await db.commit()
+    r = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_mimic_body(preview_id=pv.id))
+    assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_swap_video_renders_with_the_edit_engine_and_the_approved_frame(db, monkeypatch):
     cid, _ = await _persona(db)
     pv = CreatorPreview(user_id=1, creator_id=cid, motion_key=MOTION, status="ready", frame_key="creators/1/previews/1-a.png")
     db.add(pv)
     await db.flush()
-    v = CreatorVideo(user_id=1, creator_id=cid, quality="mimic", model="m", duration_s=5, script="", price_usdc=0.7,
-                     payment_from=PAYER, payment_nonce="n9", payment_tx="0xtx", status="queued", motion_key=MOTION,
-                     preview_id=pv.id)
+    v = CreatorVideo(user_id=1, creator_id=cid, quality="swap_pro", model="m", duration_s=5, script="make it snow",
+                     price_usdc=1.68, payment_from=PAYER, payment_nonce="n9", payment_tx="0xtx", status="queued",
+                     motion_key=MOTION, preview_id=pv.id, audio="original")
     db.add(v)
     await db.commit()
     seen = {}
 
-    async def render_mimic(**kw):
+    async def render_swap(**kw):
         seen.update(kw)
 
-    monkeypatch.setattr(routes.sc, "render_mimic", render_mimic)
+    monkeypatch.setattr(routes.sc, "render_swap", render_swap)
     monkeypatch.setattr(routes._dbmod, "SessionLocal", lambda: _Ctx(db))
     await _real_run_video(v.id)
-    assert seen["ref_image_key"] == "creators/1/previews/1-a.png" and seen["ref_content_type"] == "image/png"
+    assert seen["frame_key"] == "creators/1/previews/1-a.png" and seen["quality"] == "swap_pro"
+    assert seen["ref_image_key"] == "creators/1/x/ref.jpg" and seen["instructions"] == "make it snow"
