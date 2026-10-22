@@ -13,18 +13,14 @@ import {
 import { ApiError } from '@/api/client';
 import { ConnectWalletButton, EmptyState } from '@/components/feedback';
 import { IconCheck, IconChevronRight, IconPlus, IconUser } from '@/components/icons';
-import { PageHeading, ScreenShell } from '@/components/screen-shell';
+import { FAB_CLEARANCE, PageHeading, ScreenShell } from '@/components/screen-shell';
 import { SectionCard } from '@/components/section-card';
 import { useCreatorStyles as useStyles } from '@/components/creator-styles';
 import { UploadTile } from '@/components/upload-tile';
 import { VoicePicker } from '@/components/voice-picker';
-import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useSession } from '@/hooks/use-session';
 import { createPersona, pickReferenceImage, type PickedImage } from '@/lib/creators';
-
-/** O botão flutuante do Chat cobre o fim da lista: a folga extra deixa o botão de pagar à vista. */
-const CHAT_FAB_CLEARANCE = 72;
 
 /**
  * Criadores sintéticos — personas originais (foto de referência + voz pronta)
@@ -99,7 +95,7 @@ export default function CreatorsScreen() {
   return (
     <ScreenShell>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: Spacing.four + CHAT_FAB_CLEARANCE + insets.bottom }]}
+        contentContainerStyle={[styles.content, { paddingBottom: FAB_CLEARANCE + insets.bottom }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >

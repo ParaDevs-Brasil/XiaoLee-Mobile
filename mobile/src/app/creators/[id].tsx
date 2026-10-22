@@ -24,7 +24,7 @@ import { SwapPreview } from '@/components/swap-preview';
 import { UploadTile } from '@/components/upload-tile';
 import { EmptyState } from '@/components/feedback';
 import { IconCheck, IconClose, IconPlay, IconSpark, IconUser } from '@/components/icons';
-import { PageHeading, ScreenShell } from '@/components/screen-shell';
+import { FAB_CLEARANCE, PageHeading, ScreenShell } from '@/components/screen-shell';
 import { SectionCard } from '@/components/section-card';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -40,8 +40,6 @@ const SOUNDS: { id: 'none' | 'original' | 'voice'; label: string; hint: string }
   { id: 'voice', label: 'Voice', hint: 'Your character says what you write.' },
   { id: 'none', label: 'Silent', hint: 'No sound. Add your own music when you post.' },
 ];
-/** O botão flutuante do Chat cobre o fim da lista: a folga extra deixa o botão de pagar à vista. */
-const CHAT_FAB_CLEARANCE = 72;
 
 /**
  * Tela de um personagem: escolhe o formato (Talk: fala um roteiro; Mimic: copia o movimento de um vídeo; Swap: entra
@@ -195,7 +193,7 @@ export default function CreatorScreen() {
   return (
     <ScreenShell>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: Spacing.four + CHAT_FAB_CLEARANCE + insets.bottom }]}
+        contentContainerStyle={[styles.content, { paddingBottom: FAB_CLEARANCE + insets.bottom }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >

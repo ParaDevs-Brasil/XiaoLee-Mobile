@@ -11,7 +11,7 @@ import { IconScissors, IconUpload } from '@/components/icons';
 import { ItemMenu } from '@/components/item-menu';
 import { PipelineSteps } from '@/components/pipeline-steps';
 import { RenameSheet } from '@/components/rename-sheet';
-import { PageHeading, ScreenShell } from '@/components/screen-shell';
+import { FAB_CLEARANCE, PageHeading, ScreenShell } from '@/components/screen-shell';
 import { VideoRow } from '@/components/video-row';
 import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
@@ -319,7 +319,6 @@ function UploadingCard({
 }
 
 /** Altura do atalho "Chat" flutuante (44) + a margem dele (16) + respiro: a última linha não pode ficar debaixo dele. */
-const FAB_CLEARANCE = 44 + Spacing.three + Spacing.four;
 
 const useStyles = makeStyles((colors) => ({
   flex: { flex: 1 },

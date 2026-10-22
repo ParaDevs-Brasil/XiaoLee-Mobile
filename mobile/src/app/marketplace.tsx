@@ -12,7 +12,7 @@ import {
 import { ApiError } from '@/api/client';
 import { ConnectWalletButton, EmptyState } from '@/components/feedback';
 import { IconBag, IconCheck } from '@/components/icons';
-import { PageHeading, ScreenShell } from '@/components/screen-shell';
+import { FAB_CLEARANCE, PageHeading, ScreenShell } from '@/components/screen-shell';
 import { SectionCard } from '@/components/section-card';
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
@@ -117,7 +117,7 @@ export default function MarketplaceScreen() {
   return (
     <ScreenShell>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: Spacing.four + insets.bottom }]}
+        contentContainerStyle={[styles.content, { paddingBottom: FAB_CLEARANCE + insets.bottom }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >

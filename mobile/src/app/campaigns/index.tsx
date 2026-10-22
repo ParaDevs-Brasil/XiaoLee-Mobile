@@ -26,7 +26,7 @@ import {
   IconRefresh,
   IconTarget,
 } from '@/components/icons';
-import { PageHeading, ScreenShell } from '@/components/screen-shell';
+import { FAB_CLEARANCE, PageHeading, ScreenShell } from '@/components/screen-shell';
 import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useBackendData } from '@/hooks/use-backend-data';
@@ -123,7 +123,7 @@ export default function CampaignsScreen() {
   return (
     <ScreenShell>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: Spacing.four + insets.bottom }]}
+        contentContainerStyle={[styles.content, { paddingBottom: FAB_CLEARANCE + insets.bottom }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
