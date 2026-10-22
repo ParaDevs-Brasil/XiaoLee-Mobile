@@ -193,9 +193,14 @@ export default function CreatorScreen() {
 
         {mimic ? (
           <SectionCard title="Movement" subtitle="The character repeats this video's moves.">
-            <Pressable onPress={pickMotion} style={styles.photoPick} accessibilityRole="button" accessibilityLabel="Choose the movement video">
-              <IconPlay size={28} color={colors.accent} />
-              <Text style={styles.desc}>
+            <Pressable
+              onPress={pickMotion}
+              style={[styles.photoPick, { height: 132, gap: Spacing.two, paddingHorizontal: Spacing.three }]}
+              accessibilityRole="button"
+              accessibilityLabel="Choose the movement video"
+            >
+              {motion ? <IconCheck size={28} color={colors.accent} /> : <IconPlay size={28} color={colors.accent} />}
+              <Text style={[styles.desc, { textAlign: 'center' }]}>
                 {motion ? `Video chosen · ${Math.round(motion.seconds)}s — tap to change` : 'Choose a video: one person, full body in view, staying in place, steady camera'}
               </Text>
             </Pressable>
