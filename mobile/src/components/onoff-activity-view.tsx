@@ -15,10 +15,13 @@ import { formatDate, formatUSDC, parseTimestamp, timeAgo } from '@/lib/format';
  * antigo, cada linha com o estado em palavras. Só leitura — o backend é a fonte (`GET /v1/onoff/intents`).
  */
 
+/** Igual ao `SESSION_TTL` do backend: passado isso a cotação do saque já não vale. */
+const QUOTE_STALE_MS = 30 * 60 * 1000;
+
 type Tone = 'success' | 'warn' | 'danger' | 'muted';
 
 /** Estado do intent em palavra de usuário. O que ainda anda é `warn`; o que fechou bem é `success`. */
-function describe(i: OnoffIntent): { label: string; tone: Tone } {
+function describe(i: OnoffIntent, now: number): { label: string; tone: Tone } {
   const s: OnoffStatus = i.status;
   if (s === 'settled' || s === 'paid_out') return { label: i.direction === 'deposit' ? 'Added' : 'Delivered', tone: 'success' };
   if (s === 'rejected' || s === 'failed') return { label: 'Failed', tone: 'danger' };
@@ -26,7 +29,13 @@ function describe(i: OnoffIntent): { label: string; tone: Tone } {
   if (s === 'expired') return { label: 'Expired', tone: 'muted' };
   if (s === 'refunded') return { label: 'Refunded', tone: 'muted' };
   if (i.direction === 'deposit') return { label: s === 'funds_received' ? 'Confirming' : 'Waiting for payment', tone: 'warn' };
-  return { label: s === 'created' ? 'Awaiting signature' : 'On its way', tone: 'warn' };
+  if (s === 'created') {
+    // Cotação que ninguém assinou. O backend não a expira (o burn pode ter saído e o registro se perdido), então
+    // depois do prazo da cotação dizemos só o que sabemos — "não confirmado" — em vez de "aguardando" para sempre.
+    const age = i.created_at ? now - parseTimestamp(i.created_at) : 0;
+    return age > QUOTE_STALE_MS ? { label: 'Not confirmed', tone: 'muted' } : { label: 'Awaiting signature', tone: 'warn' };
+  }
+  return { label: 'On its way', tone: 'warn' };
 }
 
 function title(i: OnoffIntent): string {
@@ -105,7 +114,7 @@ export function OnoffActivityView({ onBack }: { onBack: () => void }) {
       {items && items.length > 0 ? (
         <View style={styles.card}>
           {items.map((i, n) => {
-            const st = describe(i);
+            const st = describe(i, now);
             const Icon = i.direction === 'deposit' ? IconPlus : IconUpload;
             return (
               <View key={i.intent_id} style={[styles.row, n > 0 && styles.divider]} accessible accessibilityLabel={`${title(i)}, ${formatUSDC(i.amount_usdc)} USDC, ${st.label}`}>
