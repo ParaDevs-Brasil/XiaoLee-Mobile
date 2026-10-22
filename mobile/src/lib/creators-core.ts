@@ -25,3 +25,11 @@ export function videoStatusLabel(status: string): string {
 export function isVideoPending(status: string): boolean {
   return !['done', 'failed'].includes(status);
 }
+
+/**
+ * Durações que o vídeo de movimento aguenta: o backend corta o vídeo na duração paga e recusa um vídeo mais
+ * curto que ela (`_check_motion`, com 0,5 s de folga). `seconds` 0 = ainda sem vídeo escolhido.
+ */
+export function motionDurations(durations: number[], seconds: number): number[] {
+  return durations.filter((d) => d <= seconds + 0.5);
+}

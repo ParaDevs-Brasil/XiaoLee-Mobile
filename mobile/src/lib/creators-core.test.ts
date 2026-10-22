@@ -4,7 +4,7 @@
  */
 import assert from 'node:assert/strict';
 
-import { isVideoPending, maxWords, videoStatusLabel, wordCount } from './creators-core.ts';
+import { isVideoPending, maxWords, motionDurations, videoStatusLabel, wordCount } from './creators-core.ts';
 
 function test(name: string, fn: () => void) {
   fn();
@@ -25,4 +25,11 @@ test('labels and pending states', () => {
   assert.equal(isVideoPending('video'), true);
   assert.equal(isVideoPending('done'), false);
   assert.equal(isVideoPending('failed'), false);
+});
+
+test('a motion video only allows durations it can cover (same 0.5 s slack as the backend)', () => {
+  assert.deepEqual(motionDurations([5, 10, 15], 12), [5, 10]);
+  assert.deepEqual(motionDurations([5, 10, 15], 4.6), [5]);
+  assert.deepEqual(motionDurations([5, 10, 15], 3), []);
+  assert.deepEqual(motionDurations([5, 10, 15], 0), []);
 });

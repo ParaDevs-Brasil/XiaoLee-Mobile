@@ -18,13 +18,15 @@ import {
 } from '@/api/backend';
 import { ApiError } from '@/api/client';
 import { useCreatorStyles as useStyles } from '@/components/creator-styles';
+import { CreatorFormatPicker, type CreatorFormat } from '@/components/creator-format-picker';
 import { EmptyState } from '@/components/feedback';
 import { IconCheck, IconClose, IconPlay, IconSpark, IconUser } from '@/components/icons';
 import { PageHeading, ScreenShell } from '@/components/screen-shell';
 import { SectionCard } from '@/components/section-card';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { isVideoPending, maxWords, videoStatusLabel, wordCount } from '@/lib/creators-core';
+import { pickMotionVideo, uploadMotion, type PickedMotion } from '@/lib/creators';
+import { isVideoPending, maxWords, motionDurations, videoStatusLabel, wordCount } from '@/lib/creators-core';
 import { shortHash } from '@/lib/format';
 import { usePrivyWallet } from '@/lib/wallet';
 
@@ -33,9 +35,9 @@ const POLL_MS = 5000;
 const CHAT_FAB_CLEARANCE = 72;
 
 /**
- * Tela de uma persona: escreve (ou pede à Xiaolee) o roteiro, escolhe duração
- * e qualidade, vê o preço e paga em USDC. A assinatura EIP-3009 vai junto do
- * pedido; o backend confere valor/destino, faz o relay e só então gera.
+ * Tela de uma persona: escolhe o formato (Talk: fala um roteiro; Mimic: repete o movimento de um vídeo),
+ * a duração e a qualidade, vê o preço e paga em USDC. A assinatura EIP-3009 vai junto do pedido; o backend
+ * confere valor/destino, faz o relay e só então gera.
  */
 export default function CreatorScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -53,8 +55,12 @@ export default function CreatorScreen() {
   const [topic, setTopic] = useState('');
   const [script, setScript] = useState('');
   const [writing, setWriting] = useState(false);
-  const [duration, setDuration] = useState(5);
-  const [quality, setQuality] = useState<CreatorQuality['quality']>('standard');
+  const [format, setFormat] = useState<CreatorFormat>('speech');
+  const [motion, setMotion] = useState<PickedMotion | null>(null);
+  const [motionRights, setMotionRights] = useState(false);
+  const [scene, setScene] = useState('');
+  const [chosenDuration, setDuration] = useState(5);
+  const [chosenQuality, setQuality] = useState<CreatorQuality['quality']>('standard');
   const [confirming, setConfirming] = useState(false);
   const [paying, setPaying] = useState(false);
   const [playing, setPlaying] = useState<string | null>(null);
@@ -84,10 +90,26 @@ export default function CreatorScreen() {
     return () => clearInterval(t);
   }, [pending, creatorId]);
 
+  const mimic = format === 'mimic';
+  // O que vale vem do formato: as faixas e durações trocam sozinhas, sem estado a sincronizar.
+  const qualities = catalog?.qualities.filter((q) => q.kind === format) ?? [];
+  const quality = qualities.find((q) => q.quality === chosenQuality)?.quality ?? qualities[0]?.quality ?? chosenQuality;
+  const durations = catalog ? (mimic ? motionDurations(catalog.durations_s, motion?.seconds ?? 0) : catalog.durations_s) : [];
+  const duration = durations.includes(chosenDuration) ? chosenDuration : (durations[0] ?? chosenDuration);
   const limit = catalog ? maxWords(duration, catalog.words_per_s) : 0;
   const words = wordCount(script);
-  const price = catalog?.qualities.find((q) => q.quality === quality)?.prices[String(duration)] ?? null;
-  const canPay = Boolean(catalog?.enabled && catalog.pay_to && price && words > 0 && words <= limit) && !paying;
+  const price = qualities.find((q) => q.quality === quality)?.prices[String(duration)] ?? null;
+  const ready = mimic ? Boolean(motion && motionRights && durations.includes(duration)) : words > 0 && words <= limit;
+  const canPay = Boolean(catalog?.enabled && catalog.pay_to && price && ready) && !paying;
+
+  async function pickMotion() {
+    try {
+      const picked = await pickMotionVideo();
+      if (picked) setMotion(picked);
+    } catch (e) {
+      fail(e);
+    }
+  }
 
   async function writeForMe() {
     if (topic.trim().length < 3 || writing) return;
@@ -108,12 +130,23 @@ export default function CreatorScreen() {
     setPaying(true);
     setError(null);
     try {
+      // Sobe o vídeo de movimento antes de assinar: a assinatura tem prazo e o upload pode demorar.
+      const motionKey = mimic && motion ? await uploadMotion(motion) : undefined;
       const payment = await wallet.signUsdcAuthorization(catalog.pay_to, price);
-      const video = await createCreatorVideo(creatorId, { quality, duration_s: duration, script, payment });
+      const video = await createCreatorVideo(creatorId, {
+        quality,
+        duration_s: duration,
+        script: mimic ? scene : script,
+        payment,
+        ...(motionKey ? { motion_key: motionKey, motion_rights_confirmed: true } : {}),
+      });
       setVideos((list) => [video, ...list]);
       setConfirming(false);
       setScript('');
       setTopic('');
+      setScene('');
+      setMotion(null);
+      setMotionRights(false);
     } catch (e) {
       fail(e);
     } finally {
@@ -138,7 +171,7 @@ export default function CreatorScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <PageHeading title={creator?.name ?? 'Persona'} subtitle="Write what they say, pick length and quality, pay in USDC." />
+        <PageHeading title={creator?.name ?? 'Persona'} subtitle="Pick a format, choose length and model, pay in USDC." />
 
         {creator?.image_url ? (
           <Image source={{ uri: creator.image_url }} style={[styles.photo, { height: 260, borderRadius: 12 }]} contentFit="cover" />
@@ -146,6 +179,42 @@ export default function CreatorScreen() {
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
+        <CreatorFormatPicker value={format} onChange={(f) => { setFormat(f); setConfirming(false); }} />
+
+        {mimic ? (
+          <SectionCard title="Movement" subtitle="The character repeats this video's moves. Its sound is removed.">
+            <Pressable onPress={pickMotion} style={styles.photoPick} accessibilityRole="button" accessibilityLabel="Choose the movement video">
+              <IconPlay size={28} color={colors.accent} />
+              <Text style={styles.desc}>
+                {motion ? `Video chosen · ${Math.round(motion.seconds)}s — tap to change` : 'Choose a video (one person, head and body in view)'}
+              </Text>
+            </Pressable>
+            <TextInput
+              value={scene}
+              onChangeText={setScene}
+              placeholder="Optional: describe the scene"
+              placeholderTextColor={colors.ink3}
+              maxLength={300}
+              style={styles.input}
+            />
+            <Pressable
+              onPress={() => setMotionRights((v) => !v)}
+              style={styles.rowTop}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: motionRights }}
+            >
+              <View style={[styles.checkbox, motionRights && styles.chipActive]}>
+                {motionRights ? <IconCheck size={14} color={colors.onAccent} /> : null}
+              </View>
+              <Text style={[styles.desc, { flex: 1 }]}>
+                I have the right to use this video. The result is made with AI and I won&apos;t use it to deceive or harass anyone.
+              </Text>
+            </Pressable>
+            {motion && durations.length === 0 ? (
+              <Text style={styles.error}>This video is shorter than {catalog?.durations_s[0]}s. Pick a longer one.</Text>
+            ) : null}
+          </SectionCard>
+        ) : (
         <SectionCard title="Script" subtitle={`${words}/${limit} words for ${duration}s`}>
           <View style={styles.rowTop}>
             <TextInput
@@ -177,10 +246,11 @@ export default function CreatorScreen() {
           />
           {words > limit ? <Text style={styles.error}>Too long for {duration}s — cut to {limit} words or pick a longer video.</Text> : null}
         </SectionCard>
+        )}
 
-        <SectionCard title="Length">
+        <SectionCard title="Length" subtitle={mimic && !motion ? 'Choose the movement video first.' : undefined}>
           <View style={styles.chips}>
-            {catalog?.durations_s.map((d) => (
+            {durations.map((d) => (
               <Pressable
                 key={d}
                 onPress={() => setDuration(d)}
@@ -194,8 +264,11 @@ export default function CreatorScreen() {
           </View>
         </SectionCard>
 
-        <SectionCard title="Quality" subtitle="Seedance 2.0 refuses real people and copyrighted characters — use Standard or OmniHuman for those.">
-          {catalog?.qualities.map((q) => (
+        <SectionCard
+          title={mimic ? 'Model' : 'Quality'}
+          subtitle={mimic ? undefined : 'Seedance 2.0 refuses real people and copyrighted characters — use Standard or OmniHuman for those.'}
+        >
+          {qualities.map((q) => (
             <Pressable
               key={q.quality}
               onPress={() => setQuality(q.quality)}
@@ -247,7 +320,9 @@ export default function CreatorScreen() {
                     <Text style={styles.provider}>{videoStatusLabel(v.status)}</Text>
                   </View>
                   {v.status === 'failed' && v.error ? <Text style={styles.error}>{v.error}</Text> : null}
-                  <Text style={styles.desc} numberOfLines={2}>{v.script}</Text>
+                  <Text style={styles.desc} numberOfLines={2}>
+                    {v.script || (catalog?.qualities.find((q) => q.quality === v.quality)?.kind === 'mimic' ? 'Mimic' : '')}
+                  </Text>
                   <Text style={styles.desc}>
                     {v.duration_s}s · ${v.price_usdc.toFixed(2)}{v.payment_tx ? ` · ${shortHash(v.payment_tx)}` : ''}
                     {v.refund_due ? ' · refund pending' : ''}

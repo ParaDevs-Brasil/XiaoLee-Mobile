@@ -1132,8 +1132,10 @@ export interface CreatorVoice {
 }
 
 export interface CreatorQuality {
-  quality: 'standard' | 'pro' | 'pro_seedance';
+  quality: 'standard' | 'pro' | 'pro_seedance' | 'mimic' | 'mimic_v3' | 'mimic_v3_pro';
   label: string;
+  /** `speech`: a persona fala um roteiro. `mimic`: a persona repete o movimento de um vídeo de referência. */
+  kind: 'speech' | 'mimic';
   /** duração em segundos (string) → preço em USDC */
   prices: Record<string, number>;
 }
@@ -1211,11 +1213,22 @@ export function createCreatorVideo(
   request: {
     quality: CreatorQuality['quality'];
     duration_s: number;
-    script: string;
+    /** `speech`: o roteiro falado. `mimic`: descrição opcional da cena. */
+    script?: string;
     payment: RelayAuthorizationRequest;
+    /** Só no `mimic`: o vídeo de `createMotionUpload` e o termo de direito de uso. */
+    motion_key?: string;
+    motion_rights_confirmed?: boolean;
   },
 ): Promise<CreatorVideo> {
   return apiFetch<CreatorVideo>(`/v1/creators/${creatorId}/videos`, { method: 'POST', json: request });
+}
+
+export function createMotionUpload(request: {
+  content_type: string;
+  size_bytes: number;
+}): Promise<{ motion_key: string; upload_url: string; upload_headers: Record<string, string> }> {
+  return apiFetch('/v1/creators/motion', { method: 'POST', json: request });
 }
 
 export function listCreatorVideos(creatorId?: number): Promise<CreatorVideo[]> {
