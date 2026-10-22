@@ -8,6 +8,7 @@ synthetic_creator_routes.py — personas sintéticas e seus vídeos falados (ser
     DELETE /v1/creators/{id}
     POST /v1/creators/script             → Xiaolee escreve o roteiro a partir de um tema
     POST /v1/creators/{id}/videos        → paga (EIP-3009 assinado no app) e dispara a geração
+    POST /v1/creators/motion             → URL pré-assinada para o vídeo de movimento do mimic
     GET  /v1/creators/videos[/{id}]      → vídeos com status e URL quando prontos
 
 Pagamento: o app assina `transferWithAuthorization` do preço exato para CREATORS_PAY_TO; a rota confere
@@ -86,11 +87,26 @@ class Payment(BaseModel):
     signature: str
 
 
+class MotionCreate(BaseModel):
+    content_type: str
+    size_bytes: int = Field(gt=0)
+
+
+class MotionUpload(BaseModel):
+    motion_key: str
+    upload_url: str
+    upload_headers: dict[str, str]
+
+
 class VideoCreate(BaseModel):
     quality: str
     duration_s: int
-    script: str = Field(min_length=1, max_length=2000)
+    # speech: o roteiro falado (obrigatório). mimic: descrição opcional da cena.
+    script: str = Field(default="", max_length=2000)
     payment: Payment
+    # mimic: vídeo de movimento (de POST /motion) e o termo de que o usuário tem o direito de usá-lo.
+    motion_key: Optional[str] = None
+    motion_rights_confirmed: bool = False
 
 
 class VideoOut(BaseModel):
@@ -217,6 +233,23 @@ async def delete_creator(creator_id: int, authorization: Optional[str] = Header(
     await db.commit()
 
 
+@router.post("/motion", response_model=MotionUpload)
+async def create_motion_upload(body: MotionCreate, authorization: Optional[str] = Header(default=None),
+                               db: AsyncSession = Depends(get_db_session)):
+    _require_enabled()
+    if body.content_type not in sc.MOTION_TYPES:
+        raise HTTPException(422, "reference must be an MP4, MOV or WebM video")
+    if body.size_bytes > sc.MAX_MOTION_BYTES:
+        raise HTTPException(413, "video too large (max 100 MB)")
+    user = await _resolve_user(db, authorization, strict=True)
+    key = f"creators/{user.id}/motion/{uuid.uuid4().hex}"
+    try:
+        url = media_storage.presign_put(key, body.content_type, body.size_bytes)
+    except media_storage.StorageNotConfigured as exc:
+        raise HTTPException(503, f"storage unavailable: {exc}")
+    return MotionUpload(motion_key=key, upload_url=url, upload_headers={"Content-Type": body.content_type})
+
+
 @router.post("/script")
 async def script(body: ScriptIn, authorization: Optional[str] = Header(default=None),
                  db: AsyncSession = Depends(get_db_session)):
@@ -243,14 +276,18 @@ async def create_video(creator_id: int, body: VideoCreate, background: Backgroun
         raise HTTPException(422, "unknown quality")
     if body.duration_s not in sc.DURATIONS_S:
         raise HTTPException(422, f"duration_s must be one of {list(sc.DURATIONS_S)}")
-    script_text = sc.clip_words(body.script.strip(), body.duration_s)
-    if not script_text:
+    mimic = sc.kind(body.quality) == "mimic"
+    # speech: o roteiro cabe nas palavras da duração paga. mimic: a descrição da cena é só um texto curto.
+    script_text = body.script.strip()[:300] if mimic else sc.clip_words(body.script.strip(), body.duration_s)
+    if not script_text and not mimic:
         raise HTTPException(422, "script is empty")
 
     user = await _resolve_user(db, authorization, strict=True)
     c = await _owned_creator(db, user.id, creator_id)
     if c.status != "ready":
         raise HTTPException(409, "creator is not ready")
+    if mimic:
+        await _check_motion(user.id, body)
 
     p = body.payment
     price = sc.price_usdc(body.quality, body.duration_s)
@@ -271,7 +308,9 @@ async def create_video(creator_id: int, body: VideoCreate, background: Backgroun
     # Intent log antes do relay: nonce único barra o mesmo pagamento duas vezes.
     v = CreatorVideo(user_id=user.id, creator_id=c.id, quality=body.quality, model=sc.QUALITIES[body.quality]["model"],
                      duration_s=body.duration_s, script=script_text, price_usdc=price,
-                     payment_from=p.from_address.lower(), payment_nonce=p.nonce.lower(), status="paying")
+                     payment_from=p.from_address.lower(), payment_nonce=p.nonce.lower(), status="paying",
+                     motion_key=body.motion_key if mimic else None,
+                     motion_rights_at=datetime.utcnow() if mimic else None)
     db.add(v)
     try:
         await db.commit()
@@ -297,6 +336,25 @@ async def create_video(creator_id: int, body: VideoCreate, background: Backgroun
     await db.commit()
     background.add_task(run_video, v.id)
     return _video_out(v)
+
+
+async def _check_motion(user_id: int, body: VideoCreate) -> None:
+    """Tudo que dá para conferir do vídeo de movimento ANTES de cobrar: termo, dono, existência e duração."""
+    if not body.motion_rights_confirmed:
+        raise HTTPException(422, "confirm you have the right to use this video")
+    key = body.motion_key or ""
+    if not key.startswith(f"creators/{user_id}/motion/") or ".." in key:
+        raise HTTPException(422, "unknown motion video")
+    try:
+        if await media_storage.object_size(key) is None:
+            raise HTTPException(409, "motion video not uploaded")
+        length = await sc.probe_duration(media_storage.presign_get(key))
+    except media_storage.StorageNotConfigured as exc:
+        raise HTTPException(503, f"storage unavailable: {exc}")
+    except ValueError:
+        raise HTTPException(422, "could not read the motion video")
+    if length < body.duration_s - 0.5:
+        raise HTTPException(422, f"the motion video is {length:.0f}s long, shorter than the {body.duration_s}s you chose")
 
 
 @router.get("/videos", response_model=list[VideoOut])
@@ -326,6 +384,9 @@ def _failure_message(quality: str) -> str:
         # A fal recusa no Seedance pessoa real e personagem com direitos; regra do provedor, não contornamos.
         return "Seedance refused this image (real people and copyrighted characters aren't allowed there). " \
                "Try Standard or Pro · OmniHuman. Refund pending."
+    if sc.kind(quality) == "mimic":
+        return ("The mimic failed. The reference video needs one clear person with head and body in view, and the "
+                "photo a clear full character. Refund pending.")
     return "Generation failed. Refund pending."
 
 
@@ -342,9 +403,14 @@ async def run_video(video_id: int) -> None:
 
         key = f"creators/{v.user_id}/videos/{v.id}-{uuid.uuid4().hex[:8]}.mp4"
         try:
-            await sc.render(quality=v.quality, voice_id=c.voice_id, script=v.script, duration_s=v.duration_s,
-                            ref_image_key=c.ref_image_key, ref_content_type=c.ref_content_type, video_key=key,
-                            on_step=on_step)
+            if sc.kind(v.quality) == "mimic":
+                await sc.render_mimic(quality=v.quality, prompt=v.script, duration_s=v.duration_s,
+                                      ref_image_key=c.ref_image_key, ref_content_type=c.ref_content_type,
+                                      motion_key=v.motion_key, video_key=key, on_step=on_step)
+            else:
+                await sc.render(quality=v.quality, voice_id=c.voice_id, script=v.script, duration_s=v.duration_s,
+                                ref_image_key=c.ref_image_key, ref_content_type=c.ref_content_type, video_key=key,
+                                on_step=on_step)
         except Exception as exc:
             logger.warning("creator video %s failed: %s: %s", v.id, type(exc).__name__, exc)
             # Já pago: marca para reembolso manual em vez de sumir com o dinheiro.

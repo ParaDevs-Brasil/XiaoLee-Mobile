@@ -189,3 +189,108 @@ async def test_persona_needs_the_image_rights_term(db, monkeypatch):
 def test_seedance_failure_points_to_the_models_that_accept_the_image():
     assert "OmniHuman" in routes._failure_message("pro_seedance")
     assert "Refund pending" in routes._failure_message("standard")
+
+
+# --- mimic (motion swap) -------------------------------------------------------------------------------------
+
+MOTION = "creators/1/motion/abc123"
+
+
+def _mimic_body(value=700_000, **over):
+    return {"quality": "mimic", "duration_s": 5, "payment": _payment(value), "motion_key": MOTION,
+            "motion_rights_confirmed": True, **over}
+
+
+def _motion_ok(monkeypatch, length=12.0):
+    async def size(key):
+        return 1000
+
+    async def probe(url):
+        return length
+
+    monkeypatch.setattr(routes.media_storage, "object_size", size)
+    monkeypatch.setattr(routes.sc, "probe_duration", probe)
+
+
+def test_mimic_prices_follow_the_fal_page_x2():
+    assert sc.price_usdc("mimic", 5) == 0.7 and sc.price_usdc("mimic", 15) == 2.1
+    assert sc.price_usdc("mimic_v3", 5) == 1.26
+    assert sc.price_usdc("mimic_v3_pro", 5) == 1.68
+    assert {q["quality"]: q["kind"] for q in sc.pricing()}["mimic_v3"] == "mimic"
+    assert sc.kind("standard") == "speech"
+
+
+def test_mimic_input_follows_the_video_orientation():
+    body = sc.mimic_input("img", "vid", "")
+    assert body["image_url"] == "img" and body["video_url"] == "vid" and body["character_orientation"] == "video"
+    assert body["prompt"] == sc.MIMIC_DEFAULT_PROMPT
+
+
+@pytest.mark.asyncio
+async def test_mimic_pays_and_keeps_the_motion_and_the_rights_timestamp(db, monkeypatch):
+    cid, h = await _persona(db)
+    calls = []
+    _relay_ok(monkeypatch, calls)
+    _motion_ok(monkeypatch)
+    r = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_mimic_body())
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "queued" and r.json()["script"] == "" and calls[0]["value"] == 700_000
+    v = (await db.execute(select(CreatorVideo))).scalars().one()
+    assert v.motion_key == MOTION and v.motion_rights_at is not None and v.model.endswith("v2.6/standard/motion-control")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("over,code", [
+    ({"motion_rights_confirmed": False}, 422),
+    ({"motion_key": "creators/2/motion/abc"}, 422),          # vídeo de outro usuário
+    ({"motion_key": "creators/1/motion/../../2/x"}, 422),
+    ({"motion_key": None}, 422),
+])
+async def test_mimic_rejects_before_charging(db, monkeypatch, over, code):
+    cid, h = await _persona(db)
+    calls = []
+    _relay_ok(monkeypatch, calls)
+    _motion_ok(monkeypatch)
+    r = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_mimic_body(**over))
+    assert r.status_code == code and calls == []
+    assert (await db.execute(select(CreatorVideo))).scalars().all() == []
+
+
+@pytest.mark.asyncio
+async def test_mimic_needs_an_uploaded_video_at_least_as_long_as_the_paid_duration(db, monkeypatch):
+    cid, h = await _persona(db)
+    calls = []
+    _relay_ok(monkeypatch, calls)
+
+    async def missing(key):
+        return None
+
+    monkeypatch.setattr(routes.media_storage, "object_size", missing)
+    assert client.post(f"/v1/creators/{cid}/videos", headers=h, json=_mimic_body()).status_code == 409
+
+    _motion_ok(monkeypatch, length=3.0)
+    short = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_mimic_body())
+    assert short.status_code == 422 and "shorter" in short.json()["detail"] and calls == []
+
+
+@pytest.mark.asyncio
+async def test_speech_still_needs_a_script(db, monkeypatch):
+    cid, h = await _persona(db)
+    r = client.post(f"/v1/creators/{cid}/videos", headers=h,
+                    json={"quality": "standard", "duration_s": 5, "payment": _payment(800_000)})
+    assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_motion_upload_takes_only_videos_under_the_cap(db, monkeypatch):
+    _, h = await _persona(db)
+    monkeypatch.setattr(routes.media_storage, "presign_put", lambda key, ct, size, expires=3600: "https://r2/put")
+    ok = client.post("/v1/creators/motion", headers=h, json={"content_type": "video/mp4", "size_bytes": 5000})
+    assert ok.status_code == 200 and ok.json()["motion_key"].startswith("creators/1/motion/")
+    assert client.post("/v1/creators/motion", headers=h, json={"content_type": "image/png", "size_bytes": 5}).status_code == 422
+    assert client.post("/v1/creators/motion", headers=h,
+                       json={"content_type": "video/mp4", "size_bytes": sc.MAX_MOTION_BYTES + 1}).status_code == 413
+
+
+def test_mimic_failure_tells_what_the_reference_needs():
+    assert "head and body" in routes._failure_message("mimic_v3") and "Refund pending" in routes._failure_message("mimic")

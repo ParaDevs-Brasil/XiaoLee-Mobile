@@ -12,6 +12,7 @@ import asyncio
 import logging
 import math
 import os
+import subprocess
 import tempfile
 
 import httpx
@@ -32,7 +33,24 @@ QUALITIES: dict[str, dict] = {
     "pro": {"label": "Pro · OmniHuman", "model": "fal-ai/bytedance/omnihuman", "usd_per_s": 0.14, "extra": {}},
     "pro_seedance": {"label": "Pro · Seedance 2.0", "model": "bytedance/seedance-2.0/reference-to-video",
                      "usd_per_s": 0.3034, "extra": {"resolution": "720p", "aspect_ratio": "9:16"}},
+    # Mimic (motion swap): o personagem da foto repete o movimento de um vídeo de referência. Sem voz sintética —
+    # o áudio do vídeo de referência é removido antes de ir à fal. Preços da página da fal em 2026-10-22.
+    "mimic": {"label": "Mimic · Standard", "kind": "mimic", "usd_per_s": 0.07, "extra": {},
+              "model": "fal-ai/kling-video/v2.6/standard/motion-control"},
+    "mimic_v3": {"label": "Mimic · v3", "kind": "mimic", "usd_per_s": 0.126, "extra": {},
+                 "model": "fal-ai/kling-video/v3/standard/motion-control"},
+    "mimic_v3_pro": {"label": "Mimic · v3 Pro", "kind": "mimic", "usd_per_s": 0.168, "extra": {},
+                     "model": "fal-ai/kling-video/v3/pro/motion-control"},
 }
+
+MOTION_TYPES = ("video/mp4", "video/quicktime", "video/webm")
+MAX_MOTION_BYTES = 100 * 1024 * 1024
+MIMIC_DEFAULT_PROMPT = "The character performs the same movement as the reference video."
+
+
+def kind(quality: str) -> str:
+    """`speech`: persona fala um roteiro (voz + vídeo). `mimic`: persona repete o movimento de um vídeo."""
+    return QUALITIES[quality].get("kind", "speech")
 
 # Vozes prontas (premade) do ElevenLabs — funcionam no plano atual; vozes da biblioteca dão 402.
 # Sem clonagem de voz de propósito: evita deepfake de voz real.
@@ -65,7 +83,7 @@ def max_words(duration_s: int) -> int:
 
 def pricing() -> list[dict]:
     return [
-        {"quality": k, "label": q["label"], "prices": {str(d): price_usdc(k, d) for d in DURATIONS_S}}
+        {"quality": k, "label": q["label"], "kind": kind(k), "prices": {str(d): price_usdc(k, d) for d in DURATIONS_S}}
         for k, q in QUALITIES.items()
     ]
 
@@ -132,6 +150,27 @@ async def _fal_upload(http: httpx.AsyncClient, data: bytes, mime: str, name: str
     return up["file_url"]
 
 
+def mimic_input(image_url: str, video_url: str, prompt: str) -> dict:
+    # `video`: segue a orientação do vídeo de referência (até 30 s, corpo inteiro); `image` limita a 10 s.
+    return {"image_url": image_url, "video_url": video_url, "character_orientation": "video",
+            "prompt": prompt or MIMIC_DEFAULT_PROMPT}
+
+
+async def probe_duration(url: str) -> float:
+    """Duração do vídeo de referência (ffprobe lê pela URL pré-assinada, sem baixar tudo)."""
+    def _run():
+        return subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", url],
+            stdin=subprocess.DEVNULL, capture_output=True, timeout=30,
+        )
+
+    try:
+        r = await asyncio.to_thread(_run)
+        return float(r.stdout.decode().strip())
+    except (subprocess.TimeoutExpired, ValueError):
+        raise ValueError("could not read the reference video")
+
+
 def fal_input(quality: str, image_url: str, audio_url: str, duration_s: int) -> dict:
     q = QUALITIES[quality]
     if quality == "pro_seedance":
@@ -191,3 +230,32 @@ async def render(*, quality: str, voice_id: str, script: str, duration_s: int,
 
 def _ext(content_type: str) -> str:
     return {"image/png": ".png", "image/webp": ".webp"}.get(content_type, ".jpg")
+
+
+async def render_mimic(*, quality: str, prompt: str, duration_s: int, ref_image_key: str, ref_content_type: str,
+                       motion_key: str, video_key: str, on_step=None) -> None:
+    """Persona + vídeo de movimento → vídeo. O movimento é cortado na duração paga e fica SEM áudio (`-an`):
+    nenhuma música ou voz do vídeo de referência chega ao resultado, em qualquer versão do modelo."""
+    if on_step:
+        await on_step("video")
+    async with httpx.AsyncClient(timeout=120) as http:
+        image = (await http.get(media_storage.presign_get(ref_image_key))).raise_for_status().content
+        motion = (await http.get(media_storage.presign_get(motion_key))).raise_for_status().content
+        with tempfile.TemporaryDirectory() as tmp:
+            src, dst = os.path.join(tmp, "motion_in"), os.path.join(tmp, "motion.mp4")
+            with open(src, "wb") as f:
+                f.write(motion)
+            await clipper.run_ffmpeg(["-i", src, "-t", str(duration_s), "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                                      "-preset", "veryfast", "-crf", "20", "-movflags", "+faststart", "-y", dst],
+                                     src, 180)
+            with open(dst, "rb") as f:
+                motion = f.read()
+        image_url = await _fal_upload(http, image, ref_content_type, "ref" + _ext(ref_content_type))
+        video_url = await _fal_upload(http, motion, "video/mp4", "motion.mp4")
+        url = await _fal_video(http, QUALITIES[quality]["model"], mimic_input(image_url, video_url, prompt))
+        video = (await http.get(url)).raise_for_status().content
+
+    with tempfile.NamedTemporaryFile(suffix=".mp4") as f:
+        f.write(video)
+        f.flush()
+        await media_storage.upload_file(f.name, video_key, "video/mp4")

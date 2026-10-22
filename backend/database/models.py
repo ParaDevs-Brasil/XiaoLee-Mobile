@@ -453,6 +453,9 @@ class CreatorVideo(Base):
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     refund_due: Mapped[bool] = mapped_column(Boolean, default=False)
     video_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Mimic: vídeo de movimento no R2 e quando o usuário declarou ter o direito de usá-lo (prova numa denúncia).
+    motion_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    motion_rights_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
 
 class OnoffIntent(Base):
