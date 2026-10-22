@@ -529,32 +529,23 @@ async def render_swap(*, quality: str, instructions: str, duration_s: int, ref_i
 
 
 # --- Amostras das vozes (para o usuário ouvir antes de escolher) -----------------------------------------------------
-_PREVIEW_CACHE: dict[str, tuple[float, str | None]] = {}
-PREVIEW_OK_TTL_S = 24 * 3600
-PREVIEW_FAIL_TTL_S = 10 * 60
+# Geradas por nós com a permissão de voz que já temos (não dependem de `voices_read` nem da amostra da ElevenLabs) e
+# guardadas em memória: cada voz custa uma geração curta por processo.
+_SAMPLE_CACHE: dict[str, bytes] = {}
+_SAMPLE_LOCK = asyncio.Lock()
 
 
-async def voice_previews() -> dict[str, str | None]:
-    """URL da amostra de cada voz pronta (a própria ElevenLabs hospeda). Guardada por 24 h; falha vira `None` por 10 min:
-    o catálogo nunca depende de a ElevenLabs estar no ar."""
-    import time
-
-    now = time.time()
-    missing = [v["id"] for v in VOICES if _PREVIEW_CACHE.get(v["id"], (0, None))[0] < now]
-    if missing and settings.elevenlabs_api_key:
-        async with httpx.AsyncClient(timeout=15) as http:
-            for vid in missing:
-                try:
-                    r = await http.get(f"https://api.elevenlabs.io/v1/voices/{vid}", headers={"xi-api-key": settings.elevenlabs_api_key})
-                    r.raise_for_status()
-                    url = r.json().get("preview_url")
-                    _PREVIEW_CACHE[vid] = (now + (PREVIEW_OK_TTL_S if url else PREVIEW_FAIL_TTL_S), url)
-                except Exception as exc:
-                    logger.warning("voice preview lookup failed: %s", type(exc).__name__)
-                    _PREVIEW_CACHE[vid] = (now + PREVIEW_FAIL_TTL_S, None)
-    return {v["id"]: _PREVIEW_CACHE.get(v["id"], (0, None))[1] for v in VOICES}
+async def voice_sample(voice_id: str) -> bytes:
+    """MP3 curto da voz dizendo uma frase fixa. `KeyError` se a voz não é uma das nossas."""
+    if voice_id not in VOICE_IDS:
+        raise KeyError(voice_id)
+    async with _SAMPLE_LOCK:
+        if voice_id not in _SAMPLE_CACHE:
+            name = next(v["name"] for v in VOICES if v["id"] == voice_id)
+            async with httpx.AsyncClient(timeout=60) as http:
+                _SAMPLE_CACHE[voice_id] = await _tts(http, voice_id, f"Hi, I'm {name}. This is how I sound when your character talks.")
+        return _SAMPLE_CACHE[voice_id]
 
 
-async def voices_catalog() -> list[dict]:
-    previews = await voice_previews()
-    return [{**v, "preview_url": previews.get(v["id"])} for v in VOICES]
+def voices_catalog() -> list[dict]:
+    return [{**v, "sample_path": f"/v1/creators/voices/{v['id']}/sample"} for v in VOICES]

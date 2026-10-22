@@ -506,29 +506,37 @@ async def test_swap_video_renders_with_the_edit_engine_and_the_approved_frame(db
     assert seen["ref_image_key"] == "creators/1/x/ref.jpg" and seen["instructions"] == "make it snow"
 
 
-@pytest.mark.asyncio
-async def test_catalog_voices_have_a_description_and_a_sample_url(db, monkeypatch):
-    async def previews():
-        return {sc.VOICES[0]["id"]: "https://samples/sarah.mp3"}
-
-    monkeypatch.setattr(routes.sc, "voice_previews", previews)
+def test_catalog_voices_have_a_description_and_a_sample_path():
     voices = client.get("/v1/creators/catalog").json()["voices"]
     assert len(voices) == len(sc.VOICES) and all(v["description"] for v in voices)
-    assert voices[0]["preview_url"] == "https://samples/sarah.mp3" and voices[1]["preview_url"] is None
+    assert voices[0]["sample_path"] == f"/v1/creators/voices/{sc.VOICES[0]['id']}/sample"
 
 
-@pytest.mark.asyncio
-async def test_voice_previews_survive_the_provider_being_down(monkeypatch):
-    sc._PREVIEW_CACHE.clear()
+def test_voice_sample_is_generated_once_per_voice_and_served_as_audio(monkeypatch):
+    sc._SAMPLE_CACHE.clear()
+    calls = []
 
-    class Down:
-        def __init__(self, *a, **k): pass
-        async def __aenter__(self): return self
-        async def __aexit__(self, *a): return False
-        async def get(self, *a, **k): raise RuntimeError("elevenlabs down")
+    async def tts(http, voice_id, text):
+        calls.append((voice_id, text))
+        return b"mp3-bytes"
 
-    monkeypatch.setattr(sc.httpx, "AsyncClient", Down)
-    monkeypatch.setattr(sc, "settings", dataclasses.replace(sc.settings, elevenlabs_api_key="el"))
-    out = await sc.voice_previews()
-    assert set(out.values()) == {None} and len(out) == len(sc.VOICES)
-    sc._PREVIEW_CACHE.clear()
+    monkeypatch.setattr(sc, "_tts", tts)
+    vid = sc.VOICES[4]["id"]
+    for _ in range(2):
+        r = client.get(f"/v1/creators/voices/{vid}/sample")
+        assert r.status_code == 200 and r.headers["content-type"] == "audio/mpeg" and r.content == b"mp3-bytes"
+    assert len(calls) == 1 and sc.VOICES[4]["name"] in calls[0][1]
+    assert client.get("/v1/creators/voices/not-a-voice/sample").status_code == 404
+    sc._SAMPLE_CACHE.clear()
+
+
+def test_voice_sample_fails_politely_when_the_provider_is_down(monkeypatch):
+    sc._SAMPLE_CACHE.clear()
+
+    async def tts(http, voice_id, text):
+        raise RuntimeError("elevenlabs down")
+
+    monkeypatch.setattr(sc, "_tts", tts)
+    r = client.get(f"/v1/creators/voices/{sc.VOICES[0]['id']}/sample")
+    assert r.status_code == 503 and "isn't available" in r.json()["detail"]
+    sc._SAMPLE_CACHE.clear()

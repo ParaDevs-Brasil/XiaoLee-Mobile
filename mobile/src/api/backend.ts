@@ -1131,8 +1131,8 @@ export interface CreatorVoice {
   gender: 'female' | 'male';
   /** Uma frase sobre o jeito da voz. */
   description: string;
-  /** Amostra para ouvir antes de escolher; `null` se a ElevenLabs não respondeu. */
-  preview_url: string | null;
+  /** Caminho (no backend) do áudio de amostra; o app junta com `API_URL`. */
+  sample_path: string;
 }
 
 export interface CreatorQuality {

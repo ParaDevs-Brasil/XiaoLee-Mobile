@@ -27,7 +27,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Literal, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -185,12 +185,25 @@ async def _owned_creator(db: AsyncSession, user_id: int, creator_id: int) -> Syn
 async def catalog():
     return {
         "enabled": sc.enabled(),
-        "voices": await sc.voices_catalog(),
+        "voices": sc.voices_catalog(),
         "qualities": sc.pricing(),
         "durations_s": list(sc.DURATIONS_S),
         "words_per_s": sc.WORDS_PER_S,
         "pay_to": settings.creators_pay_to or None,
     }
+
+
+@router.get("/voices/{voice_id}/sample")
+async def voice_sample(voice_id: str):
+    """Amostra de uma das nossas vozes (sem login: a frase é fixa e o resultado é guardado em memória)."""
+    if voice_id not in sc.VOICE_IDS:
+        raise HTTPException(404, "Voice not found.")
+    try:
+        audio = await sc.voice_sample(voice_id)
+    except Exception as exc:
+        logger.warning("voice sample failed: %s", type(exc).__name__)
+        raise HTTPException(503, "The sample isn't available right now. Try again.")
+    return Response(content=audio, media_type="audio/mpeg", headers={"Cache-Control": "public, max-age=86400"})
 
 
 @router.post("", response_model=CreatorUpload)

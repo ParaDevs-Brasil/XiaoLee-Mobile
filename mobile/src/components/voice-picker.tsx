@@ -1,15 +1,17 @@
 import { useVideoPlayer } from 'expo-video';
 import { useEffect, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import type { CreatorVoice } from '@/api/backend';
-import { IconCheck, IconClose, IconPlay } from '@/components/icons';
+import { IconClose, IconPlay } from '@/components/icons';
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
+import { API_URL } from '@/lib/config';
 
 /**
- * Escolha de voz: cada voz mostra o nome, uma descrição curta e um botão para ouvir uma amostra antes de escolher.
- * Um único player (do `expo-video`, que toca áudio também) serve a lista toda: tocar outra amostra troca a fonte.
+ * Escolha de voz, simples: uma fileira de nomes. Tocar num nome escolhe a voz E já toca uma amostra, para a pessoa
+ * decidir com o ouvido; embaixo, uma linha com a descrição e o botão de ouvir de novo. Um único player (do
+ * `expo-video`, que toca áudio também) serve todas as vozes.
  */
 export function VoicePicker({
   voices,
@@ -24,96 +26,106 @@ export function VoicePicker({
   const styles = useStyles();
   const player = useVideoPlayer(null);
   const [playing, setPlaying] = useState<string | null>(null);
+  const selected = voices.find((v) => v.id === value) ?? null;
 
   useEffect(() => {
     const sub = player.addListener('playToEnd', () => setPlaying(null));
     return () => sub.remove();
   }, [player]);
 
-  function toggle(v: CreatorVoice) {
-    if (!v.preview_url) return;
-    if (playing === v.id) {
-      player.pause();
-      setPlaying(null);
-      return;
-    }
-    player.replace(v.preview_url);
+  function play(v: CreatorVoice) {
+    player.replace(`${API_URL}${v.sample_path}`);
     player.play();
     setPlaying(v.id);
   }
 
+  function choose(v: CreatorVoice) {
+    onChange(v.id);
+    play(v);
+  }
+
+  function toggle(v: CreatorVoice) {
+    if (playing === v.id) {
+      player.pause();
+      setPlaying(null);
+    } else {
+      play(v);
+    }
+  }
+
   return (
-    <View style={styles.list}>
-      {voices.map((v) => {
-        const on = value === v.id;
-        return (
-          <Pressable
-            key={v.id}
-            onPress={() => onChange(v.id)}
-            style={({ pressed }) => [styles.row, on && styles.rowOn, pressed && styles.pressed]}
-            accessibilityRole="radio"
-            accessibilityState={{ selected: on }}
-            accessibilityLabel={`${v.name}, ${v.description}`}
-          >
-            <View style={[styles.radio, on && styles.radioOn]}>{on ? <IconCheck size={12} sw={3} color={colors.onAccent} /> : null}</View>
-            <View style={styles.body}>
+    <View style={styles.wrap}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pills}>
+        {voices.map((v) => {
+          const on = v.id === value;
+          return (
+            <Pressable
+              key={v.id}
+              onPress={() => choose(v)}
+              style={({ pressed }) => [styles.pill, on && styles.pillOn, pressed && styles.pressed]}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: on }}
+              accessibilityLabel={`${v.name}, ${v.description}`}
+            >
+              <Text style={[styles.pillText, on && styles.pillTextOn]}>{v.name}</Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+
+      <View style={styles.detail}>
+        {selected ? (
+          <>
+            <Pressable
+              onPress={() => toggle(selected)}
+              style={styles.play}
+              accessibilityRole="button"
+              accessibilityLabel={playing === selected.id ? `Stop ${selected.name}` : `Listen to ${selected.name}`}
+            >
+              {playing === selected.id ? <IconClose size={18} color={colors.onAccent} /> : <IconPlay size={18} color={colors.onAccent} />}
+            </Pressable>
+            <View style={styles.text}>
               <Text style={styles.name}>
-                {v.name} <Text style={styles.gender}>{v.gender === 'female' ? '· Female' : '· Male'}</Text>
+                {selected.name} <Text style={styles.gender}>· {selected.gender === 'female' ? 'Female' : 'Male'}</Text>
               </Text>
-              <Text style={styles.desc}>{v.description}</Text>
+              <Text style={styles.desc}>{selected.description}</Text>
             </View>
-            {v.preview_url ? (
-              <Pressable
-                onPress={() => toggle(v)}
-                hitSlop={8}
-                style={styles.play}
-                accessibilityRole="button"
-                accessibilityLabel={playing === v.id ? `Stop ${v.name}` : `Listen to ${v.name}`}
-              >
-                {playing === v.id ? <IconClose size={16} color={colors.accent} /> : <IconPlay size={16} color={colors.accent} />}
-              </Pressable>
-            ) : null}
-          </Pressable>
-        );
-      })}
+          </>
+        ) : (
+          <Text style={styles.desc}>Tap a name to hear the voice.</Text>
+        )}
+      </View>
     </View>
   );
 }
 
 const useStyles = makeStyles((colors) => ({
-  list: { gap: Spacing.two },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.three - 4,
-    padding: Spacing.three - 4,
-    borderRadius: Radius.md,
+  wrap: { gap: Spacing.three - 4 },
+  pills: { gap: Spacing.two, paddingRight: Spacing.three },
+  pill: {
+    paddingHorizontal: Spacing.three,
+    height: 38,
+    justifyContent: 'center',
+    borderRadius: Radius.pill,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.bg,
   },
-  rowOn: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
+  pillOn: { backgroundColor: colors.accentFill, borderColor: colors.accentFill },
   pressed: { opacity: 0.8 },
-  radio: {
-    width: 22,
-    height: 22,
+  pillText: { fontFamily: Fonts.bold, fontSize: 13, color: colors.ink },
+  pillTextOn: { color: colors.onAccent },
+  detail: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three - 4, minHeight: 48 },
+  play: {
+    width: 44,
+    height: 44,
     borderRadius: Radius.pill,
-    borderWidth: 1.5,
-    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: colors.accentFill,
   },
-  radioOn: { backgroundColor: colors.accentFill, borderColor: colors.accentFill },
-  body: { flex: 1, gap: 2 },
+  text: { flex: 1, gap: 2 },
   name: { fontFamily: Fonts.bold, fontSize: 14, color: colors.ink },
   gender: { fontFamily: Fonts.medium, fontSize: 12, color: colors.ink3 },
-  desc: { fontFamily: Fonts.sans, fontSize: 12, color: colors.ink2 },
-  play: {
-    width: 36,
-    height: 36,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.accentSoft,
-  },
+  desc: { fontFamily: Fonts.sans, fontSize: 13, color: colors.ink2 },
 }));
