@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getOnoffIntent, startDeposit, type OnoffConfig, type OnoffIntent } from '@/api/backend';
 import { ApiError } from '@/api/client';
-import { IconAlert, IconCards, IconClose, IconPlus, IconQr, IconZap } from '@/components/icons';
+import { IconAlert, IconClose, IconCreditCard, IconPix, IconPlus, IconQr, PIX_COLOR } from '@/components/icons';
 import { Reveal } from '@/components/motion';
 import { PipelineSteps } from '@/components/pipeline-steps';
 import { SuccessBadge } from '@/components/success-badge';
@@ -31,8 +31,8 @@ import { makeStyles, useTheme } from '@/hooks/use-theme';
 
 type Icon = ComponentType<{ size?: number; color?: string; sw?: number }>;
 const METHODS: { id: 'pix' | 'card'; label: string; detail: string; currency: string; Icon: Icon }[] = [
-  { id: 'pix', label: 'Pix', detail: 'Instant · pay in BRL', currency: 'BRL', Icon: IconZap },
-  { id: 'card', label: 'Card', detail: 'Apple Pay · Google Pay · USD', currency: 'USD', Icon: IconCards },
+  { id: 'pix', label: 'Pix', detail: 'Instant · pay in BRL', currency: 'BRL', Icon: IconPix },
+  { id: 'card', label: 'Card', detail: 'Apple Pay · Google Pay · USD', currency: 'USD', Icon: IconCreditCard },
 ];
 const PRESETS = [10, 25, 50, 100];
 /** Atalhos acima do teto por operação só levariam a um erro; sem nenhum que caiba, oferece o próprio teto. */
@@ -193,8 +193,9 @@ export function AddMoneySheet({
                         accessibilityRole="button"
                         accessibilityState={{ selected: picked, disabled: !on }}
                       >
-                        <View style={[styles.methodIcon, picked && styles.methodIconOn]}>
-                          <m.Icon size={20} sw={2.2} color={picked ? colors.onAccent : colors.accent} />
+                        {/* Pix tem a cor e a marca dele; cartão fica em tinta, como um cartão de verdade. */}
+                        <View style={[styles.methodIcon, m.id === 'pix' ? styles.methodPix : styles.methodCard]}>
+                          <m.Icon size={m.id === 'pix' ? 26 : 28} sw={1.7} color={m.id === 'pix' ? PIX_COLOR : colors.bg} />
                         </View>
                         <View style={styles.headerText}>
                           <Text style={styles.methodLabel}>{m.label}</Text>
@@ -330,15 +331,9 @@ const useStyles = makeStyles((colors) => ({
   },
   methodOn: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
   methodOff: { opacity: 0.5 },
-  methodIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: Radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.accentSoft,
-  },
-  methodIconOn: { backgroundColor: colors.accentFill },
+  methodIcon: { width: 48, height: 48, borderRadius: Radius.md, alignItems: 'center', justifyContent: 'center' },
+  methodPix: { backgroundColor: `${PIX_COLOR}22`, borderWidth: 1, borderColor: `${PIX_COLOR}55` },
+  methodCard: { backgroundColor: colors.ink },
   methodLabel: { fontFamily: Fonts.bold, fontSize: 15, color: colors.ink },
   methodDetail: { fontFamily: Fonts.sans, fontSize: 12, color: colors.ink2, marginTop: 1 },
   soon: { paddingHorizontal: Spacing.two + 2, height: 24, justifyContent: 'center', borderRadius: Radius.pill, backgroundColor: colors.card },

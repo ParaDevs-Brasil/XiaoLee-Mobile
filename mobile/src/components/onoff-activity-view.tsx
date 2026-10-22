@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { listOnoffIntents, type OnoffIntent, type OnoffStatus } from '@/api/backend';
 import { EmptyState, ErrorState, Skeleton } from '@/components/feedback';
-import { IconChevronLeft, IconInbox, IconPlus, IconUpload } from '@/components/icons';
+import { IconChevronLeft, IconCreditCard, IconInbox, IconPix, IconPlus, IconUpload, PIX_COLOR } from '@/components/icons';
 import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
 import { useBackendData } from '@/hooks/use-backend-data';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
@@ -115,11 +115,18 @@ export function OnoffActivityView({ onBack }: { onBack: () => void }) {
         <View style={styles.card}>
           {items.map((i, n) => {
             const st = describe(i, now);
-            const Icon = i.direction === 'deposit' ? IconPlus : IconUpload;
             return (
               <View key={i.intent_id} style={[styles.row, n > 0 && styles.divider]} accessible accessibilityLabel={`${title(i)}, ${formatUSDC(i.amount_usdc)} USDC, ${st.label}`}>
                 <View style={styles.mark}>
-                  <Icon size={17} sw={2.2} color={colors.accent} />
+                  {i.direction === 'withdraw' ? (
+                    <IconUpload size={17} sw={2.2} color={colors.accent} />
+                  ) : i.method === 'pix' ? (
+                    <IconPix size={20} color={PIX_COLOR} />
+                  ) : i.method === 'card' ? (
+                    <IconCreditCard size={19} sw={2} color={colors.accent} />
+                  ) : (
+                    <IconPlus size={17} sw={2.2} color={colors.accent} />
+                  )}
                 </View>
                 <View style={styles.flex}>
                   <Text style={styles.rowTitle} numberOfLines={1}>{title(i)}</Text>
