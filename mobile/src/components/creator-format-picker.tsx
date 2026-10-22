@@ -13,8 +13,8 @@ export type CreatorFormat = 'speech' | 'mimic' | 'swap';
 
 const FORMATS: { id: CreatorFormat; title: string; text: string; Icon: typeof IconSpark }[] = [
   { id: 'speech', title: 'Talk', text: 'Says what you write', Icon: IconSpark },
-  { id: 'mimic', title: 'Mimic', text: 'Copies the moves from a video', Icon: IconPlay },
-  { id: 'swap', title: 'Swap', text: 'Takes someone’s place in a video', Icon: IconSwap },
+  { id: 'mimic', title: 'Mimic', text: 'Copies the moves, in your photo’s scene', Icon: IconPlay },
+  { id: 'swap', title: 'Swap', text: 'Your video, with your character in it', Icon: IconSwap },
 ];
 
 export function CreatorFormatPicker({ value, onChange }: { value: CreatorFormat; onChange: (f: CreatorFormat) => void }) {

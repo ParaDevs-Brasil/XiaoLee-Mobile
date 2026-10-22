@@ -216,7 +216,11 @@ export default function CreatorScreen() {
         {moves ? (
           <SectionCard
             title={swap ? 'Video' : 'Movement'}
-            subtitle={swap ? 'Your character takes the place of the person in a video you choose.' : 'Your character copies the moves from a video you choose.'}
+            subtitle={
+              swap
+                ? 'Your video stays as it is. Your character takes the place of the person in it.'
+                : 'Your character copies the moves from a video. The scene comes from the character’s photo.'
+            }
           >
             <Pressable
               onPress={pickMotion}
