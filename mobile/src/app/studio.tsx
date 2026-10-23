@@ -342,8 +342,9 @@ const useStyles = makeStyles((colors) => ({
   },
   primaryText: { fontFamily: Fonts.semibold, fontSize: 14, color: colors.onAccent },
   xCard: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  xLogo: { width: 44, height: 44, borderRadius: Radius.md, backgroundColor: colors.media, alignItems: 'center', justifyContent: 'center' },
-  xMark: { fontFamily: Fonts.bold, fontSize: 20, color: colors.onMedia },
+  // Pastilha em `ink` e letra em `bg`: escura no claro, clara no escuro, como no Figma.
+  xLogo: { width: 44, height: 44, borderRadius: Radius.md, backgroundColor: colors.ink, alignItems: 'center', justifyContent: 'center' },
+  xMark: { fontFamily: Fonts.bold, fontSize: 20, color: colors.bg },
   outline: {
     height: 44,
     paddingHorizontal: 20,
