@@ -135,7 +135,8 @@ export function CampaignsView({ embedded = false }: { embedded?: boolean }) {
         />
         )}
 
-        <SessionBanner hasSession={hasSession} />
+        {/* Com a carteira conectada o aviso verde não diz nada de novo; só o convidado precisa dele, pelo botão de conectar. */}
+        {hasSession ? null : <SessionBanner hasSession={false} />}
 
         <TabBar
           tab={tab}
