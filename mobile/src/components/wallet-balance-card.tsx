@@ -1,8 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { IconChevronRight, IconQr } from '@/components/icons';
-import { NetworkBadge } from '@/components/network-badge';
 import { SOURCE_META } from '@/components/receipt-row';
 import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
@@ -30,15 +29,14 @@ export function WalletBalanceCard({
   receipts,
   isMock,
   onReceive,
-  onDetails,
+  children,
 }: {
   balanceUsdc: number;
-  /** `null` = a lista falhou; a faixa some, o saldo fica. */
   receipts: WalletReceipt[] | null;
   isMock: boolean;
   onReceive: () => void;
-  /** Abre o detalhamento; sem ele, a faixa fica sem o "Details ›". */
-  onDetails?: () => void;
+  /** O que fica entre o número e o convite: endereço e ações. */
+  children?: ReactNode;
 }) {
   const styles = useStyles();
   const [whole, cents] = formatUSDC(balanceUsdc).split('.');
@@ -46,14 +44,11 @@ export function WalletBalanceCard({
 
   return (
     <View style={styles.card}>
-      <View style={styles.top}>
-        <NetworkBadge />
-        {isMock ? (
-          <View style={styles.mockPill}>
-            <Text style={styles.mockText}>Sample data</Text>
-          </View>
-        ) : null}
-      </View>
+      {isMock ? (
+        <View style={styles.mockPill}>
+          <Text style={styles.mockText}>Sample data</Text>
+        </View>
+      ) : null}
 
       <View accessible accessibilityLabel={`USDC balance: ${formatUSDC(balanceUsdc)} dollars`}>
         <Text style={styles.eyebrow}>USDC balance</Text>
@@ -64,11 +59,9 @@ export function WalletBalanceCard({
         </Text>
       </View>
 
-      {empty ? (
-        <EmptyInvite onReceive={onReceive} />
-      ) : receipts ? (
-        <InflowRibbon receipts={receipts} onDetails={onDetails} />
-      ) : null}
+      {children}
+
+      {empty ? <EmptyInvite onReceive={onReceive} /> : null}
     </View>
   );
 }
@@ -97,7 +90,7 @@ function EmptyInvite({ onReceive }: { onReceive: () => void }) {
  * A faixa cresce da esquerda uma vez, ao montar — o único movimento da tela.
  * Com "reduzir movimento" ligado no aparelho ela já nasce cheia.
  */
-function InflowRibbon({ receipts, onDetails }: { receipts: WalletReceipt[]; onDetails?: () => void }) {
+export function InflowRibbon({ receipts, onDetails }: { receipts: WalletReceipt[]; onDetails?: () => void }) {
   const colors = useTheme();
   const styles = useStyles();
   // `Date.now()` no inicializador e não no corpo: o React Compiler trata
@@ -183,8 +176,8 @@ const useStyles = makeStyles((colors) => ({
     borderColor: colors.border,
     ...CardShadow,
   },
-  top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   mockPill: {
+    alignSelf: 'flex-start',
     paddingHorizontal: Spacing.two,
     height: 22,
     justifyContent: 'center',
@@ -216,7 +209,15 @@ const useStyles = makeStyles((colors) => ({
   currency: { fontSize: 30, letterSpacing: 0, color: colors.ink3 },
   cents: { fontSize: 30, letterSpacing: -0.5, color: colors.ink3 },
 
-  inflow: { gap: Spacing.two + 2 },
+  inflow: {
+    gap: Spacing.two + 2,
+    padding: Spacing.four - 4,
+    borderRadius: Radius.xl,
+    backgroundColor: colors.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    ...CardShadow,
+  },
   inflowHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
   inflowLabel: { fontFamily: Fonts.semibold, fontSize: 12, color: colors.ink2 },
   inflowTotal: {
