@@ -57,14 +57,13 @@ import { PostDraftCard } from '@/components/chat-post-draft';
 import { PostOptions } from '@/components/chat-post-options';
 import { PostPreview } from '@/components/chat-post-preview';
 import {
-  IconActivity,
+  IconClock,
   IconChat,
   IconCheck,
-  IconEdit,
   IconGift,
   IconSend,
+  IconScissors,
   IconShare,
-  IconSwap,
   IconWallet,
   type IconProps,
 } from '@/components/icons';
@@ -100,11 +99,12 @@ interface Action {
 
 const ACTIONS: Action[] = [
   {
-    key: 'campaign',
-    Icon: IconGift,
-    title: 'Create a campaign',
-    subtitle: 'Reward your community',
-    prompt: 'I want to create a campaign to reward my community',
+    // O corte começa com o vídeo, não com uma frase: leva ao Studio (ver `onPress` abaixo).
+    key: 'clip',
+    Icon: IconScissors,
+    title: 'Make a clip',
+    subtitle: 'Cut highlights from a video',
+    prompt: '',
   },
   {
     // Só aparece com a publicação ligada no backend (`SOCIAL_TOOLS_ENABLED`); ver `socialOn`.
@@ -115,18 +115,11 @@ const ACTIONS: Action[] = [
     prompt: 'I want to post something on my networks, can you help me?',
   },
   {
-    key: 'dashboard',
-    Icon: IconActivity,
-    title: 'View dashboard',
-    subtitle: 'Metrics and activity',
-    prompt: 'Show me the dashboard metrics',
-  },
-  {
-    key: 'swap',
-    Icon: IconSwap,
-    title: 'Make a swap',
-    subtitle: 'Exchange tokens by chat',
-    prompt: 'I want to make a swap',
+    key: 'campaign',
+    Icon: IconGift,
+    title: 'Create a campaign',
+    subtitle: 'Reward your community',
+    prompt: 'I want to create a campaign to reward my community',
   },
   {
     key: 'balance',
@@ -140,7 +133,7 @@ const ACTIONS: Action[] = [
 const SUGGESTIONS = [
   'What can you do for me?',
   'How do campaigns work?',
-  'Show my recent transactions',
+  'Show my recent receipts',
 ];
 
 interface Message {
@@ -655,9 +648,9 @@ export default function ChatScreen() {
                   </View>
                 ) : (
                   <>
-                    <Text style={styles.greeting}>Hi! I&apos;m Xiaolee ✨</Text>
+                    <Text style={styles.greeting}>Hi! I&apos;m Xiaolee</Text>
                     <Text style={styles.pitch}>
-                      Swaps, campaigns and payments — all by message. What would you like to do?
+                      Clips, campaigns, posts and payments, all by message. What would you like to do?
                     </Text>
                   </>
                 )}
@@ -682,7 +675,13 @@ export default function ChatScreen() {
                       key={action.key}
                       action={action}
                       // Sem rede conectada não há o que rascunhar: leva direto a Contas.
-                      onPress={() => (action.key === 'post' && social?.connected === 0 ? router.push('/accounts') : send(action.prompt))}
+                      onPress={() =>
+                        action.key === 'clip'
+                          ? router.push('/studio')
+                          : action.key === 'post' && social?.connected === 0
+                            ? router.push('/accounts')
+                            : send(action.prompt)
+                      }
                     />
                   ))}
                 </View>
@@ -1200,7 +1199,7 @@ function AssistantHeader({
           <View style={styles.onlineDotSmall} />
           <Text style={styles.onlineLabel}>ONLINE</Text>
         </View>
-        <Text style={styles.assistantRole}>Your intelligent DeFi assistant</Text>
+        <Text style={styles.assistantRole}>Your creator and crypto assistant</Text>
       </View>
 
       {/* Um botão só, com rótulo por extenso — a versão dividida (ação
@@ -1213,10 +1212,9 @@ function AssistantHeader({
         hitSlop={Spacing.two}
         style={({ pressed }) => [styles.newChat, pressed && styles.newChatPressed]}
         accessibilityRole="button"
-        accessibilityLabel="New chat"
+        accessibilityLabel="Chat history and new chat"
       >
-        <IconEdit size={13} sw={2.2} color={colors.ink} />
-        <Text style={styles.newChatText}>New chat</Text>
+        <IconClock size={20} sw={1.8} color={colors.ink2} />
       </Pressable>
     </View>
   );
@@ -1400,19 +1398,8 @@ const useStyles = makeStyles((colors) => ({
   // "acento só em botão primário/destaque, resto neutro" (`theme.ts`) — rosa
   // chapado numa faixa de identidade (que já não é um CTA) chamava atenção
   // demais.
-  newChat: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    height: 32,
-    paddingHorizontal: 11,
-    borderRadius: Radius.pill,
-    backgroundColor: colors.card,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-  },
+  newChat: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   newChatPressed: { opacity: 0.6 },
-  newChatText: { fontFamily: Fonts.bold, fontSize: 12, color: colors.ink },
 
   // ── Corpo ──────────────────────────────────────────────────────────────
   body: {
