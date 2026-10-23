@@ -1,17 +1,15 @@
-import { usePathname, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Text, View } from 'react-native';
 
 import { ConnectWalletSheet } from '@/components/connect-wallet-sheet';
 import { HeaderBar } from '@/components/header-bar';
-import { IconChat } from '@/components/icons';
-import { NavMenu } from '@/components/nav-menu';
+import { BottomNav } from '@/components/bottom-nav';
 import { ProfileMenu } from '@/components/profile-menu';
 import { ShareProfileSheet } from '@/components/share-profile-sheet';
-import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
-import { makeStyles, useTheme } from '@/hooks/use-theme';
+import { Fonts, Spacing } from '@/constants/theme';
+import { makeStyles } from '@/hooks/use-theme';
 import { useUnreadNotificationsCount } from '@/hooks/use-unread-notifications';
 import { useWallet } from '@/hooks/use-wallet';
 
@@ -27,13 +25,13 @@ import { useWallet } from '@/hooks/use-wallet';
  */
 
 /**
- * Quanto o atalho flutuante do Chat ocupa no fim da tela (altura 44 + margem + folga). Toda tela com lista soma isto ao
- * `paddingBottom` (mais `insets.bottom`) para o fim do conteúdo ficar à vista, em vez de cada uma chutar um valor.
+ * Folga no fim das listas. A barra inferior fica no fluxo (o conteúdo já termina acima dela), então sobra só um respiro;
+ * o nome vem do atalho flutuante que a barra substituiu e as telas seguem somando isto ao `paddingBottom`.
  */
-export const FAB_CLEARANCE = 44 + Spacing.three + Spacing.four;
+export const FAB_CLEARANCE = Spacing.four;
 
 /** Qual painel do header está aberto — só um por vez, como no Figma. */
-type OpenPanel = 'none' | 'menu' | 'profile';
+type OpenPanel = 'none' | 'profile';
 
 export function ScreenShell({ children }: { children: ReactNode }) {
   const styles = useStyles();
@@ -61,8 +59,6 @@ export function ScreenShell({ children }: { children: ReactNode }) {
           close();
           router.push('/notifications');
         }}
-        onPressMenu={() => toggle('menu')}
-        menuOpen={panel === 'menu'}
         profileOpen={panel === 'profile'}
         onPressProfile={() => toggle('profile')}
         // `navigate` e não `push`: o chat é a raiz da pilha, então empilhar
@@ -74,7 +70,8 @@ export function ScreenShell({ children }: { children: ReactNode }) {
 
       {children}
 
-      <NavMenu visible={panel === 'menu'} onDismiss={close} />
+      <BottomNav />
+
       <ProfileMenu
         visible={panel === 'profile'}
         onDismiss={close}
@@ -90,51 +87,7 @@ export function ScreenShell({ children }: { children: ReactNode }) {
       />
       <ConnectWalletSheet visible={walletSheet} onClose={() => setWalletSheet(false)} />
       <ShareProfileSheet visible={shareSheet} onClose={() => setShareSheet(false)} />
-
-      <BackToChat />
     </View>
-  );
-}
-
-/**
- * Atalho flutuante para o chat.
- *
- * O wordmark do header já leva para lá, mas ninguém descobre isso sozinho — a
- * conversa é a tela principal do produto e precisa de uma porta visível de
- * qualquer lugar.
- *
- * Vive aqui, e não em cada tela, porque o `ScreenShell` é justamente o que todas
- * compartilham: uma cópia por tela seria oito lugares para esquecer de mexer.
- */
-function BackToChat() {
-  const colors = useTheme();
-  const styles = useStyles();
-  const router = useRouter();
-  const pathname = usePathname();
-  // A barra de gestos do Android comeria o botão sem este inset.
-  const insets = useSafeAreaInsets();
-
-  // No próprio chat o atalho não faz sentido — e o `ScreenShell` também embrulha
-  // a tela inicial.
-  if (pathname === '/') return null;
-
-  return (
-    <Pressable
-      // `navigate` e não `push`: o chat é a raiz da pilha, e empilhar uma
-      // segunda cópia dele prenderia o voltar do Android num vaivém entre dois
-      // chats idênticos — mesma escolha do wordmark no header.
-      onPress={() => router.navigate('/')}
-      style={({ pressed }) => [
-        styles.backToChat,
-        { bottom: Spacing.three + insets.bottom },
-        pressed && styles.backToChatPressed,
-      ]}
-      accessibilityRole="button"
-      accessibilityLabel="Voltar para o chat"
-    >
-      <IconChat size={17} color={colors.onAccent} />
-      <Text style={styles.backToChatText}>Chat</Text>
-    </Pressable>
   );
 }
 
@@ -154,22 +107,6 @@ export function PageHeading({ title, subtitle }: { title: string; subtitle: stri
 
 const useStyles = makeStyles((colors) => ({
   screen: { flex: 1, backgroundColor: colors.bg },
-  backToChat: {
-    ...CardShadow,
-    position: 'absolute',
-    // À esquerda de propósito: o dev client da Expo põe a própria bolha no
-    // canto direito, e sobrepor as duas deixa o botão inalcançável em dev.
-    left: Spacing.three,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two - 2,
-    paddingHorizontal: Spacing.three,
-    height: 44,
-    borderRadius: Radius.pill,
-    backgroundColor: colors.accentFill,
-  },
-  backToChatPressed: { opacity: 0.85 },
-  backToChatText: { fontFamily: Fonts.bold, fontSize: 14, color: colors.onAccent },
   heading: { alignItems: 'center', gap: Spacing.two - 2 },
   title: { fontFamily: Fonts.bold, fontSize: 24, color: colors.ink },
   subtitle: {

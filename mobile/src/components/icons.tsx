@@ -503,3 +503,16 @@ export const IconPhone = (p: IconProps) => (
     <Line x1="11" y1="18" x2="13" y2="18" />
   </Svg>
 );
+
+export const IconHome = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" />
+  </Svg>
+);
+
+export const IconVideo = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Path d="m22 8-6 4 6 4V8z" />
+    <Rect x="2" y="6" width="14" height="12" rx="2" />
+  </Svg>
+);
