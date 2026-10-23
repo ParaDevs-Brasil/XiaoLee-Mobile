@@ -18,9 +18,9 @@ import { makeStyles, useTheme } from '@/hooks/use-theme';
 type TabKey = 'home' | 'studio' | 'chat' | 'grow' | 'wallet';
 
 const TABS: { key: TabKey; label: string; href: string; owns: string[]; Icon?: (p: IconProps) => React.JSX.Element }[] = [
-  { key: 'home', label: 'Home', href: '/home', owns: ['/home'], Icon: IconHome },
+  { key: 'home', label: 'Home', href: '/', owns: ['/'], Icon: IconHome },
   { key: 'studio', label: 'Studio', href: '/studio', owns: ['/studio', '/clips', '/reports', '/creators', '/accounts'], Icon: IconVideo },
-  { key: 'chat', label: 'Xiaolee', href: '/', owns: ['/', '/history'] },
+  { key: 'chat', label: 'Xiaolee', href: '/chat', owns: ['/chat', '/history'] },
   { key: 'grow', label: 'Grow', href: '/grow', owns: ['/grow', '/campaigns', '/marketplace'], Icon: IconTrendingUp },
   { key: 'wallet', label: 'Wallet', href: '/wallet', owns: ['/wallet'], Icon: IconWallet },
 ];
@@ -78,7 +78,7 @@ export function BottomNav() {
       {/* Fora das abas, dentro do contêiner: assim a parte que sobe acima da barra também recebe o toque. */}
       <View style={styles.raised} pointerEvents="box-none">
         <Pressable
-          onPress={() => router.navigate('/')}
+          onPress={() => router.navigate('/chat')}
           accessibilityRole="button"
           accessibilityLabel="Xiaolee"
           accessibilityState={{ selected: owns(pathname, TABS[2].owns) }}
