@@ -279,6 +279,30 @@ export const IconSpark = ({ size = 24, color = 'currentColor' }: IconProps) => (
   </Svg>
 );
 
+export const IconFileText = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <Polyline points="14 2 14 8 20 8" />
+    <Line x1="16" y1="13" x2="8" y2="13" />
+    <Line x1="16" y1="17" x2="8" y2="17" />
+  </Svg>
+);
+
+export const IconLightbulb = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Path d="M9 18h6" />
+    <Path d="M10 22h4" />
+    <Path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14" />
+  </Svg>
+);
+
+export const IconArrowRight = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Line x1="5" y1="12" x2="19" y2="12" />
+    <Polyline points="12 5 19 12 12 19" />
+  </Svg>
+);
+
 export const IconLogOut = (p: IconProps) => (
   <Svg {...base(p)}>
     <Path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />

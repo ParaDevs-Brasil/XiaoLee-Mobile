@@ -15,16 +15,19 @@ import { makeStyles } from '@/hooks/use-theme';
 interface SectionCardProps {
   title: string;
   subtitle?: string;
+  /** Ícone à esquerda do título. */
+  icon?: ReactNode;
   /** Canto direito do cabeçalho — normalmente um botão de recarregar. */
   action?: ReactNode;
   children: ReactNode;
 }
 
-export function SectionCard({ title, subtitle, action, children }: SectionCardProps) {
+export function SectionCard({ title, subtitle, icon, action, children }: SectionCardProps) {
   const styles = useStyles();
   return (
     <View style={styles.card}>
       <View style={styles.header}>
+        {icon}
         <View style={styles.headerText}>
           <Text style={styles.title}>{title}</Text>
           {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}

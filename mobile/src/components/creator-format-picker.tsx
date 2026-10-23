@@ -1,6 +1,6 @@
 import { Pressable, Text, View } from 'react-native';
 
-import { IconPlay, IconSpark, IconSwap } from '@/components/icons';
+import { IconChat, IconCheck, IconPlay, IconSwap } from '@/components/icons';
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
 
@@ -11,8 +11,8 @@ import { makeStyles, useTheme } from '@/hooks/use-theme';
 
 export type CreatorFormat = 'speech' | 'mimic' | 'swap';
 
-const FORMATS: { id: CreatorFormat; title: string; text: string; Icon: typeof IconSpark }[] = [
-  { id: 'speech', title: 'Talk', text: 'Says what you write', Icon: IconSpark },
+const FORMATS: { id: CreatorFormat; title: string; text: string; Icon: typeof IconChat }[] = [
+  { id: 'speech', title: 'Talk', text: 'Says what you write', Icon: IconChat },
   { id: 'mimic', title: 'Mimic', text: 'Copies the moves, in your photo’s scene', Icon: IconPlay },
   { id: 'swap', title: 'Swap', text: 'Your video, with your character in it', Icon: IconSwap },
 ];
@@ -32,6 +32,11 @@ export function CreatorFormatPicker({ value, onChange }: { value: CreatorFormat;
             accessibilityRole="tab"
             accessibilityState={{ selected: on }}
           >
+            {on ? (
+              <View style={styles.badge}>
+                <IconCheck size={12} sw={3} color={colors.onAccent} />
+              </View>
+            ) : null}
             <View style={[styles.mark, on && styles.markOn]}>
               <Icon size={20} sw={2.2} color={on ? colors.onAccent : colors.accent} />
             </View>
@@ -67,6 +72,17 @@ const useStyles = makeStyles((colors) => ({
     backgroundColor: colors.accentSoft,
   },
   markOn: { backgroundColor: colors.accentFill },
+  badge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.accentFill,
+  },
   title: { fontFamily: Fonts.bold, fontSize: 16, color: colors.ink },
   text: { fontFamily: Fonts.sans, fontSize: 12, lineHeight: 17, color: colors.ink2 },
 }));
