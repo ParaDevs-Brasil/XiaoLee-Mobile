@@ -71,6 +71,11 @@ class Settings:
     # Publicação nas redes do creator (server/social_routes.py). Desligado = rotas respondem 404.
     social_tools_enabled: bool = os.getenv("SOCIAL_TOOLS_ENABLED", "false").lower() in ("true", "1", "yes")
     social_max_posts_per_day: int = int(os.getenv("SOCIAL_MAX_POSTS_PER_DAY", "10"))
+    # Radar de tendências (server/radar_chat_tools.py): Grok com busca no X. Desligado ou sem chave = o chat não ganha a tool.
+    radar_tools_enabled: bool = os.getenv("RADAR_TOOLS_ENABLED", "false").lower() in ("true", "1", "yes")
+    xai_api_key: str = os.getenv("XAI_API_KEY", "")
+    xai_model: str = os.getenv("XAI_MODEL", "grok-4.7")
+    radar_max_runs_per_day: int = int(os.getenv("RADAR_MAX_RUNS_PER_DAY", "10"))
     # X (OAuth 2.0 PKCE, app público: só Client ID, sem secret). Teto mensal por creator = custo da casa limitado.
     x_oauth_client_id: str = os.getenv("X_OAUTH_CLIENT_ID", "")
     x_oauth_redirect: str = os.getenv("X_OAUTH_REDIRECT", "xiaolee://social/x")

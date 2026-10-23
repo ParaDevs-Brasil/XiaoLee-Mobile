@@ -58,6 +58,7 @@ from server.routes.chat_sessions_routes import router as chat_sessions_router
 from server import creator_report, media_maintenance
 from server.media_routes import router as media_router
 from server.creator_report_routes import router as creator_report_router
+from server.radar_chat_tools import router as radar_router
 from server.social_routes import router as social_router
 from server.synthetic_creator_routes import router as synthetic_creator_router
 from server.onoff_routes import router as onoff_router
@@ -216,6 +217,7 @@ app.include_router(chat_sessions_router)
 app.include_router(media_router)
 app.include_router(creator_report_router)
 app.include_router(social_router)
+app.include_router(radar_router)
 app.include_router(synthetic_creator_router)
 app.include_router(onoff_router)
 app.include_router(traction_router)
