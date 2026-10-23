@@ -1,5 +1,5 @@
 import { useState, type ComponentType } from 'react';
-import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Pressable, Text, View } from 'react-native';
 
 import { IconArrowDownLeft, IconList, IconPlus, IconUpload } from '@/components/icons';
 import { useReveal } from '@/components/motion';
@@ -91,10 +91,8 @@ const useStyles = makeStyles((colors) => ({
     borderRadius: Radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.card,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+    backgroundColor: colors.accentSoft,
   },
-  tilePrimary: { backgroundColor: colors.accentFill, borderColor: colors.accentFill },
+  tilePrimary: { backgroundColor: colors.accentFill },
   label: { fontFamily: Fonts.bold, fontSize: 12, color: colors.ink2 },
 }));

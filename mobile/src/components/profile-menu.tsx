@@ -6,7 +6,9 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppearancePicker } from '@/components/appearance-picker';
 import { DropdownPanel, PanelRow, type PanelItem } from '@/components/dropdown-panel';
 import {
+  IconBarChart,
   IconCheck,
+  IconDollar,
   IconClipboard,
   IconClock,
   IconDownload,
@@ -50,7 +52,7 @@ function short(address: string): string {
  * As seis ações do frame. As três primeiras e o `connect` já têm destino;
  * `withdraw` e `deposit` continuam inertes porque ainda não têm tela.
  */
-const ACTIONS: (PanelItem & { href?: '/wallet' | '/transactions' | '/history' })[] = [
+const ACTIONS: (PanelItem & { href?: '/wallet' | '/transactions' | '/history' | '/accounts' | '/dashboard' | '/traction' })[] = [
   {
     key: 'edit-profile',
     Icon: IconUser,
@@ -72,6 +74,9 @@ const ACTIONS: (PanelItem & { href?: '/wallet' | '/transactions' | '/history' })
     subtitle: 'View conversations and activities',
     href: '/history',
   },
+  { key: 'accounts', Icon: IconShare, title: 'Accounts', subtitle: 'Connect X and Telegram', href: '/accounts' },
+  { key: 'dashboard', Icon: IconBarChart, title: 'Dashboard', subtitle: 'The economy at a glance', href: '/dashboard' },
+  { key: 'traction', Icon: IconDollar, title: 'Traction', subtitle: 'Live payments on Arc', href: '/traction' },
   {
     key: 'connect',
     Icon: IconClipboard,

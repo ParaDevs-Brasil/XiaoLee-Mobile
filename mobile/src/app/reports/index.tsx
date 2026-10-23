@@ -24,6 +24,11 @@ async function fetchReports(): Promise<CreatorReportSummary[]> {
 
 /** Histórico dos relatórios de 30 dias, mais novo primeiro. Cada um abre em `/reports/[id]`. */
 export default function ReportsScreen() {
+  return <ReportsView />;
+}
+
+/** O corpo da tela de Reports; `embedded` o encaixa dentro de outra tela (o Studio), sem moldura, rolagem nem título. */
+export function ReportsView({ embedded = false }: { embedded?: boolean }) {
   const colors = useTheme();
   const styles = useStyles();
   const insets = useSafeAreaInsets();
@@ -31,21 +36,11 @@ export default function ReportsScreen() {
   const { hasSession } = useSession();
   const { data, error, loading, refreshing, reload } = useBackendData(fetchReports);
 
-  return (
-    <ScreenShell>
-      <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: FAB_CLEARANCE + insets.bottom }]}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={reload}
-            tintColor={colors.accent}
-            colors={[colors.accent]}
-          />
-        }
-      >
-        <PageHeading title="Reports" subtitle="Every 30 days: your numbers and AI ideas to grow." />
+  const body = (
+      <>
+        {embedded ? null : (
+          <PageHeading title="Reports" subtitle="Every 30 days: your numbers and AI ideas to grow." />
+        )}
 
         {error && hasSession ? (
           <ErrorState title="Couldn't load reports" message={error} onRetry={reload} />
@@ -90,6 +85,33 @@ export default function ReportsScreen() {
             )}
           </SectionCard>
         ) : null}
+      </>
+  );
+
+  if (embedded) {
+    return (
+      <>
+        <View style={styles.embedded}>{body}</View>
+        
+      </>
+    );
+  }
+
+  return (
+    <ScreenShell>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: FAB_CLEARANCE + insets.bottom }]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={reload}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
+          />
+        }
+      >
+        {body}
       </ScrollView>
     </ScreenShell>
   );
@@ -102,6 +124,7 @@ const useStyles = makeStyles((colors) => ({
     paddingTop: Spacing.four,
     gap: Spacing.three - 4,
   },
+  embedded: { gap: Spacing.three - 4 },
   pressed: { opacity: 0.7 },
   row: {
     flexDirection: 'row',

@@ -45,7 +45,7 @@ import { useKeyboard } from '@/hooks/use-keyboard';
  * preenchido.
  *
  * Mesmo padrão de formulário de `campaigns/new.tsx`, sem o "Cancel": este
- * passo não é dispensável no primeiro acesso (`index.tsx` redireciona para
+ * passo não é dispensável no primeiro acesso (a Home, `index.tsx`, redireciona para
  * aqui enquanto `onboarded` for `false`), então não há para onde voltar.
  *
  * Também serve como tela de edição — `/onboarding?edit=1` (link do
@@ -180,7 +180,7 @@ export default function OnboardingScreen() {
         // `replace`, não `push`: o onboarding não deve ficar na pilha — o
         // voltar do Android não pode trazer o usuário de volta ao
         // questionário já respondido.
-        router.replace('/dashboard');
+        router.replace('/');
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));

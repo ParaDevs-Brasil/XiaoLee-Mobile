@@ -2,7 +2,6 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { IconBell, IconSpark } from '@/components/icons';
-import { MenuToggleIcon } from '@/components/menu-toggle-icon';
 import { ProfileAvatarButton } from '@/components/profile-avatar-button';
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
@@ -19,12 +18,9 @@ import { useProfilePhoto } from '@/hooks/use-profile-photo';
 
 interface HeaderBarProps {
   onPressNotifications?: () => void;
-  onPressMenu?: () => void;
   onPressProfile?: () => void;
   /** Volta para o chat. Sem handler o wordmark fica inerte, como era antes. */
   onPressLogo?: () => void;
-  /** Menu aberto: o hambúrguer vira X. */
-  menuOpen?: boolean;
   /** Perfil aberto: o anel se desenha em volta do avatar. */
   profileOpen?: boolean;
   /** Contagem para o badge sobre o sino — 0/undefined não desenha nada. */
@@ -33,10 +29,8 @@ interface HeaderBarProps {
 
 export function HeaderBar({
   onPressNotifications,
-  onPressMenu,
   onPressProfile,
   onPressLogo,
-  menuOpen = false,
   profileOpen = false,
   unreadCount,
 }: HeaderBarProps) {
@@ -80,7 +74,7 @@ export function HeaderBar({
             unreadCount ? `Notificações, ${unreadCount} pendentes` : 'Notificações'
           }
         >
-          <IconBell size={24} color={colors.accent} />
+          <IconBell size={24} color={colors.ink2} />
           {unreadCount ? (
             <View style={styles.badge}>
               <Text style={styles.badgeText} numberOfLines={1}>
@@ -88,21 +82,6 @@ export function HeaderBar({
               </Text>
             </View>
           ) : null}
-        </Pressable>
-
-        <Pressable
-          onPress={onPressMenu}
-          hitSlop={Spacing.two}
-          accessibilityRole="button"
-          accessibilityLabel={menuOpen ? 'Fechar menu' : 'Menu'}
-          accessibilityState={{ expanded: menuOpen }}
-          style={({ pressed }) => pressed && styles.menuPressed}
-        >
-          <MenuToggleIcon
-            open={menuOpen}
-            color={colors.accent}
-            activeFill={colors.accentSoft}
-          />
         </Pressable>
 
         <ProfileAvatarButton open={profileOpen} onPress={onPressProfile} photo={photo} />
@@ -139,7 +118,6 @@ const useStyles = makeStyles((colors) => ({
     alignItems: 'center',
     gap: Spacing.three,
   },
-  menuPressed: { transform: [{ scale: 0.88 }] },
   badge: {
     position: 'absolute',
     top: -4,
@@ -148,7 +126,7 @@ const useStyles = makeStyles((colors) => ({
     height: 16,
     paddingHorizontal: 3,
     borderRadius: Radius.pill,
-    backgroundColor: colors.dangerFill,
+    backgroundColor: colors.accentFill,
     borderWidth: 1.5,
     borderColor: colors.card,
     alignItems: 'center',

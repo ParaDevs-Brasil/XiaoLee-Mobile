@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
@@ -23,10 +23,21 @@ import { CreatorFormatPicker, type CreatorFormat } from '@/components/creator-fo
 import { SwapPreview } from '@/components/swap-preview';
 import { UploadTile } from '@/components/upload-tile';
 import { EmptyState } from '@/components/feedback';
-import { IconCheck, IconClose, IconPlay, IconSpark, IconUser } from '@/components/icons';
+import {
+  IconArrowRight,
+  IconCheck,
+  IconChevronLeft,
+  IconChevronRight,
+  IconClose,
+  IconDollar,
+  IconFileText,
+  IconLightbulb,
+  IconPlay,
+  IconSpark,
+  IconUser,
+} from '@/components/icons';
 import { FAB_CLEARANCE, PageHeading, ScreenShell } from '@/components/screen-shell';
 import { SectionCard } from '@/components/section-card';
-import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { pickMotionVideo, uploadMotion, type PickedMotion } from '@/lib/creators';
 import { isVideoPending, maxWords, motionDurations, videoStatusLabel, wordCount } from '@/lib/creators-core';
@@ -52,6 +63,7 @@ export default function CreatorScreen() {
   const creatorId = Number(id);
   const colors = useTheme();
   const styles = useStyles();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const wallet = usePrivyWallet();
 
@@ -197,15 +209,23 @@ export default function CreatorScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <PageHeading title={creator?.name ?? 'Character'} subtitle="Choose what it does, then pay to make the video." />
+        <View>
+          {router.canGoBack() ? (
+            <Pressable onPress={() => router.back()} style={styles.backBtn} accessibilityRole="button" accessibilityLabel="Back">
+              <IconChevronLeft size={20} sw={2.2} color={colors.ink} />
+            </Pressable>
+          ) : null}
+          <PageHeading title={creator?.name ?? 'Character'} subtitle="Choose what it does, then pay to make the video." />
+        </View>
 
         {creator?.image_url ? (
-          <Image
-            source={{ uri: creator.image_url }}
-            style={[styles.photo, { height: 260, borderRadius: 12 }]}
-            contentFit="cover"
-            contentPosition="top"
-          />
+          <View style={styles.heroWrap}>
+            <Image source={{ uri: creator.image_url }} style={{ width: '100%', height: 170 }} contentFit="cover" contentPosition={{ top: '28%' }} />
+            <View style={styles.heroPill}>
+              <IconSpark size={13} color={colors.onMedia} />
+              <Text style={styles.heroPillText}>AI Video</Text>
+            </View>
+          </View>
         ) : null}
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -293,37 +313,53 @@ export default function CreatorScreen() {
         ) : null}
 
         {narrated ? (
-        <SectionCard title={moves ? 'What your character says' : 'Script'} subtitle={`${words} of ${limit} words · ${duration}s`}>
-          <View style={styles.rowTop}>
-            <TextInput
-              value={topic}
-              onChangeText={setTopic}
-              placeholder="Give a topic and Xiaolee writes it"
-              placeholderTextColor={colors.ink3}
-              maxLength={500}
-              style={[styles.input, { flex: 1 }]}
-            />
-            <Pressable
-              onPress={writeForMe}
-              disabled={writing || topic.trim().length < 3}
-              style={[styles.primary, { paddingHorizontal: Spacing.three }, (writing || topic.trim().length < 3) && styles.disabled]}
-              accessibilityRole="button"
-              accessibilityLabel="Write the script for me"
-            >
-              {writing ? <ActivityIndicator color={colors.onAccent} /> : <IconSpark size={16} color={colors.onAccent} />}
-            </Pressable>
-          </View>
-          <TextInput
-            value={script}
-            onChangeText={setScript}
-            placeholder="Or write what your character says"
-            placeholderTextColor={colors.ink3}
-            multiline
-            maxLength={2000}
-            style={[styles.input, { minHeight: 110, borderRadius: 12, textAlignVertical: 'top' }]}
-          />
-          {words > limit ? <Text style={styles.error}>Too long for {duration} seconds. Cut it to {limit} words or pick a longer length.</Text> : null}
-        </SectionCard>
+          <SectionCard
+            icon={<IconFileText size={20} color={colors.ink} />}
+            title={moves ? 'What your character says' : 'Script'}
+            action={
+              <View style={styles.countPill}>
+                <IconFileText size={13} color={colors.ink3} />
+                <Text style={styles.countText}>
+                  {words > 0 ? `${words} of ${limit}` : limit} words · {duration}s
+                </Text>
+              </View>
+            }
+          >
+            <View style={styles.topicBox}>
+              <IconSpark size={16} color={colors.accent} />
+              <TextInput
+                value={topic}
+                onChangeText={setTopic}
+                placeholder="Give a topic and Xiaolee writes it"
+                placeholderTextColor={colors.ink3}
+                maxLength={500}
+                style={styles.topicInput}
+              />
+              <Pressable
+                onPress={writeForMe}
+                disabled={writing || topic.trim().length < 3}
+                style={[styles.sendCircle, (writing || topic.trim().length < 3) && styles.disabled]}
+                accessibilityRole="button"
+                accessibilityLabel="Write the script for me"
+              >
+                {writing ? <ActivityIndicator color={colors.onAccent} /> : <IconArrowRight size={18} sw={2.2} color={colors.onAccent} />}
+              </Pressable>
+            </View>
+            <View style={styles.ideaBox}>
+              <IconLightbulb size={18} color={colors.ink3} />
+              <TextInput
+                value={script}
+                onChangeText={setScript}
+                placeholder="Or write what your character says"
+                placeholderTextColor={colors.ink3}
+                multiline
+                maxLength={2000}
+                style={styles.ideaInput}
+              />
+              {script ? null : <IconChevronRight size={16} color={colors.ink3} />}
+            </View>
+            {words > limit ? <Text style={styles.error}>Too long for {duration} seconds. Cut it to {limit} words or pick a longer length.</Text> : null}
+          </SectionCard>
         ) : null}
 
         <SectionCard title="Length" subtitle={moves && !motion ? 'Choose your video first.' : undefined}>
@@ -364,10 +400,20 @@ export default function CreatorScreen() {
           <Pressable
             onPress={() => setConfirming(true)}
             disabled={!canPay}
-            style={[styles.primary, !canPay && styles.disabled]}
+            style={[styles.generate, !canPay && styles.disabled]}
             accessibilityRole="button"
+            accessibilityLabel={`Generate video${price !== null ? `, ${price.toFixed(2)} USDC` : ''}`}
           >
-            <Text style={styles.btnText}>Create video{price !== null ? ` · $${price.toFixed(2)}` : ''}</Text>
+            <View style={styles.generateLabel}>
+              <IconSpark size={18} color={colors.onAccent} />
+              <Text style={styles.generateText}>Generate video</Text>
+            </View>
+            {price !== null ? (
+              <View style={styles.generatePrice}>
+                <IconDollar size={16} sw={2.2} color={colors.onAccent} />
+                <Text style={styles.generatePriceText}>{price.toFixed(2)} USDC</Text>
+              </View>
+            ) : null}
           </Pressable>
         ) : (
           <SectionCard title={`Pay $${price?.toFixed(2)} in USDC?`} subtitle="Paid from your wallet. We start as soon as the payment goes through.">

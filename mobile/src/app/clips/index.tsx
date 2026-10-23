@@ -43,6 +43,11 @@ const FILTERS: { value: MediaFilter; label: string }[] = [
  * continuou com o app fechado.
  */
 export default function ClipsScreen() {
+  return <ClipsView />;
+}
+
+/** O corpo da tela de Clips; `embedded` o encaixa dentro de outra tela (o Studio), sem moldura, rolagem nem título. */
+export function ClipsView({ embedded = false }: { embedded?: boolean }) {
   const colors = useTheme();
   const styles = useStyles();
   const insets = useSafeAreaInsets();
@@ -78,26 +83,14 @@ export default function ClipsScreen() {
     openMedia(asset.id);
   };
 
-  return (
-    <ScreenShell>
-      <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: FAB_CLEARANCE + (keyboard.visible ? keyboard.height : insets.bottom) }]}
-        showsVerticalScrollIndicator={false}
-        // Com o teclado aberto no "Words to get right", tocar num chip ou no Undo precisa valer no primeiro toque.
-        keyboardShouldPersistTaps="handled"
-        refreshControl={
-          <RefreshControl
-            refreshing={media.refreshing}
-            onRefresh={media.reload}
-            tintColor={colors.accent}
-            colors={[colors.accent]}
-          />
-        }
-      >
-        <PageHeading
+  const body = (
+      <>
+        {embedded ? null : (
+          <PageHeading
           title="Clips"
           subtitle="Turn a long video into 3 vertical clips with captions."
         />
+        )}
 
         <UploadCard state={upload.state} onPick={pickAndUpload} onCancel={upload.cancel} />
 
@@ -172,8 +165,69 @@ export default function ClipsScreen() {
             ))}
           </View>
         ) : null}
-      </ScrollView>
+      </>
+  );
+  const sheets = (
+      <>
+      {menuFor ? (
+        <ItemMenu
+          heading={menuFor.title}
+          kind="video"
+          consequence={
+            menuFor.clips_total
+              ? `This removes the video file, its ${menuFor.clips_total} ${menuFor.clips_total === 1 ? 'clip' : 'clips'} and the transcript.`
+              : 'This removes the video file and its transcript.'
+          }
+          onRename={() => setRenaming(menuFor)}
+          onDelete={async () => {
+            await deleteMedia(menuFor.id);
+            media.reload();
+          }}
+          onClose={() => setMenuFor(null)}
+        />
+      ) : null}
 
+      {renaming ? (
+        <RenameSheet
+          heading="Rename video"
+          initial={renaming.title}
+          onSave={async (title) => {
+            const updated = await renameMedia(renaming.id, title);
+            media.replace(videos.map((m) => (m.id === updated.id ? { ...m, title: updated.title } : m)));
+          }}
+          onClose={() => setRenaming(null)}
+        />
+      ) : null}
+      </>
+  );
+
+  if (embedded) {
+    return (
+      <>
+        <View style={styles.embedded}>{body}</View>
+        {sheets}
+      </>
+    );
+  }
+
+  return (
+    <ScreenShell>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: FAB_CLEARANCE + (keyboard.visible ? keyboard.height : insets.bottom) }]}
+        showsVerticalScrollIndicator={false}
+        // Com o teclado aberto no "Words to get right", tocar num chip ou no Undo precisa valer no primeiro toque.
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={media.refreshing}
+            onRefresh={media.reload}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
+          />
+        }
+      >
+        {body}
+      </ScrollView>
       {menuFor ? (
         <ItemMenu
           heading={menuFor.title}
@@ -323,6 +377,7 @@ function UploadingCard({
 const useStyles = makeStyles((colors) => ({
   flex: { flex: 1 },
   content: { paddingHorizontal: Spacing.three - 4, paddingTop: Spacing.three, gap: Spacing.three - 4 },
+  embedded: { gap: Spacing.three - 4 },
   pressed: { opacity: 0.7 },
   card: {
     gap: Spacing.three,

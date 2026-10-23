@@ -7,18 +7,18 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { UserCampaignParticipation } from '@/api/backend';
 import { ConnectWalletButton, ErrorState, Skeleton } from '@/components/feedback';
 import { IconChevronRight, IconUser } from '@/components/icons';
-import { NetworkMismatchCard } from '@/components/network-badge';
+import { NetworkBadge, NetworkMismatchCard } from '@/components/network-badge';
 import { ReceiptRow } from '@/components/receipt-row';
 import { ReceiveSheet } from '@/components/receive-sheet';
 import { AddMoneySheet } from '@/components/add-money-sheet';
 import { WithdrawSheet } from '@/components/withdraw-sheet';
 import { getOnoffConfig } from '@/api/backend';
 import { useBackendData } from '@/hooks/use-backend-data';
-import { FAB_CLEARANCE, PageHeading } from '@/components/screen-shell';
+import { FAB_CLEARANCE } from '@/components/screen-shell';
 import { SectionCard } from '@/components/section-card';
 import { WalletActions } from '@/components/wallet-actions';
-import { WalletAddressCard } from '@/components/wallet-address-card';
-import { WalletBalanceCard } from '@/components/wallet-balance-card';
+import { AddressChip } from '@/components/wallet-address-card';
+import { InflowRibbon, WalletBalanceCard } from '@/components/wallet-balance-card';
 import { WalletMockSwitcher } from '@/components/wallet-mock-switcher';
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
@@ -152,7 +152,10 @@ export function WalletHomeView({
           />
         }
       >
-        <PageHeading title="Wallet" subtitle="Your USDC on Arc, and where it came from." />
+        <View style={styles.head}>
+          <Text style={styles.title}>Wallet</Text>
+          <NetworkBadge />
+        </View>
 
         <WalletMockSwitcher />
 
@@ -190,23 +193,26 @@ export function WalletHomeView({
                 receipts={wallet.receipts}
                 isMock={wallet.isMock}
                 onReceive={() => setReceiveOpen(true)}
+              >
+                <AddressChip address={wallet.address} />
+                <WalletActions
+                  canAdd={canDeposit}
+                  canWithdraw={canWithdraw}
+                  onAdd={() => setAddOpen(true)}
+                  onWithdraw={() => setWithdrawOpen(true)}
+                  onReceive={() => setReceiveOpen(true)}
+                  onActivity={onSeeActivity}
+                />
+              </WalletBalanceCard>
+            ) : null}
+
+            {wallet.status === 'ready' && wallet.receipts ? (
+              <InflowRibbon
+                receipts={wallet.receipts}
                 // Sem origem conhecida não há o que detalhar — ver `wallet-breakdown-view`.
-                onDetails={wallet.receipts && hasKnownSource(wallet.receipts) ? onOpenBreakdown : undefined}
+                onDetails={hasKnownSource(wallet.receipts) ? onOpenBreakdown : undefined}
               />
             ) : null}
-
-            {wallet.status === 'ready' ? (
-              <WalletActions
-                canAdd={canDeposit}
-                canWithdraw={canWithdraw}
-                onAdd={() => setAddOpen(true)}
-                onWithdraw={() => setWithdrawOpen(true)}
-                onReceive={() => setReceiveOpen(true)}
-                onActivity={onSeeActivity}
-              />
-            ) : null}
-
-            <WalletAddressCard address={wallet.address} onShowQr={() => setReceiveOpen(true)} />
 
             {!ARC_NETWORK.isMainnet && !wallet.isMock ? <FaucetButton address={wallet.address} /> : null}
 
@@ -254,7 +260,7 @@ function RecentReceipts({ receipts, onSeeAll }: { receipts: WalletReceipt[] | nu
 
   return (
     <SectionCard
-      title="Recent payments"
+      title="Recent receipts"
       action={
         receipts && receipts.length > 0 ? (
           <Pressable
@@ -262,7 +268,7 @@ function RecentReceipts({ receipts, onSeeAll }: { receipts: WalletReceipt[] | nu
             hitSlop={Spacing.two}
             style={({ pressed }) => [styles.seeAll, pressed && styles.pressed]}
             accessibilityRole="button"
-            accessibilityLabel="See all payments"
+            accessibilityLabel="See all receipts"
           >
             <Text style={styles.seeAllText}>See all</Text>
             <IconChevronRight size={14} sw={2.2} color={colors.ink2} />
@@ -470,6 +476,8 @@ const useStyles = makeStyles((colors) => ({
     paddingTop: Spacing.four,
     gap: Spacing.three - 4,
   },
+  head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  title: { fontFamily: Fonts.bold, fontSize: 24, lineHeight: 30, color: colors.ink },
   pressed: { opacity: 0.7 },
   quiet: { fontFamily: Fonts.medium, fontSize: 13, color: colors.ink3, paddingVertical: Spacing.two },
   stale: {

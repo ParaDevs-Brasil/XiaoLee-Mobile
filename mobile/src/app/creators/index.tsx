@@ -28,6 +28,11 @@ import { createPersona, pickReferenceImage, type PickedImage } from '@/lib/creat
  * na tela da persona (`creators/[id]`), antes de qualquer geração.
  */
 export default function CreatorsScreen() {
+  return <CreatorsView />;
+}
+
+/** O corpo da tela de AI Creators; `embedded` o encaixa dentro de outra tela (o Studio), sem moldura, rolagem nem título. */
+export function CreatorsView({ embedded = false }: { embedded?: boolean }) {
   const colors = useTheme();
   const styles = useStyles();
   const insets = useSafeAreaInsets();
@@ -92,14 +97,11 @@ export default function CreatorsScreen() {
   const voiceName = (id: string) => catalog?.voices.find((v) => v.id === id)?.name ?? '';
   const canSave = Boolean(name.trim() && voiceId && image && rights) && !saving;
 
-  return (
-    <ScreenShell>
-      <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: FAB_CLEARANCE + insets.bottom }]}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        <PageHeading title="AI Creators" subtitle="Make videos with your own characters. You pay per video, in USDC." />
+  const body = (
+      <>
+        {embedded ? null : (
+          <PageHeading title="AI Creators" subtitle="Make videos with your own characters. You pay per video, in USDC." />
+        )}
 
         {!hasSession ? (
           <EmptyState
@@ -209,6 +211,26 @@ export default function CreatorsScreen() {
             )}
           </>
         )}
+      </>
+  );
+
+  if (embedded) {
+    return (
+      <>
+        <View style={styles.embedded}>{body}</View>
+        
+      </>
+    );
+  }
+
+  return (
+    <ScreenShell>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: FAB_CLEARANCE + insets.bottom }]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {body}
       </ScrollView>
     </ScreenShell>
   );

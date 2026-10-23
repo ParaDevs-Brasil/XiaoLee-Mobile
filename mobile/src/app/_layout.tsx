@@ -98,6 +98,9 @@ function RootNavigator() {
             `ScreenShell`, então a barra nativa sairia duplicada. A volta
             fica com o gesto do sistema e com o wordmark, que leva ao chat. */}
         <Stack.Screen name="index" options={{ headerShown: false }} />
+        <Stack.Screen name="chat" options={{ headerShown: false }} />
+        <Stack.Screen name="studio" options={{ headerShown: false }} />
+        <Stack.Screen name="grow" options={{ headerShown: false }} />
         {/* Sem ScreenShell/header nativo de propósito: é o único passo
             obrigatório antes do chat/dashboard, não um destino para
             navegar de volta a partir de outra tela. */}

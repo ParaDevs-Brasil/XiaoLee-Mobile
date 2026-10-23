@@ -279,6 +279,50 @@ export const IconSpark = ({ size = 24, color = 'currentColor' }: IconProps) => (
   </Svg>
 );
 
+/** Balão de fala com três pontos — o "Talk" do desenho do Josh. */
+export const IconMessageDots = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Path d="M21 15a2 2 0 0 1-2 2H8l-5 4V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    <Circle cx="8.5" cy="10.5" r="0.6" />
+    <Circle cx="12" cy="10.5" r="0.6" />
+    <Circle cx="15.5" cy="10.5" r="0.6" />
+  </Svg>
+);
+
+/** Duas setas opostas (⇄) — o "Swap" do desenho do Josh. */
+export const IconArrowsLeftRight = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Line x1="4" y1="8" x2="20" y2="8" />
+    <Polyline points="16 4 20 8 16 12" />
+    <Line x1="20" y1="16" x2="4" y2="16" />
+    <Polyline points="8 12 4 16 8 20" />
+  </Svg>
+);
+
+export const IconFileText = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <Polyline points="14 2 14 8 20 8" />
+    <Line x1="16" y1="13" x2="8" y2="13" />
+    <Line x1="16" y1="17" x2="8" y2="17" />
+  </Svg>
+);
+
+export const IconLightbulb = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Path d="M9 18h6" />
+    <Path d="M10 22h4" />
+    <Path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14" />
+  </Svg>
+);
+
+export const IconArrowRight = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Line x1="5" y1="12" x2="19" y2="12" />
+    <Polyline points="12 5 19 12 12 19" />
+  </Svg>
+);
+
 export const IconLogOut = (p: IconProps) => (
   <Svg {...base(p)}>
     <Path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -501,5 +545,18 @@ export const IconPhone = (p: IconProps) => (
   <Svg {...base(p)}>
     <Rect x="6" y="2" width="12" height="20" rx="2.5" />
     <Line x1="11" y1="18" x2="13" y2="18" />
+  </Svg>
+);
+
+export const IconHome = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" />
+  </Svg>
+);
+
+export const IconVideo = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Path d="m22 8-6 4 6 4V8z" />
+    <Rect x="2" y="6" width="14" height="12" rx="2" />
   </Svg>
 );
