@@ -58,7 +58,7 @@ import { formatTokenAmount } from '@/lib/format';
  * Sem sessão não há participação a buscar — a rota responderia lista vazia de
  * qualquer forma, e pedir isso no estado de convidado só gastaria round-trip.
  */
-async function fetchCampaignsAndParticipation() {
+export async function fetchCampaignsAndParticipation() {
   const [catalog, mine] = await Promise.all([
     listCampaigns(),
     listMyCampaigns().catch(() => [] as UserCampaignParticipation[]),
@@ -459,7 +459,7 @@ function stageLabel(item: UserCampaignParticipation): string {
 }
 
 /** Uma linha por participação, na aba "My Campaigns". */
-function ParticipationRow({ item }: { item: UserCampaignParticipation }) {
+export function ParticipationRow({ item }: { item: UserCampaignParticipation }) {
   const styles = useStyles();
   return (
     <View style={styles.row}>
@@ -481,7 +481,7 @@ function ParticipationRow({ item }: { item: UserCampaignParticipation }) {
 }
 
 /** Uma linha por recompensa já resgatada, na aba "Rewards". */
-function RewardRow({ item }: { item: UserCampaignParticipation }) {
+export function RewardRow({ item }: { item: UserCampaignParticipation }) {
   const styles = useStyles();
   return (
     <View style={styles.row}>
