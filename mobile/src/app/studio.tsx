@@ -15,7 +15,7 @@ import { EmptyState, ErrorState, Skeleton } from '@/components/feedback';
 import { IconChevronRight, IconClipboard, IconScissors, IconShare, IconUpload, IconUser } from '@/components/icons';
 import { ItemMenu } from '@/components/item-menu';
 import { RenameSheet } from '@/components/rename-sheet';
-import { FAB_CLEARANCE, PageHeading, ScreenShell } from '@/components/screen-shell';
+import { FAB_CLEARANCE, ScreenShell } from '@/components/screen-shell';
 import { VideoRow } from '@/components/video-row';
 import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
 import { useBackendData } from '@/hooks/use-backend-data';
@@ -92,7 +92,10 @@ export default function StudioScreen() {
           <RefreshControl refreshing={media.refreshing} onRefresh={reloadAll} tintColor={colors.accent} colors={[colors.accent]} />
         }
       >
-        <PageHeading title="Studio" subtitle="Create, publish and track your content." />
+        <View>
+          <Text style={styles.title}>Studio</Text>
+          <Text style={styles.subtitle}>Create, publish and track your content.</Text>
+        </View>
 
         <View style={styles.card}>
           <View style={styles.cardHead}>
@@ -355,10 +358,12 @@ const useStyles = makeStyles((colors) => ({
     justifyContent: 'center',
   },
   outlineText: { fontFamily: Fonts.semibold, fontSize: 14, color: colors.accent },
-  tabs: { gap: 8 },
+  title: { fontFamily: Fonts.bold, fontSize: 24, lineHeight: 30, color: colors.ink },
+  subtitle: { fontFamily: Fonts.sans, fontSize: 14, lineHeight: 18, color: colors.ink2 },
+  tabs: { gap: 6 },
   tab: {
     height: 40,
-    paddingHorizontal: 18,
+    paddingHorizontal: 13,
     borderRadius: Radius.pill,
     borderWidth: 1,
     borderColor: colors.borderStrong,
@@ -366,7 +371,7 @@ const useStyles = makeStyles((colors) => ({
     justifyContent: 'center',
   },
   tabSelected: { backgroundColor: colors.accentFill, borderColor: colors.accentFill },
-  tabText: { fontFamily: Fonts.semibold, fontSize: 14, color: colors.ink2 },
+  tabText: { fontFamily: Fonts.semibold, fontSize: 13, color: colors.ink2 },
   tabTextSelected: { color: colors.onAccent },
   list: { gap: 12 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },

@@ -16,7 +16,6 @@ import {
   IconGift,
   IconScissors,
   IconSend,
-  IconShare,
   IconSwap,
   IconUser,
   type IconProps,
@@ -134,7 +133,7 @@ export default function HomeScreen() {
     {
       title: 'Post to X',
       subtitle: 'Draft, preview and publish',
-      Icon: IconShare,
+      Icon: IconSend,
       onPress: () =>
         data?.social?.accounts.some((a) => a.platform === 'x')
           ? router.navigate({ pathname: '/chat', params: { ask: 'I want to post something on X, can you help me?' } })

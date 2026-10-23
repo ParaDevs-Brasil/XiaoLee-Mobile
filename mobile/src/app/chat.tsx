@@ -58,12 +58,10 @@ import { PostOptions } from '@/components/chat-post-options';
 import { PostPreview } from '@/components/chat-post-preview';
 import {
   IconClock,
-  IconChat,
   IconCheck,
   IconGift,
   IconSend,
   IconScissors,
-  IconShare,
   IconWallet,
   type IconProps,
 } from '@/components/icons';
@@ -109,7 +107,7 @@ const ACTIONS: Action[] = [
   {
     // Só aparece com a publicação ligada no backend (`SOCIAL_TOOLS_ENABLED`); ver `socialOn`.
     key: 'post',
-    Icon: IconShare,
+    Icon: IconSend,
     title: 'Post to your networks',
     subtitle: 'Draft, preview and publish',
     prompt: 'I want to post something on my networks, can you help me?',
@@ -633,13 +631,15 @@ export default function ChatScreen() {
             contentContainerStyle={empty ? styles.body : styles.thread}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
-            onContentSizeChange={() => scroller.current?.scrollToEnd({ animated: true })}
+            onContentSizeChange={() => {
+              if (!empty) scroller.current?.scrollToEnd({ animated: true });
+            }}
           >
             {empty ? (
               <>
                 {/* Animado só aqui. O avatar de 40dp do header ficaria com um
                     segundo decoder na mesma tela por ganho quase nulo. */}
-                <AnimatedAvatar size={104} />
+                <AnimatedAvatar size={92} />
 
                 {welcome ? (
                   <View style={[styles.bubble, styles.bubbleXiaolee, styles.welcome]}>
@@ -1248,7 +1248,6 @@ function ActionCard({
 }
 
 function Suggestion({ text, onPress }: { text: string; onPress: () => void }) {
-  const colors = useTheme();
   const styles = useStyles();
   return (
     <Pressable
@@ -1256,7 +1255,6 @@ function Suggestion({ text, onPress }: { text: string; onPress: () => void }) {
       style={({ pressed }) => [styles.chip, pressed && styles.pressed]}
       accessibilityRole="button"
     >
-      <IconChat size={12} color={colors.ink2} />
       <Text style={styles.chipText}>{text}</Text>
     </Pressable>
   );
@@ -1280,6 +1278,7 @@ function Composer({
 
   return (
     <View style={styles.composer}>
+      <View style={styles.pill}>
       <TextInput
         value={value}
         onChangeText={onChange}
@@ -1329,6 +1328,7 @@ function Composer({
           <IconSend size={18} color={colors.onAccent} />
         )}
       </Pressable>
+      </View>
     </View>
   );
 }
@@ -1403,8 +1403,8 @@ const useStyles = makeStyles((colors) => ({
 
   // ── Corpo ──────────────────────────────────────────────────────────────
   body: {
-    paddingHorizontal: Spacing.four + 3,
-    paddingTop: Spacing.four + 6,
+    paddingHorizontal: Spacing.three,
+    paddingTop: Spacing.three + 4,
     paddingBottom: Spacing.four,
     alignItems: 'center',
   },
@@ -1585,7 +1585,7 @@ const useStyles = makeStyles((colors) => ({
   actionSubtitle: { fontFamily: Fonts.sans, fontSize: 12, color: colors.ink2, marginTop: 1 },
 
   // ── Chips de sugestão ──────────────────────────────────────────────────
-  suggestions: { gap: Spacing.two, marginTop: Spacing.four, alignItems: 'center' },
+  suggestions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: Spacing.two, marginTop: Spacing.three },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1601,24 +1601,27 @@ const useStyles = makeStyles((colors) => ({
 
   // ── Composer ───────────────────────────────────────────────────────────
   composer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: Spacing.two + 2,
     paddingHorizontal: Spacing.three - 3,
     paddingVertical: Spacing.two + 2,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
   },
+  // Campo e botão numa pílula só (o botão fica dentro, à direita), como no Figma.
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: Spacing.two,
+    padding: 4,
+    borderRadius: 26,
+    backgroundColor: colors.bg,
+  },
   input: {
     flex: 1,
-    minHeight: 46,
+    minHeight: 44,
     maxHeight: 120,
-    paddingHorizontal: Spacing.three,
+    paddingHorizontal: Spacing.three - 2,
     paddingTop: 13,
     paddingBottom: 13,
-    borderRadius: Radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
     fontFamily: Fonts.medium,
     fontSize: 14,
     color: colors.ink,
@@ -1628,9 +1631,9 @@ const useStyles = makeStyles((colors) => ({
     textAlignVertical: 'top',
   },
   sendButton: {
-    width: 50,
-    height: 42,
-    borderRadius: Radius.lg,
+    width: 44,
+    height: 44,
+    borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.accentFill,
