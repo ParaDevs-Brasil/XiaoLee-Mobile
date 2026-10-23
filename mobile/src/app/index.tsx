@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Image, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import {
@@ -41,6 +41,7 @@ import { getSession } from '@/lib/session';
 
 interface Overview {
   name: string | null;
+  onboarded: boolean;
   social: SocialAccounts | null;
   hasClip: boolean;
   ownCampaign: boolean;
@@ -59,6 +60,8 @@ async function fetchOverview(): Promise<Overview | null> {
   ]);
   return {
     name: profile?.full_name?.trim().split(/\s+/)[0] || null,
+    // Sem perfil (backend fora) não bloqueia a Home: só um `onboarded: false` explícito manda para o questionário.
+    onboarded: profile?.onboarded !== false,
     social,
     hasClip: media.some((m) => m.clips_ready > 0),
     ownCampaign: campaigns.campaigns.some((c) => c.creator_twitter_user_id === session.twitterUserId),
@@ -108,6 +111,11 @@ export default function HomeScreen() {
   const { data } = useBackendData(fetchOverview);
   const [ask, setAsk] = useState('');
   const [allSteps, setAllSteps] = useState(false);
+
+  // Onboarding obrigatório no 1º acesso (nome + um interesse); convidado e conta já onboarded seguem na Home.
+  useEffect(() => {
+    if (hasSession && data && !data.onboarded) router.replace('/onboarding');
+  }, [hasSession, data, router]);
 
   const steps = stepsOf(hasSession, data);
   const doneCount = steps.filter((s) => s.done).length;
