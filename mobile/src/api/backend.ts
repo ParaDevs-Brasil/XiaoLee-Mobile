@@ -186,6 +186,18 @@ export function sendChatMessage(request: ChatRequest): Promise<ChatResponse> {
   });
 }
 
+/** `GET /v1/radar/{id}` — `backend/server/radar_chat_tools.py`: a pesquisa de tendências roda no backend; o app consulta. */
+export interface RadarStatus {
+  status: 'pending' | 'ready' | 'error';
+  niche: string;
+  trends?: unknown[];
+  message?: string;
+}
+
+export function getRadar(jobId: string): Promise<RadarStatus> {
+  return apiFetch<RadarStatus>(`/v1/radar/${encodeURIComponent(jobId)}`);
+}
+
 /** `GET/POST /v1/chat/sessions`, `GET /v1/chat/sessions/{id}/messages` — `backend/server/routes/chat_sessions_routes.py` */
 export interface ChatSessionSummary {
   id: number;

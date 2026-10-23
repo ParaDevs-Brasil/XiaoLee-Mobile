@@ -7,7 +7,7 @@
  */
 import assert from 'node:assert/strict';
 
-import { draftFrom, insightsFrom, matchCards, optionsFrom, type StoredWithCards } from './chat-cards.ts';
+import { draftFrom, insightsFrom, matchCards, optionsFrom, radarFrom, trendsFrom, type StoredWithCards } from './chat-cards.ts';
 
 function test(name: string, fn: () => void) {
   fn();
@@ -113,4 +113,29 @@ test('formulário de rascunho e opções de post vêm do execution e voltam ao r
   );
   assert.deepEqual(m?.draft, draft);
   assert.deepEqual(m?.options, options);
+});
+
+test('radar: só o card pendente com job vira card; qualquer outra coisa é ignorada', () => {
+  assert.deepEqual(radarFrom({ status: 'radar_pending', radar: { job_id: 'abc', niche: 'IA' } }), {
+    jobId: 'abc', niche: 'IA', status: 'pending', trends: [],
+  });
+  assert.equal(radarFrom({ status: 'radar_pending', radar: {} }), undefined);
+  assert.equal(radarFrom({ status: 'post_ready' }), undefined);
+  assert.equal(radarFrom(undefined), undefined);
+});
+
+test('radar: tendências sem tópico caem, no máximo 5, campos ausentes viram texto vazio', () => {
+  const t = trendsFrom([{ topic: ' A ', why: 'w' }, { why: 'sem topic' }, null, ...Array.from({ length: 8 }, (_, i) => ({ topic: `t${i}` }))]);
+  assert.equal(t.length, 5);
+  assert.deepEqual(t[0], { topic: 'A', why: 'w', hook: '' });
+  assert.deepEqual(trendsFrom('lixo'), []);
+});
+
+test('radar: o resultado guardado volta junto da mensagem ao reabrir a conversa', () => {
+  const radar = { jobId: 'abc', niche: 'IA', status: 'ready' as const, trends: [{ topic: 'A', why: '', hook: '' }] };
+  const out = matchCards(
+    [{ role: 'assistant', content: 'Fui vasculhar o X' }],
+    [{ role: 'assistant', content: 'Fui vasculhar o X', at: '9', radar }],
+  );
+  assert.deepEqual(out[0]?.radar, radar);
 });

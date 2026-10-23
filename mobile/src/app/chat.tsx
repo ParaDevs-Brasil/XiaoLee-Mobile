@@ -32,11 +32,13 @@ import {
 import {
   draftFrom,
   insightsFrom,
+  radarFrom,
   matchCards,
   optionsFrom,
   type CardDraft,
   type CardInsights,
   type CardOptions,
+  type CardRadar,
   type CardPost,
   type CardSwap,
   type ChatCards,
@@ -55,6 +57,7 @@ import { AnimatedAvatar } from '@/components/animated-avatar';
 import { InsightsCard } from '@/components/chat-insights-card';
 import { PostDraftCard } from '@/components/chat-post-draft';
 import { PostOptions } from '@/components/chat-post-options';
+import { RadarCard } from '@/components/chat-radar-card';
 import { PostPreview } from '@/components/chat-post-preview';
 import {
   IconClock,
@@ -177,6 +180,8 @@ interface Message {
   /** Formulário de rascunho (`execution.draft`, tool `open_post_draft`) e opções de post (`execution.options`, tool `suggest_post_options`). */
   draft?: CardDraft;
   options?: CardOptions;
+  /** Radar de tendências (`execution.radar`, tool `get_trend_radar`): nasce pendente e o card consulta o backend até terminar. */
+  radar?: CardRadar;
   /** Link do post, quando já publicado. */
   postUrl?: string;
   /** `at` da entrada correspondente no histórico local — é por ele que o comprovante é gravado depois de assinar. */
@@ -262,7 +267,7 @@ function messageFromChatSession(
     time: new Date(entry.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     // O backend só guarda o texto; botões e comprovante vêm do histórico local
     // (`lib/chat-cards.ts`).
-    ...(cards && { storedAt: cards.at, transfer: cards.transfer, txHash: cards.txHash, claim: cards.claim, claimReceiptId: cards.claimReceiptId, swap: cards.swap, swapTxHash: cards.swapTxHash, swapAmountOut: cards.swapAmountOut, post: cards.post, postUrl: cards.postUrl, insights: cards.insights, draft: cards.draft, options: cards.options }),
+    ...(cards && { storedAt: cards.at, transfer: cards.transfer, txHash: cards.txHash, claim: cards.claim, claimReceiptId: cards.claimReceiptId, swap: cards.swap, swapTxHash: cards.swapTxHash, swapAmountOut: cards.swapAmountOut, post: cards.post, postUrl: cards.postUrl, insights: cards.insights, draft: cards.draft, options: cards.options, radar: cards.radar }),
   };
 }
 
@@ -466,6 +471,13 @@ export default function ChatScreen() {
     setMessages((current) => current.map((m) => (m.id === id ? { ...m, postUrl: url } : m)));
   }
 
+  /** O Radar terminou (ou falhou): o card guarda o resultado no histórico para a conversa reaberta não consultar de novo. */
+  function updateRadar(id: string, radar: CardRadar) {
+    const storedAt = messages.find((m) => m.id === id)?.storedAt;
+    if (storedAt) void updateChatMessage(storedAt, { radar });
+    setMessages((current) => current.map((m) => (m.id === id ? { ...m, radar } : m)));
+  }
+
   /** O creator escolheu uma das opções: ela vira a prévia editável (nada é postado aqui). */
   function choosePost(id: string, text: string) {
     const m = messages.find((x) => x.id === id);
@@ -547,15 +559,16 @@ export default function ChatScreen() {
       const insights = insightsFrom(result.execution);
       const draft = draftFrom(result.execution);
       const options = optionsFrom(result.execution);
+      const radar = radarFrom(result.execution);
       const storedAt = new Date().toISOString();
       setMessages((current) => [
         ...current,
-        { id: `x${Date.now()}`, author: 'xiaolee', text: reply, time: now(), transfer, claim, swap, post, insights, draft, options, storedAt },
+        { id: `x${Date.now()}`, author: 'xiaolee', text: reply, time: now(), transfer, claim, swap, post, insights, draft, options, radar, storedAt },
       ]);
       // O texto gravado é o mesmo que foi para a bolha, fallback incluído —
       // o histórico não deve divergir do que a tela mostrou. Os cards vão junto:
       // é o que os traz de volta quando a conversa é reaberta.
-      appendChatMessage('assistant', reply, { at: storedAt, cards: { transfer, claim, swap, post, insights, draft, options } });
+      appendChatMessage('assistant', reply, { at: storedAt, cards: { transfer, claim, swap, post, insights, draft, options, radar } });
 
       // O agente escolhe a emoção; nome desconhecido volta para o idle.
       const animation = animationFromBackend(result.animations);
@@ -706,6 +719,7 @@ export default function ChatScreen() {
                     onPosted={markPosted}
                     onAsk={(text) => void send(text)}
                     onPick={choosePost}
+                    onRadar={updateRadar}
                   />
                 ))}
                 {sending ? <Typing /> : null}
@@ -1073,6 +1087,7 @@ function Bubble({
   onPosted,
   onAsk,
   onPick,
+  onRadar,
 }: {
   message: Message;
   onSigned: (id: string, hash: string) => void;
@@ -1081,6 +1096,7 @@ function Bubble({
   onPosted: (id: string, url: string) => void;
   onAsk: (text: string) => void;
   onPick: (id: string, text: string) => void;
+  onRadar: (id: string, radar: CardRadar) => void;
 }) {
   const styles = useStyles();
   const mine = message.author === 'user';
@@ -1122,6 +1138,15 @@ function Bubble({
           ) : null}
           {message.insights ? <InsightsCard insights={message.insights} /> : null}
           {message.draft ? <PostDraftCard draft={message.draft} onAsk={onAsk} /> : null}
+          {message.radar ? (
+            <RadarCard
+              radar={message.radar}
+              onUpdate={(next) => onRadar(message.id, next)}
+              onPick={(t) =>
+                onAsk(`Write post options for X. Idea: ${t.topic}. Angle: ${t.hook}. Goal: Start a conversation. Tone: Casual. Audience: Mixed.`)
+              }
+            />
+          ) : null}
           {message.options && !message.post ? (
             <PostOptions options={message.options} onPick={(text) => onPick(message.id, text)} />
           ) : null}

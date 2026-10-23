@@ -102,6 +102,38 @@ export function insightsFrom(execution: Record<string, unknown> | undefined): Ca
   };
 }
 
+/** Uma tendência que o Radar achou no X. */
+export interface CardTrend {
+  topic: string;
+  why: string;
+  hook: string;
+}
+
+/** Radar de tendências (`get_trend_radar`): nasce `pending` (a pesquisa roda no backend) e o app consulta até virar `ready` ou `error`. */
+export interface CardRadar {
+  jobId: string;
+  niche: string;
+  status: 'pending' | 'ready' | 'error';
+  trends: CardTrend[];
+  message?: string;
+}
+
+/** `trends` cru do backend -> lista limpa (descarta o que não tem tópico). */
+export function trendsFrom(raw: unknown): CardTrend[] {
+  return (Array.isArray(raw) ? raw : [])
+    .filter((t): t is Record<string, unknown> => Boolean(t) && typeof t === 'object' && Boolean((t as { topic?: unknown }).topic))
+    .map((t) => ({ topic: String(t.topic).trim(), why: String(t.why ?? '').trim(), hook: String(t.hook ?? '').trim() }))
+    .slice(0, 5);
+}
+
+/** `execution.radar` -> card pendente do radar, ou `undefined` se não for um. */
+export function radarFrom(execution: Record<string, unknown> | undefined): CardRadar | undefined {
+  if (!execution || execution.status !== 'radar_pending') return undefined;
+  const r = execution.radar as { job_id?: string; niche?: string } | undefined;
+  if (!r?.job_id) return undefined;
+  return { jobId: String(r.job_id), niche: String(r.niche ?? ''), status: 'pending', trends: [] };
+}
+
 /** Estado de card que acompanha uma mensagem da Xiaolee. */
 export interface ChatCards {
   transfer?: CardTransfer;
@@ -116,6 +148,7 @@ export interface ChatCards {
   insights?: CardInsights;
   draft?: CardDraft;
   options?: CardOptions;
+  radar?: CardRadar;
   /** Link do post, quando já publicado (some o botão, fica o link). */
   postUrl?: string;
 }
@@ -132,7 +165,7 @@ export interface StoredWithCards extends ChatCards {
 }
 
 export function hasCards(c: ChatCards): boolean {
-  return Boolean(c.transfer || c.claim || c.swap || c.post || c.insights || c.draft || c.options);
+  return Boolean(c.transfer || c.claim || c.swap || c.post || c.insights || c.draft || c.options || c.radar);
 }
 
 /**
@@ -155,7 +188,7 @@ export function matchCards(
     const i = pool.findIndex((s, idx) => !used.has(idx) && s.content.trim() === text);
     if (i === -1) return undefined;
     used.add(i);
-    const { transfer, txHash, claim, claimReceiptId, swap, swapTxHash, swapAmountOut, post, postUrl, insights, draft, options, at } = pool[i];
-    return { at, transfer, txHash, claim, claimReceiptId, swap, swapTxHash, swapAmountOut, post, postUrl, insights, draft, options };
+    const { transfer, txHash, claim, claimReceiptId, swap, swapTxHash, swapAmountOut, post, postUrl, insights, draft, options, radar, at } = pool[i];
+    return { at, transfer, txHash, claim, claimReceiptId, swap, swapTxHash, swapAmountOut, post, postUrl, insights, draft, options, radar };
   });
 }
