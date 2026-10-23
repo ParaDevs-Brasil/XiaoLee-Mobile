@@ -6,6 +6,7 @@ import { makeStyles } from '@/hooks/use-theme';
 /** Estilos das telas de criadores sintéticos (`app/creators/*`). */
 export const useCreatorStyles = makeStyles((colors) => ({
   content: { paddingHorizontal: Spacing.three - 4, paddingTop: Spacing.four, gap: Spacing.three - 4 },
+  embedded: { gap: Spacing.three - 4 },
   input: {
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
