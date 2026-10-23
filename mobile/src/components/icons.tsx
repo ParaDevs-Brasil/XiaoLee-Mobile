@@ -299,6 +299,13 @@ export const IconArrowsLeftRight = (p: IconProps) => (
   </Svg>
 );
 
+export const IconArrowUp = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Line x1="12" y1="19" x2="12" y2="5" />
+    <Polyline points="5 12 12 5 19 12" />
+  </Svg>
+);
+
 export const IconFileText = (p: IconProps) => (
   <Svg {...base(p)}>
     <Path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />

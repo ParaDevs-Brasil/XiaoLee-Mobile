@@ -39,6 +39,32 @@ export interface CardDraft {
   networks: { platform: string; handle: string }[];
 }
 
+/** Uma pergunta da Xiaolee (`CardAsk`). `short` é o rótulo do resumo; `text` vira um campo livre opcional. */
+export interface AskQuestion {
+  id: string;
+  label: string;
+  short: string;
+  options: string[];
+  multi?: boolean;
+  /** Mostra "Other" (formulário) ou "Something else" (passo a passo). */
+  other?: boolean;
+  optional?: boolean;
+  text?: boolean;
+}
+
+/** Perguntas estruturadas na conversa: todas num formulário (`form`) ou uma por vez (`wizard`). */
+export interface CardAsk {
+  mode: 'form' | 'wizard';
+  title: string;
+  subtitle?: string;
+  submit?: string;
+  /** Título do resumo do passo a passo, depois de responder. */
+  doneTitle?: string;
+  questions: AskQuestion[];
+  /** Só na prévia de desenvolvimento: a resposta não vai para o backend. */
+  demo?: boolean;
+}
+
 /** Opções de post que a Xiaolee escreveu (`suggest_post_options`); o creator escolhe uma e ela vira a prévia. */
 export interface CardOptions {
   platform: string;
