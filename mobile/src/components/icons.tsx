@@ -279,6 +279,26 @@ export const IconSpark = ({ size = 24, color = 'currentColor' }: IconProps) => (
   </Svg>
 );
 
+/** Balão de fala com três pontos — o "Talk" do desenho do Josh. */
+export const IconMessageDots = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Path d="M21 15a2 2 0 0 1-2 2H8l-5 4V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    <Circle cx="8.5" cy="10.5" r="0.6" />
+    <Circle cx="12" cy="10.5" r="0.6" />
+    <Circle cx="15.5" cy="10.5" r="0.6" />
+  </Svg>
+);
+
+/** Duas setas opostas (⇄) — o "Swap" do desenho do Josh. */
+export const IconArrowsLeftRight = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Line x1="4" y1="8" x2="20" y2="8" />
+    <Polyline points="16 4 20 8 16 12" />
+    <Line x1="20" y1="16" x2="4" y2="16" />
+    <Polyline points="8 12 4 16 8 20" />
+  </Svg>
+);
+
 export const IconFileText = (p: IconProps) => (
   <Svg {...base(p)}>
     <Path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />

@@ -1,6 +1,6 @@
 import { Pressable, Text, View } from 'react-native';
 
-import { IconChat, IconCheck, IconPlay, IconSwap } from '@/components/icons';
+import { IconArrowsLeftRight, IconCheck, IconMessageDots, IconPlay } from '@/components/icons';
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
 
@@ -11,10 +11,10 @@ import { makeStyles, useTheme } from '@/hooks/use-theme';
 
 export type CreatorFormat = 'speech' | 'mimic' | 'swap';
 
-const FORMATS: { id: CreatorFormat; title: string; text: string; Icon: typeof IconChat }[] = [
-  { id: 'speech', title: 'Talk', text: 'Says what you write', Icon: IconChat },
+const FORMATS: { id: CreatorFormat; title: string; text: string; Icon: typeof IconPlay }[] = [
+  { id: 'speech', title: 'Talk', text: 'Says what you write', Icon: IconMessageDots },
   { id: 'mimic', title: 'Mimic', text: 'Copies the moves, in your photo’s scene', Icon: IconPlay },
-  { id: 'swap', title: 'Swap', text: 'Your video, with your character in it', Icon: IconSwap },
+  { id: 'swap', title: 'Swap', text: 'Your video, with your character in it', Icon: IconArrowsLeftRight },
 ];
 
 export function CreatorFormatPicker({ value, onChange }: { value: CreatorFormat; onChange: (f: CreatorFormat) => void }) {
