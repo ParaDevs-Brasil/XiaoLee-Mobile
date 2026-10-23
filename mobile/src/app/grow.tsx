@@ -2,47 +2,39 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 
-import { EmptyState, ErrorState, Skeleton } from '@/components/feedback';
-import { IconBell, IconMegaphone, IconPlus, IconTarget } from '@/components/icons';
-import { CampaignCard } from '@/components/campaign-card';
+import { IconPlus } from '@/components/icons';
 import { FAB_CLEARANCE, ScreenShell } from '@/components/screen-shell';
 import { Fonts, Radius, Spacing } from '@/constants/theme';
-import { useBackendData } from '@/hooks/use-backend-data';
 import { useSession } from '@/hooks/use-session';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
-import { fetchCampaignsAndParticipation, ParticipationRow, RewardRow } from './campaigns';
+import { CampaignsView } from './campaigns';
 
 /**
- * Grow — frame "Grow / Light" do Figma (XiaoLee v2): campanhas num segmentado Explore / Mine / Rewards, com os
- * mesmos cartões da tela de Campaigns (entrar, verificar e resgatar continuam lá dentro).
+ * Grow — frame "Grow / Light" do Figma (XiaoLee v2): título com o botão New e os atalhos Campaigns, Marketplace e
+ * Insights. O conteúdo de Campaigns é a tela completa de sempre, encaixada aqui (`CampaignsView` com `embedded`):
+ * estado da carteira, Explore / Mine / Rewards, "How it works", o carrossel de campanhas e as ações de cada uma.
  *
  * Marketplace e Insights ainda não têm frame: os chips abrem as telas que já existem.
  */
-
-type Tab = 'explore' | 'mine' | 'rewards';
-
 export default function GrowScreen() {
   const colors = useTheme();
   const styles = useStyles();
   const router = useRouter();
   const { hasSession } = useSession();
-  const [tab, setTab] = useState<Tab>('explore');
-  const { data, error, loading, refreshing, reload } = useBackendData(fetchCampaignsAndParticipation);
+  // Puxar para atualizar remonta a lista, que busca de novo; `refreshing` só cobre o gesto.
+  const [reloadKey, setReloadKey] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const campaigns = data?.campaigns ?? [];
-  const mine = data?.mine ?? [];
-  const claimed = mine.filter((item) => item.tasks_claimed);
-  const participationById = new Map(mine.map((item) => [item.id, item]));
+  const refresh = () => {
+    setRefreshing(true);
+    setReloadKey((k) => k + 1);
+    setTimeout(() => setRefreshing(false), 600);
+  };
 
   const chips: { label: string; selected?: boolean; onPress?: () => void }[] = [
     { label: 'Campaigns', selected: true },
     { label: 'Marketplace', onPress: () => router.push('/marketplace') },
     { label: 'Insights', onPress: () => router.push('/traction') },
-  ];
-  const segments: { id: Tab; label: string; count: number }[] = [
-    { id: 'explore', label: 'Explore', count: campaigns.length },
-    { id: 'mine', label: 'Mine', count: mine.length },
-    { id: 'rewards', label: 'Rewards', count: claimed.length },
   ];
 
   return (
@@ -50,9 +42,7 @@ export default function GrowScreen() {
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: FAB_CLEARANCE }]}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={reload} tintColor={colors.accent} colors={[colors.accent]} />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.accent} colors={[colors.accent]} />}
       >
         <View style={styles.head}>
           <View style={styles.flex}>
@@ -63,7 +53,7 @@ export default function GrowScreen() {
             onPress={() => router.push(hasSession ? '/campaigns/new' : '/')}
             style={({ pressed }) => [styles.newButton, pressed && styles.pressed]}
             accessibilityRole="button"
-            accessibilityLabel="New campaign"
+            accessibilityLabel={hasSession ? 'New campaign' : 'Connect a wallet to create a campaign'}
           >
             <IconPlus size={16} sw={2.2} color={colors.onAccent} />
             <Text style={styles.newText}>New</Text>
@@ -84,59 +74,7 @@ export default function GrowScreen() {
           ))}
         </ScrollView>
 
-        <View style={styles.segmented} accessibilityRole="tablist">
-          {segments.map(({ id, label, count }) => {
-            const selected = id === tab;
-            return (
-              <Pressable
-                key={id}
-                onPress={() => setTab(id)}
-                style={[styles.segment, selected && styles.segmentSelected]}
-                accessibilityRole="tab"
-                accessibilityState={{ selected }}
-              >
-                <Text style={[styles.segmentText, selected && styles.segmentTextSelected]}>
-                  {label} <Text style={selected && styles.count}>{count}</Text>
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        {error ? <ErrorState title="Error loading campaigns" message={error} onRetry={reload} /> : null}
-        {loading && !data ? <Skeleton height={260} radius={Radius.lg} /> : null}
-
-        {data && tab === 'explore' ? (
-          campaigns.length ? (
-            campaigns.map((campaign) => (
-              <CampaignCard
-                key={campaign.id}
-                campaign={campaign}
-                hasSession={hasSession}
-                participation={participationById.get(campaign.id)}
-                onChanged={reload}
-              />
-            ))
-          ) : (
-            <EmptyState Icon={IconMegaphone} title="No active campaigns" text="New campaigns coming soon. Check back in a moment." />
-          )
-        ) : null}
-
-        {data && tab === 'mine' ? (
-          mine.length ? (
-            mine.map((item) => <ParticipationRow key={item.id} item={item} />)
-          ) : (
-            <EmptyState Icon={IconTarget} title="You haven't joined any campaign yet" text="Explore active campaigns and join to start earning." />
-          )
-        ) : null}
-
-        {data && tab === 'rewards' ? (
-          claimed.length ? (
-            claimed.map((item) => <RewardRow key={item.id} item={item} />)
-          ) : (
-            <EmptyState Icon={IconBell} title="No rewards yet" text="Complete campaign tasks to receive USDC rewards here." />
-          )
-        ) : null}
+        <CampaignsView key={reloadKey} embedded />
       </ScrollView>
     </ScreenShell>
   );
@@ -172,10 +110,4 @@ const useStyles = makeStyles((colors) => ({
   chipSelected: { backgroundColor: colors.accentFill, borderColor: colors.accentFill },
   chipText: { fontFamily: Fonts.semibold, fontSize: 14, color: colors.ink2 },
   chipTextSelected: { color: colors.onAccent },
-  segmented: { flexDirection: 'row', backgroundColor: colors.border, borderRadius: Radius.md, padding: 4 },
-  segment: { flex: 1, height: 40, borderRadius: Radius.sm, alignItems: 'center', justifyContent: 'center' },
-  segmentSelected: { backgroundColor: colors.card },
-  segmentText: { fontFamily: Fonts.semibold, fontSize: 14, color: colors.ink2 },
-  segmentTextSelected: { color: colors.ink },
-  count: { color: colors.accent },
 }));

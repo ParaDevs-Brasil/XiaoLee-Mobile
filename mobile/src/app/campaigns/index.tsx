@@ -73,6 +73,11 @@ const CARD_GAP = Spacing.three - 4;
 type Tab = 'explore' | 'mine' | 'rewards';
 
 export default function CampaignsScreen() {
+  return <CampaignsView />;
+}
+
+/** O corpo da tela de Campaigns; `embedded` o encaixa dentro de outra tela (o Grow), sem moldura, rolagem, título nem o botão de criar (o Grow tem o seu). */
+export function CampaignsView({ embedded = false }: { embedded?: boolean }) {
   const colors = useTheme();
   const styles = useStyles();
   // Barra de gestos do Android come o fim da lista sem este inset.
@@ -99,7 +104,8 @@ export default function CampaignsScreen() {
   // botões já dependem daqui.
   const { hasSession } = useSession();
 
-  const cardWidth = width - H_PADDING * 2;
+  // Dentro de outra tela (o Grow) a margem é a dela, não a da tela de Campaigns.
+  const cardWidth = width - (embedded ? Spacing.three : H_PADDING) * 2;
   const step = cardWidth + CARD_GAP;
 
   /**
@@ -120,24 +126,14 @@ export default function CampaignsScreen() {
     setScrolledTo(clamped);
   };
 
-  return (
-    <ScreenShell>
-      <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: FAB_CLEARANCE + insets.bottom }]}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={reload}
-            tintColor={colors.accent}
-            colors={[colors.accent]}
-          />
-        }
-      >
-        <PageHeading
+  const body = (
+      <>
+        {embedded ? null : (
+          <PageHeading
           title="Campaigns"
           subtitle={`Join campaigns on ${ARC_NETWORK.name} and earn real rewards.`}
         />
+        )}
 
         <SessionBanner hasSession={hasSession} />
 
@@ -148,6 +144,7 @@ export default function CampaignsScreen() {
           mineCount={mine.length}
           rewardsCount={claimed.length}
           hasSession={hasSession}
+          embedded={embedded}
         />
 
         <HowItWorks open={howOpen} onToggle={() => setHowOpen((v) => !v)} />
@@ -278,6 +275,33 @@ export default function CampaignsScreen() {
             </View>
           )
         ) : null}
+      </>
+  );
+
+  if (embedded) {
+    return (
+      <>
+        <View style={styles.embedded}>{body}</View>
+        
+      </>
+    );
+  }
+
+  return (
+    <ScreenShell>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: FAB_CLEARANCE + insets.bottom }]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={reload}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
+          />
+        }
+      >
+        {body}
       </ScrollView>
     </ScreenShell>
   );
@@ -334,6 +358,7 @@ function TabBar({
   mineCount,
   rewardsCount,
   hasSession,
+  embedded,
 }: {
   tab: Tab;
   onChange: (next: Tab) => void;
@@ -341,6 +366,7 @@ function TabBar({
   mineCount: number;
   rewardsCount: number;
   hasSession: boolean;
+  embedded: boolean;
 }) {
   const colors = useTheme();
   const styles = useStyles();
@@ -385,6 +411,7 @@ function TabBar({
       {/* Criar campanha exige sessão — a rota resolve o criador pelo Bearer.
           Sem sessão o botão leva ao chat, que é onde a autenticação acontece,
           igual ao "Login" do banner; com sessão, abre o formulário. */}
+      {embedded ? null : (
       <Pressable
         onPress={() => router.push(hasSession ? '/campaigns/new' : '/')}
         style={({ pressed }) => [styles.createButton, pressed && styles.pressed]}
@@ -393,6 +420,7 @@ function TabBar({
       >
         <IconPlus size={16} sw={2.2} color={colors.onAccent} />
       </Pressable>
+      )}
     </View>
   );
 }
@@ -708,6 +736,7 @@ const useStyles = makeStyles((colors) => ({
   skeleton: { gap: Spacing.three - 4 },
   skeletonDots: { alignSelf: 'center' },
   carousel: { gap: CARD_GAP },
+  embedded: { gap: Spacing.three - 4 },
   dots: { flexDirection: 'row', justifyContent: 'center', gap: Spacing.two - 2 },
   dot: { width: 8, height: 8, borderRadius: Radius.pill, backgroundColor: colors.border },
   dotActive: { width: 22, backgroundColor: colors.accentFill },
