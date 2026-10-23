@@ -97,6 +97,24 @@ export default function StudioScreen() {
           <Text style={styles.subtitle}>Create, publish and track your content.</Text>
         </View>
 
+        {/* No topo, antes dos cartões: é o que diz ao creator o que dá para fazer no Studio. */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs} accessibilityRole="tablist">
+          {TABS.map(({ id, label }) => {
+            const selected = id === tab;
+            return (
+              <Pressable
+                key={id}
+                onPress={() => setTab(id)}
+                style={[styles.tab, selected && styles.tabSelected]}
+                accessibilityRole="tab"
+                accessibilityState={{ selected }}
+              >
+                <Text style={[styles.tabText, selected && styles.tabTextSelected]}>{label}</Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+
         <View style={styles.card}>
           <View style={styles.cardHead}>
             <View style={styles.iconTile}>
@@ -145,23 +163,6 @@ export default function StudioScreen() {
             </Pressable>
           )}
         </View>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs} accessibilityRole="tablist">
-          {TABS.map(({ id, label }) => {
-            const selected = id === tab;
-            return (
-              <Pressable
-                key={id}
-                onPress={() => setTab(id)}
-                style={[styles.tab, selected && styles.tabSelected]}
-                accessibilityRole="tab"
-                accessibilityState={{ selected }}
-              >
-                <Text style={[styles.tabText, selected && styles.tabTextSelected]}>{label}</Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
 
         {active?.error && hasSession ? (
           <ErrorState title="Couldn't load this list" message={active.error} onRetry={active.reload} />
