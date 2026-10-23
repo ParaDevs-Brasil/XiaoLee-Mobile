@@ -305,7 +305,9 @@ export default function ChatScreen() {
   const { activeChatSessionId } = useChatSession();
   const [sessionsOpen, setSessionsOpen] = useState(false);
   const [sessionsAnchor, setSessionsAnchor] = useState<{ top: number; right: number }>();
-  const windowWidth = useWindowDimensions().width;
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  // Em tela baixa (< 700 dp) o avatar grande empurrava os cartões para fora da vista: encolhe para caberem mais.
+  const compact = windowHeight < 700;
   const newChatRef = useRef<View>(null);
   // Guarda o id de sessão que o próprio `send()` acabou de adotar (ver linha
   // ~359) — quando o efeito abaixo vir essa mesma troca de `activeChatSessionId`,
@@ -639,7 +641,7 @@ export default function ChatScreen() {
               <>
                 {/* Animado só aqui. O avatar de 40dp do header ficaria com um
                     segundo decoder na mesma tela por ganho quase nulo. */}
-                <AnimatedAvatar size={92} />
+                <AnimatedAvatar size={compact ? 56 : 92} />
 
                 {welcome ? (
                   <View style={[styles.bubble, styles.bubbleXiaolee, styles.welcome]}>
