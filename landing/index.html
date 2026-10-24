@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -7,7 +7,10 @@
     <meta name="description" content="Xiaolee is the chat agent for creators: cut long videos into clips, join paid campaigns and get paid in USDC as soon as your post is verified. You keep your keys." />
     <meta name="robots" content="index,follow,max-image-preview:large" />
     <meta name="application-name" content="Xiaolee" />
-    <meta name="theme-color" content="#f6f4f1" />
+    <meta name="theme-color" content="#09080b" />
+    <meta name="color-scheme" content="dark light" />
+    <!-- Theme before first paint: saved choice, else dark. Wrapped: storage can throw in private windows. -->
+    <script>try{var t=localStorage.getItem("xl-theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
     <link rel="canonical" href="https://www.xiaolee.app/" />
     <link rel="icon" href="/favicon.ico" sizes="48x48 32x32 16x16" />
     <link rel="icon" type="image/png" sizes="48x48" href="/assets/favicon-48.png" />
@@ -37,7 +40,7 @@
     <!-- Only needed when the waitlist form is submitted, so DNS only (no TLS handshake at load). -->
     <link rel="dns-prefetch" href="https://script.google.com" />
     <link rel="dns-prefetch" href="https://script.googleusercontent.com" />
-    <link href="https://fonts.googleapis.com/css2?family=Oleo+Script:wght@700&family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Oleo+Script:wght@700&family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="preload" as="image" href="/mascot/hello.jpg" fetchpriority="high" />
     <script type="application/ld+json">
       {"@context":"https://schema.org","@graph":[
