@@ -152,7 +152,7 @@ export default function HomeScreen() {
   const balance = wallet.status === 'ready' ? formatUSDC(wallet.balanceUsdc) : '—';
 
   return (
-    <ScreenShell>
+    <ScreenShell deferContent>
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: FAB_CLEARANCE }]}
         keyboardShouldPersistTaps="handled"

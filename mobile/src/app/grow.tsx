@@ -38,7 +38,7 @@ export default function GrowScreen() {
   ];
 
   return (
-    <ScreenShell>
+    <ScreenShell deferContent>
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: FAB_CLEARANCE }]}
         showsVerticalScrollIndicator={false}

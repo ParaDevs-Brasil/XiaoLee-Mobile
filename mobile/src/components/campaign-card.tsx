@@ -1,5 +1,6 @@
 import { Fragment, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { PressableScale } from '@/components/touch-motion';
 
 import type { Campaign, CampaignParticipant, UserCampaignParticipation } from '@/api/backend';
 import {
@@ -486,14 +487,11 @@ function Action({
   const blocked = Boolean(disabled) || Boolean(busy);
 
   return (
-    <Pressable
+    <PressableScale
       onPress={onPress}
       disabled={blocked}
-      style={({ pressed }) => [
-        styles.action,
-        blocked && styles.actionDisabled,
-        pressed && !blocked && styles.pressed,
-      ]}
+      scaleTo={0.97}
+      style={[styles.action, blocked && styles.actionDisabled]}
       accessibilityRole="button"
       accessibilityState={{ disabled: blocked, busy: Boolean(busy) }}
     >
@@ -502,7 +500,7 @@ function Action({
       ) : (
         <Text style={styles.actionText}>{label}</Text>
       )}
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -678,7 +676,6 @@ const useStyles = makeStyles((colors) => ({
   },
   actionDisabled: { opacity: 0.45 },
   actionText: { fontFamily: Fonts.semibold, fontSize: 13, color: colors.onAccent },
-  pressed: { opacity: 0.7 },
 
   // ── Rodapé ─────────────────────────────────────────────────────────────
   footer: {

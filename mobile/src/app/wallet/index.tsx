@@ -43,7 +43,7 @@ function WalletHome({ address, addressLoading }: { address: string | undefined; 
   const rewards = useBackendData(fetchRewards);
 
   return (
-    <ScreenShell>
+    <ScreenShell deferContent>
       <WalletHomeView
         wallet={wallet}
         hasSession={hasSession}
