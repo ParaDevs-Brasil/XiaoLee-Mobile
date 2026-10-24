@@ -3,31 +3,33 @@ import { useEffect, useState } from 'react';
 import { Animated, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 
 import { listSocialAccounts } from '@/api/backend';
-import { IconCheck, IconSend } from '@/components/icons';
+import { IconCheck, IconSend, IconShare, IconUser } from '@/components/icons';
+import { ShareProfileSheet } from '@/components/share-profile-sheet';
 import { Reveal, SlideIn } from '@/components/motion';
 import { FAB_CLEARANCE, ScreenShell } from '@/components/screen-shell';
 import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
 import { useBackendData } from '@/hooks/use-backend-data';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
+import { useWallet } from '@/hooks/use-wallet';
 import { getSession } from '@/lib/session';
 import { ClipsView } from './clips';
 import { CreatorsView } from './creators';
 import { ReportsView } from './reports';
 
 /**
- * Studio — o que o creator produz, com um botão por seção logo no topo (Clips, Reports, AI Creators e Posts).
+ * Studio — o que o creator produz, com um botão por seção logo no topo (Clips, AI Creators, Reports e Share).
  *
  * Cada seção é a tela completa de sempre, encaixada aqui (`ClipsView`, `ReportsView`, `CreatorsView` com `embedded`):
- * mesmos campos, mesmas ações e mesmos estados da rota própria, que continua existindo. Só Posts é daqui, porque não
- * há uma tela de posts: o cartão do X, e o caminho para escrever um post no chat.
+ * mesmos campos, mesmas ações e mesmos estados da rota própria, que continua existindo. Só Share é daqui: compartilhar o perfil
+ * (antes no menu do perfil), as contas conectadas e o caminho para escrever um post no chat.
  */
 
-type Tab = 'clips' | 'reports' | 'creators' | 'posts';
+type Tab = 'clips' | 'creators' | 'reports' | 'share';
 const TABS: { id: Tab; label: string }[] = [
   { id: 'clips', label: 'Clips' },
-  { id: 'reports', label: 'Reports' },
   { id: 'creators', label: 'AI Creators' },
-  { id: 'posts', label: 'Posts' },
+  { id: 'reports', label: 'Reports' },
+  { id: 'share', label: 'Share' },
 ];
 
 /** Sem sessão a rota responde 401; publicação desligada no backend responde 404. Nos dois casos: sem conta. */
@@ -54,6 +56,8 @@ export default function StudioScreen() {
   // Puxar para atualizar remonta a seção aberta, que busca de novo; `refreshing` só cobre o gesto.
   const [reloadKey, setReloadKey] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const { address: wallet } = useWallet();
+  const [shareSheet, setShareSheet] = useState(false);
   const social = useBackendData(fetchSocial);
   const x = social.data?.accounts.find((a) => a.platform === 'x');
 
@@ -108,8 +112,28 @@ export default function StudioScreen() {
           {tab === 'reports' ? <ReportsView key={reloadKey} embedded /> : null}
           {tab === 'creators' ? <CreatorsView key={reloadKey} embedded /> : null}
 
-          {tab === 'posts' ? (
+          {tab === 'share' ? (
             <>
+              <View style={styles.xHero}>
+                <View style={styles.xTop}>
+                  <View style={styles.shareIcon}>
+                    <IconUser size={24} color={colors.onAccent} />
+                  </View>
+                  <View style={styles.xInfo}>
+                    <Text style={styles.xName}>Your Xiaolee card</Text>
+                    <Text style={styles.hint}>Post it on WhatsApp, X and more</Text>
+                  </View>
+                </View>
+                <Pressable
+                  onPress={() => (wallet ? setShareSheet(true) : router.push('/accounts'))}
+                  style={({ pressed }) => [styles.xBtn, pressed && styles.pressed]}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.xBtnText}>{wallet ? 'Share profile' : 'Connect to share'}</Text>
+                </Pressable>
+              </View>
+
+
               <View style={styles.xHero}>
                 <View style={styles.xTop}>
                   <View style={styles.xLogoBig}>
@@ -147,6 +171,18 @@ export default function StudioScreen() {
                 </Pressable>
               </View>
 
+              <Pressable
+                onPress={() => router.push('/accounts')}
+                style={({ pressed }) => [styles.card, styles.accountsRow, pressed && styles.pressed]}
+                accessibilityRole="button"
+              >
+                <IconShare size={20} color={colors.accent} />
+                <View style={styles.xInfo}>
+                  <Text style={styles.cardTitle}>Accounts</Text>
+                  <Text style={styles.hint}>Connect X and Telegram</Text>
+                </View>
+              </Pressable>
+
               <Text style={styles.sectionTitle}>Your posts</Text>
               {/* Não há rota que liste os posts já publicados; até existir, a aba leva a escrever um. */}
               <View style={styles.noPosts}>
@@ -160,6 +196,7 @@ export default function StudioScreen() {
           ) : null}
         </SlideIn>
       </ScrollView>
+      <ShareProfileSheet visible={shareSheet} onClose={() => setShareSheet(false)} />
     </ScreenShell>
   );
 }
@@ -208,6 +245,8 @@ const useStyles = makeStyles((colors) => ({
   statusText: { fontFamily: Fonts.bold, fontSize: 12, color: colors.ink2 },
   statusTextOn: { color: colors.success },
   xTitle: { fontFamily: Fonts.bold, fontSize: 20, lineHeight: 26, color: colors.ink },
+  shareIcon: { width: 52, height: 52, borderRadius: Radius.lg, backgroundColor: colors.accentFill, alignItems: 'center', justifyContent: 'center' },
+  accountsRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   perks: { gap: 12 },
   perk: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   perkTick: { width: 24, height: 24, borderRadius: 12, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' },
