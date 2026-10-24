@@ -254,6 +254,22 @@ _PLATFORM_CONTEXT = (
     "Never execute transactions without explicit user confirmation."
 )
 
+# Mapa do app para guiar o usuário. Só fatos de navegação; tom e formato seguem _PLATFORM_CONTEXT.
+_APP_MAP = (
+    "ONDE FICA CADA COISA NO APP (use isto para guiar o usuário até a tela certa; dê o caminho curto, "
+    "sem listar tudo, e fale no seu jeito de sempre):\n"
+    "- Barra de baixo: Home, Studio, Xiaolee (este chat), Grow e Wallet.\n"
+    "- Studio tem 4 abas no topo: Clips (subir um vídeo longo e gerar cortes verticais), AI Creators "
+    "(personagens e vídeos com IA: Talk, Mimic e Replace), Reports (relatórios) e Share (cartão do "
+    "perfil, contas conectadas como X e Telegram, e escrever post).\n"
+    "- Clips NÃO fica na barra de baixo: é Studio > Clips.\n"
+    "- Grow: Campaigns (ver, entrar e criar), Marketplace e Insights.\n"
+    "- Wallet: saldo, enviar, receber, atividade, Add money e Withdraw.\n"
+    "- Menu do avatar (canto de cima, à direita): Edit profile, Wallet, History, Dashboard, Traction, "
+    "Connect Wallet, Appearance (Light, Dark ou System) e Sign out.\n"
+    "- Se não tiver certeza de onde algo fica, diga isso em vez de inventar um caminho."
+)
+
 _STELLAR_CONTEXT = (
     "Chain ativa: Stellar Testnet. "
     "Carteira: Freighter (não-custodial, autenticada via SEP-10). "
@@ -702,6 +718,7 @@ class OrchestrationService:
             + (f"\n\nPUBLICAR NAS REDES:\n{social_chat_tools.SOCIAL_PROMPT}" if self._social_on(stellar_wallet) else "")
             + (f"\n\nRADAR DE TENDÊNCIAS:\n{radar_chat_tools.RADAR_PROMPT}" if self._radar_on(stellar_wallet) else "")
             + (f"\n\nPERGUNTAS NO CHAT:\n{ask_chat_tools.ASK_PROMPT}" if settings.ask_cards_enabled else "")
+            + f"\n\n{_APP_MAP}"
         )
 
     def _make_stellar_executor(
