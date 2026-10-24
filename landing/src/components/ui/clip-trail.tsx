@@ -70,7 +70,7 @@ export function ClipTrail({ images, width = 84, step = 118, className }: Props) 
       {images.map((src, k) => (
         <img
           key={`${src}-${k}`} src={src} alt="" loading="lazy" draggable={false}
-          className="absolute left-0 top-0 aspect-[3/4] rounded-[16px] bg-[#d3cfcc] object-cover object-top opacity-0 shadow-[0_18px_26px_-12px_rgba(60,15,40,0.5)] ring-[3px] ring-white will-change-[transform,opacity]"
+          className="absolute left-0 top-0 aspect-[3/4] rounded-[16px] bg-[#d3cfcc] object-cover object-top opacity-0 shadow-[0_18px_26px_-12px_rgba(60,15,40,0.5)] ring-[3px] ring-surface will-change-[transform,opacity]"
           style={{ width }}
         />
       ))}

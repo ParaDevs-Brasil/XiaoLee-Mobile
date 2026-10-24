@@ -37,9 +37,18 @@ export function SparkleField({ reach = 230, className }: { reach?: number; class
     const ctx = cv?.getContext("2d");
     if (!cv || !ctx || reduced) return;
 
-    const css = getComputedStyle(document.documentElement);
-    const hot = rgb(css.getPropertyValue("--color-accent"), [200, 24, 111]);
-    const rose = rgb(css.getPropertyValue("--color-rose"), [247, 201, 224]);
+    // Colors follow the theme: read again whenever data-theme changes (they were cached once and stayed dark-theme
+    // magenta after switching to light, which painted a muddy blob).
+    let hot: RGB = [200, 24, 111];
+    let rose: RGB = [247, 201, 224];
+    const readColors = () => {
+      const css = getComputedStyle(document.documentElement);
+      hot = rgb(css.getPropertyValue("--accent"), hot);
+      rose = rgb(css.getPropertyValue("--rose"), rose);
+    };
+    readColors();
+    const themeWatch = new MutationObserver(() => { readColors(); draw(); });
+    themeWatch.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
     let w = 0, h = 0;
     let px = 0, py = 0, ax = 0, ay = 0, aura = 0, travelled = 0;
@@ -154,6 +163,7 @@ export function SparkleField({ reach = 230, className }: { reach?: number; class
 
     return () => {
       cancelAnimationFrame(raf);
+      themeWatch.disconnect();
       ro.disconnect();
       io.disconnect();
       window.removeEventListener("pointermove", onMove);

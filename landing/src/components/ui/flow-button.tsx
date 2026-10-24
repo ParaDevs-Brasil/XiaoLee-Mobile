@@ -6,14 +6,17 @@ type Variant = "accent" | "ink";
 type Size = "sm" | "md";
 
 interface FlowButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  /** Renders a real link (downloads, anchors) with the same look and motion. */
+  href?: string;
+  download?: boolean | string;
   /** accent: magenta pill that floods ink. ink: dark pill that floods magenta. */
   variant?: Variant;
   size?: Size;
 }
 
 const VARIANT: Record<Variant, { surface: string; circle: string }> = {
-  accent: { surface: "bg-accent", circle: "bg-ink" },
-  ink: { surface: "bg-ink", circle: "bg-accent" },
+  accent: { surface: "bg-accent", circle: "bg-night" },
+  ink: { surface: "bg-ink text-cream", circle: "bg-accent" },
 };
 
 const SIZE: Record<Size, string> = {
@@ -29,12 +32,13 @@ const SPRING = "ease-[cubic-bezier(0.34,1.56,0.64,1)]";
  * across. Hover and keyboard focus trigger the same motion.
  */
 const FlowButton = React.forwardRef<HTMLButtonElement, FlowButtonProps>(
-  ({ children, variant = "accent", size = "md", className, type = "button", ...props }, ref) => {
+  ({ children, variant = "accent", size = "md", className, type = "button", href, ...props }, ref) => {
     const v = VARIANT[variant];
+    const Tag = (href ? "a" : "button") as React.ElementType;
     return (
-      <button
+      <Tag
         ref={ref}
-        type={type}
+        {...(href ? { href } : { type })}
         className={cn(
           "group relative inline-flex cursor-pointer items-center justify-center gap-1 overflow-hidden rounded-[100px] font-semibold tracking-tight whitespace-nowrap text-white",
           "outline-none focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-cream",
@@ -79,7 +83,7 @@ const FlowButton = React.forwardRef<HTMLButtonElement, FlowButtonProps>(
             SPRING,
           )}
         />
-      </button>
+      </Tag>
     );
   },
 );

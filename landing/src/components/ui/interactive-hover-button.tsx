@@ -15,8 +15,8 @@ interface InteractiveHoverButtonProps extends React.ButtonHTMLAttributes<HTMLBut
 }
 
 const VARIANT: Record<Variant, { surface: string; badge: string; fill: string; icon: string }> = {
-  accent: { surface: "bg-accent", badge: "bg-white", fill: "group-hover:bg-ink group-focus-visible:bg-ink", icon: "text-accent" },
-  ink: { surface: "bg-ink", badge: "bg-accent", fill: "group-hover:bg-accent group-focus-visible:bg-accent", icon: "text-white" },
+  accent: { surface: "bg-accent", badge: "bg-surface", fill: "group-hover:bg-night group-focus-visible:bg-night", icon: "text-accent" },
+  ink: { surface: "bg-ink", badge: "bg-accent", fill: "group-hover:bg-accent group-focus-visible:bg-accent", icon: "text-cream" },
 };
 
 const SIZE: Record<Size, string> = { sm: "2rem", md: "2.5rem" };
