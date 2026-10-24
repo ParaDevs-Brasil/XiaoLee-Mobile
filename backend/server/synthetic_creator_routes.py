@@ -70,6 +70,11 @@ class CreatorCreate(BaseModel):
     rights_confirmed: bool = False
 
 
+class CreatorUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, max_length=60)
+    voice_id: Optional[str] = None
+
+
 class CreatorOut(BaseModel):
     id: int
     name: str
@@ -269,6 +274,25 @@ async def list_creators(authorization: Optional[str] = Header(default=None),
         SyntheticCreator.user_id == user.id, SyntheticCreator.status == "ready",
     ).order_by(SyntheticCreator.id.desc()))).scalars().all()
     return [_creator_out(c) for c in rows]
+
+
+@router.patch("/{creator_id}", response_model=CreatorOut)
+async def update_creator(creator_id: int, body: CreatorUpdate, authorization: Optional[str] = Header(default=None),
+                         db: AsyncSession = Depends(get_db_session)):
+    user = await _resolve_user(db, authorization, strict=True)
+    c = await _owned_creator(db, user.id, creator_id)
+    if c.status != "ready":
+        raise HTTPException(404, "Character not found.")
+    if body.voice_id is not None and body.voice_id not in sc.VOICE_IDS:
+        raise HTTPException(422, "Pick a voice from the list.")
+    if body.name is not None:
+        if not body.name.strip():
+            raise HTTPException(422, "Give the character a name.")
+        c.name = body.name.strip()
+    if body.voice_id is not None:
+        c.voice_id = body.voice_id
+    await db.commit()
+    return _creator_out(c)
 
 
 @router.delete("/{creator_id}", status_code=204)

@@ -619,3 +619,17 @@ async def test_preview_start_must_fall_inside_the_reference_video(db, monkeypatc
     assert ok.status_code == 200, ok.text
     assert (await db.execute(select(CreatorPreview))).scalars().one().motion_start_s == 4
 
+
+@pytest.mark.asyncio
+async def test_character_can_be_renamed_and_change_voice(db):
+    cid, h = await _persona(db)
+    voice = sc.VOICES[1]["id"]
+    r = client.patch(f"/v1/creators/{cid}", headers=h, json={"name": "  Luna ", "voice_id": voice})
+    assert r.status_code == 200, r.text
+    assert r.json()["name"] == "Luna" and r.json()["voice_id"] == voice
+    only_name = client.patch(f"/v1/creators/{cid}", headers=h, json={"name": "Nova"})
+    assert only_name.json()["name"] == "Nova" and only_name.json()["voice_id"] == voice
+    assert client.patch(f"/v1/creators/{cid}", headers=h, json={"name": "   "}).status_code == 422
+    assert client.patch(f"/v1/creators/{cid}", headers=h, json={"voice_id": "nope"}).status_code == 422
+    assert client.patch(f"/v1/creators/{cid + 99}", headers=h, json={"name": "x"}).status_code == 404
+    assert client.patch(f"/v1/creators/{cid}", json={"name": "x"}).status_code in (401, 403)
