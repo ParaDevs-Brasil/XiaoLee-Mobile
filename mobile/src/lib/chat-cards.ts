@@ -190,6 +190,7 @@ export function askFrom(execution: Record<string, unknown> | undefined): CardAsk
       ...(q.multi === true ? { multi: true } : {}),
       ...(q.other === true ? { other: true } : {}),
       ...(q.text === true ? { text: true } : {}),
+      ...(q.optional === true ? { optional: true } : {}),
     }));
   if (!questions.length) return undefined;
   return { mode: a?.mode === 'form' ? 'form' : 'wizard', title: String(a?.title ?? '').trim() || 'A few questions', questions };

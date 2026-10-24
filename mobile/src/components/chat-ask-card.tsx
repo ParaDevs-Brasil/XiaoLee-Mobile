@@ -101,7 +101,7 @@ function Form({ ask, onFinish }: { ask: CardAsk; onFinish: (a: Answers) => void 
     }
     return out;
   };
-  const ready = ask.questions.every((q) => q.text || q.optional || (final()[q.id]?.length ?? 0) > 0);
+  const ready = ask.questions.every((q) => q.optional || (final()[q.id]?.length ?? 0) > 0);
 
   return (
     <View style={styles.card}>
@@ -112,14 +112,14 @@ function Form({ ask, onFinish }: { ask: CardAsk; onFinish: (a: Answers) => void 
         <View key={q.id} style={styles.block}>
           <Text style={styles.label}>
             {q.label}
-            {q.text || q.optional ? <Text style={styles.optional}>  optional</Text> : null}
+            {q.optional ? <Text style={styles.optional}>  optional</Text> : null}
           </Text>
           {q.text ? (
             <TextInput
               value={text[q.id] ?? ''}
               onChangeText={(v) => setText((t) => ({ ...t, [q.id]: v }))}
               multiline
-              placeholder="Optional"
+              placeholder={q.optional ? 'Optional' : 'Type here'}
               placeholderTextColor={colors.ink3}
               style={styles.textarea}
               accessibilityLabel={q.label}

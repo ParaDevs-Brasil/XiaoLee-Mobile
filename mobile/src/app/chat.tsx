@@ -162,7 +162,7 @@ const DEMOS: Record<string, { intro: string; card: Partial<Message> }> = {
         questions: [
           { id: 'goal', label: 'What is the goal?', short: 'Goal', options: ['Awareness', 'Sales', 'Community'] },
           { id: 'where', label: 'Where should it run?', short: 'Where', options: ['X', 'Telegram', 'Bluesky'], multi: true, other: true },
-          { id: 'know', label: 'Anything I should know?', short: 'Notes', options: [], text: true },
+          { id: 'know', label: 'Anything I should know?', short: 'Notes', options: [], text: true, optional: true },
         ],
       },
     },

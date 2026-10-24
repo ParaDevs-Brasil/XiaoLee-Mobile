@@ -196,3 +196,14 @@ def test_ask_questions_cleans_the_card_and_the_tool_needs_its_flag(monkeypatch):
     assert "ask_questions" not in NAMES(Orch._tools_for(None, "0xabc"))
     set_settings(monkeypatch, ask_cards_enabled=True)
     assert "ask_questions" in NAMES(Orch._tools_for(None, "0xabc"))
+
+
+def test_campaign_template_always_has_every_field(monkeypatch):
+    ask_tools = importlib.import_module("server.ask_chat_tools")
+    for lang, title in (("pt", "Criar campanha"), ("en", "Create a campaign"), ("", "Criar campanha")):
+        _, ex = asyncio.run(ask_tools.run("ask_questions", {"template": "campaign", "language": lang}))
+        qs = ex["ask"]["questions"]
+        assert ex["ask"]["title"] == title and ex["ask"]["mode"] == "form" and len(qs) == 7
+        assert [bool(q["text"]) for q in qs] == [True, True, False, False, False, True, True]
+        assert [q["optional"] for q in qs] == [False] * 5 + [True, True]  # perfil e tweet: só para Social
+        assert all(q["options"] for q in qs[2:5]) and len({q["id"] for q in qs}) == 7
