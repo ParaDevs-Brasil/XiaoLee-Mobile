@@ -127,12 +127,12 @@ test('radar: só o card pendente com job vira card; qualquer outra coisa é igno
 test('radar: tendências sem tópico caem, no máximo 5, campos ausentes viram texto vazio', () => {
   const t = trendsFrom([{ topic: ' A ', why: 'w' }, { why: 'sem topic' }, null, ...Array.from({ length: 8 }, (_, i) => ({ topic: `t${i}` }))]);
   assert.equal(t.length, 5);
-  assert.deepEqual(t[0], { topic: 'A', why: 'w', hook: '' });
+  assert.deepEqual(t[0], { topic: 'A', why: 'w', hook: '', angles: [] });
   assert.deepEqual(trendsFrom('lixo'), []);
 });
 
 test('radar: o resultado guardado volta junto da mensagem ao reabrir a conversa', () => {
-  const radar = { jobId: 'abc', niche: 'IA', status: 'ready' as const, trends: [{ topic: 'A', why: '', hook: '' }] };
+  const radar = { jobId: 'abc', niche: 'IA', status: 'ready' as const, trends: [{ topic: 'A', why: '', hook: '', angles: [] }] };
   const out = matchCards(
     [{ role: 'assistant', content: 'Fui vasculhar o X' }],
     [{ role: 'assistant', content: 'Fui vasculhar o X', at: '9', radar }],

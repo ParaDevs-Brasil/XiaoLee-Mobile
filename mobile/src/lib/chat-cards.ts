@@ -107,6 +107,12 @@ export interface CardTrend {
   topic: string;
   why: string;
   hook: string;
+  /** 3 ângulos de post (opinião, pergunta, explicando) escritos em voz de creator; vazio se o backend não os gerou. */
+  angles: { kind: string; text: string }[];
+  /** Post de origem no X, para o creator conferir o fato antes de postar. */
+  source?: string;
+  /** O Grok viu isso só num post de conta pequena: o creator confere antes de postar. */
+  verify?: boolean;
 }
 
 /** Radar de tendências (`get_trend_radar`): nasce `pending` (a pesquisa roda no backend) e o app consulta até virar `ready` ou `error`. */
@@ -122,7 +128,17 @@ export interface CardRadar {
 export function trendsFrom(raw: unknown): CardTrend[] {
   return (Array.isArray(raw) ? raw : [])
     .filter((t): t is Record<string, unknown> => Boolean(t) && typeof t === 'object' && Boolean((t as { topic?: unknown }).topic))
-    .map((t) => ({ topic: String(t.topic).trim(), why: String(t.why ?? '').trim(), hook: String(t.hook ?? '').trim() }))
+    .map((t) => ({
+      topic: String(t.topic).trim(),
+      why: String(t.why ?? '').trim(),
+      hook: String(t.hook ?? '').trim(),
+      angles: (Array.isArray(t.angles) ? t.angles : [])
+        .filter((a): a is { kind: string; text: string } => Boolean(a) && typeof (a as { text?: unknown }).text === 'string')
+        .map((a) => ({ kind: String(a.kind), text: a.text.trim() }))
+        .filter((a) => a.text),
+      ...(typeof t.example_post_url === 'string' && t.example_post_url ? { source: t.example_post_url } : {}),
+      ...(t.verify === true ? { verify: true } : {}),
+    }))
     .slice(0, 5);
 }
 

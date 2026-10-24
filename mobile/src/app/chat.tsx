@@ -1142,8 +1142,8 @@ function Bubble({
             <RadarCard
               radar={message.radar}
               onUpdate={(next) => onRadar(message.id, next)}
-              onPick={(t) =>
-                onAsk(`Write post options for X. Idea: ${t.topic}. Angle: ${t.hook}. Goal: Start a conversation. Tone: Casual. Audience: Mixed.`)
+              onPick={(t, angle) =>
+                onAsk(`Escreve opções de post pro X sobre ${t.topic}, com este ângulo: ${angle.replace(/[.!?…\s]+$/, '')}`)
               }
             />
           ) : null}

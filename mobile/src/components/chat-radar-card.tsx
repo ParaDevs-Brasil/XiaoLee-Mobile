@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ApiError } from '@/api/client';
 import { getRadar } from '@/api/backend';
@@ -10,6 +10,8 @@ import { trendsFrom, type CardRadar, type CardTrend } from '@/lib/chat-cards';
 const POLL_MS = 3000;
 // A pesquisa leva ~1 min; passou disso, desiste em vez de girar para sempre.
 const GIVE_UP_MS = 3 * 60 * 1000;
+
+const ANGLE_LABEL: Record<string, string> = { opiniao: 'Opinion', pergunta: 'Question', explicando: 'Explain' };
 
 /**
  * Radar de tendências na conversa (`get_trend_radar`). Enquanto `pending`, consulta o backend a cada 3 s e entrega
@@ -23,7 +25,7 @@ export function RadarCard({
 }: {
   radar: CardRadar;
   onUpdate: (next: CardRadar) => void;
-  onPick: (trend: CardTrend) => void;
+  onPick: (trend: CardTrend, angle: string) => void;
 }) {
   const colors = useTheme();
   const styles = useStyles();
@@ -93,16 +95,36 @@ export function RadarCard({
         <View key={i} style={styles.trend}>
           <Text style={styles.topic}>{t.topic}</Text>
           {t.why ? <Text style={styles.why}>{t.why}</Text> : null}
-          <View style={styles.foot}>
+          {t.source ? (
+            <Text style={styles.source} onPress={() => void Linking.openURL(t.source!)} accessibilityRole="link">
+              See the post on X
+            </Text>
+          ) : null}
+          {t.verify ? <Text style={styles.verify}>Seen only in a small account's post. Check it before posting.</Text> : null}
+          {t.angles.map((a) => (
             <Pressable
-              onPress={() => onPick(t)}
-              style={({ pressed }) => [styles.use, pressed && styles.pressed]}
+              key={a.kind}
+              onPress={() => onPick(t, a.text)}
+              style={({ pressed }) => [styles.angle, pressed && styles.pressed]}
               accessibilityRole="button"
-              accessibilityLabel={`Write a post about ${t.topic}`}
+              accessibilityLabel={`Write a post with this angle: ${a.text}`}
             >
-              <Text style={styles.useText}>Write a post</Text>
+              <Text style={styles.angleKind}>{ANGLE_LABEL[a.kind] ?? a.kind}</Text>
+              <Text style={styles.angleText}>{a.text}</Text>
             </Pressable>
-          </View>
+          ))}
+          {!t.angles.length ? (
+            <View style={styles.foot}>
+              <Pressable
+                onPress={() => onPick(t, t.hook)}
+                style={({ pressed }) => [styles.use, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel={`Write a post about ${t.topic}`}
+              >
+                <Text style={styles.useText}>Write a post</Text>
+              </Pressable>
+            </View>
+          ) : null}
         </View>
       ))}
     </View>
@@ -126,6 +148,11 @@ const useStyles = makeStyles((colors) => ({
   topic: { fontFamily: Fonts.bold, fontSize: 14, lineHeight: 20, color: colors.ink },
   why: { fontFamily: Fonts.sans, fontSize: 13, lineHeight: 18, color: colors.ink3 },
   foot: { flexDirection: 'row', justifyContent: 'flex-end' },
+  verify: { fontFamily: Fonts.medium, fontSize: 12, color: colors.ink3 },
+  source: { fontFamily: Fonts.medium, fontSize: 12, color: colors.accent },
+  angle: { gap: 2, padding: Spacing.two, borderRadius: Radius.md, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
+  angleKind: { fontFamily: Fonts.bold, fontSize: 11, color: colors.accent, textTransform: 'uppercase' },
+  angleText: { fontFamily: Fonts.sans, fontSize: 13, lineHeight: 18, color: colors.ink },
   use: {
     minHeight: 34,
     justifyContent: 'center',
