@@ -32,11 +32,13 @@ import {
 import {
   draftFrom,
   askFrom,
+  campaignsFrom,
   insightsFrom,
   radarFrom,
   matchCards,
   optionsFrom,
   type CardAsk,
+  type CardCampaigns,
   type CardDraft,
   type CardInsights,
   type CardOptions,
@@ -57,6 +59,7 @@ import { usePrivyWallet } from '@/lib/wallet';
 
 import { AnimatedAvatar } from '@/components/animated-avatar';
 import { AskCard } from '@/components/chat-ask-card';
+import { CampaignsCard } from '@/components/chat-campaigns-card';
 import { InsightsCard } from '@/components/chat-insights-card';
 import { PostDraftCard } from '@/components/chat-post-draft';
 import { PostOptions } from '@/components/chat-post-options';
@@ -218,6 +221,8 @@ interface Message {
   options?: CardOptions;
   /** Radar de tendências (`execution.radar`, tool `get_trend_radar`): nasce pendente e o card consulta o backend até terminar. */
   radar?: CardRadar;
+  /** Campanhas listadas (`execution.campaign_ids`, tool `list_campaigns`): cartões ao vivo para entrar sem sair do chat. */
+  campaigns?: CardCampaigns;
   /** Perguntas da Xiaolee (por enquanto só a prévia de dev: ver `DEMOS`). */
   ask?: CardAsk;
   /** Link do post, quando já publicado. */
@@ -305,7 +310,7 @@ function messageFromChatSession(
     time: new Date(entry.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     // O backend só guarda o texto; botões e comprovante vêm do histórico local
     // (`lib/chat-cards.ts`).
-    ...(cards && { storedAt: cards.at, transfer: cards.transfer, txHash: cards.txHash, claim: cards.claim, claimReceiptId: cards.claimReceiptId, swap: cards.swap, swapTxHash: cards.swapTxHash, swapAmountOut: cards.swapAmountOut, post: cards.post, postUrl: cards.postUrl, insights: cards.insights, draft: cards.draft, options: cards.options, radar: cards.radar }),
+    ...(cards && { storedAt: cards.at, transfer: cards.transfer, txHash: cards.txHash, claim: cards.claim, claimReceiptId: cards.claimReceiptId, swap: cards.swap, swapTxHash: cards.swapTxHash, swapAmountOut: cards.swapAmountOut, post: cards.post, postUrl: cards.postUrl, insights: cards.insights, draft: cards.draft, options: cards.options, radar: cards.radar, campaigns: cards.campaigns }),
   };
 }
 
@@ -629,15 +634,16 @@ export default function ChatScreen() {
       const options = optionsFrom(result.execution);
       const radar = radarFrom(result.execution);
       const ask = askFrom(result.execution);
+      const campaigns = campaignsFrom(result.execution);
       const storedAt = new Date().toISOString();
       setMessages((current) => [
         ...current,
-        { id: `x${Date.now()}`, author: 'xiaolee', text: reply, time: now(), transfer, claim, swap, post, insights, draft, options, radar, ask, storedAt },
+        { id: `x${Date.now()}`, author: 'xiaolee', text: reply, time: now(), transfer, claim, swap, post, insights, draft, options, radar, campaigns, ask, storedAt },
       ]);
       // O texto gravado é o mesmo que foi para a bolha, fallback incluído —
       // o histórico não deve divergir do que a tela mostrou. Os cards vão junto:
       // é o que os traz de volta quando a conversa é reaberta.
-      appendChatMessage('assistant', reply, { at: storedAt, cards: { transfer, claim, swap, post, insights, draft, options, radar } });
+      appendChatMessage('assistant', reply, { at: storedAt, cards: { transfer, claim, swap, post, insights, draft, options, radar, campaigns } });
 
       // O agente escolhe a emoção; nome desconhecido volta para o idle.
       const animation = animationFromBackend(result.animations);
@@ -1244,6 +1250,11 @@ function Bubble({
     {message.draft ? (
       <View style={styles.askRow}>
         <PostDraftCard draft={message.draft} onAsk={onAsk} />
+      </View>
+    ) : null}
+    {message.campaigns ? (
+      <View style={styles.askRow}>
+        <CampaignsCard campaigns={message.campaigns} />
       </View>
     ) : null}
     {message.ask ? (

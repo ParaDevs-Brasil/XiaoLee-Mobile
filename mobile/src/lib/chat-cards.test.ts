@@ -7,7 +7,7 @@
  */
 import assert from 'node:assert/strict';
 
-import { askFrom, draftFrom, insightsFrom, matchCards, optionsFrom, radarFrom, trendsFrom, type StoredWithCards } from './chat-cards.ts';
+import { askFrom, campaignsFrom, draftFrom, insightsFrom, matchCards, optionsFrom, radarFrom, trendsFrom, type StoredWithCards } from './chat-cards.ts';
 
 function test(name: string, fn: () => void) {
   fn();
@@ -152,4 +152,11 @@ test('askFrom: cartão de perguntas só com status ask_open e pelo menos uma per
     questions: [{ id: 'q0', label: 'Goal?', short: 'Goal', options: ['A', 'B'], multi: true, other: true }],
   });
   assert.equal(askFrom({ status: 'ask_open', ask: { questions: [{ label: 'x', options: [] }] } })?.mode, 'wizard');
+});
+
+test('campaignsFrom: só com status campaigns_listed, até 5 ids inteiros', () => {
+  assert.equal(campaignsFrom(undefined), undefined);
+  assert.equal(campaignsFrom({ status: 'campaigns_listed', campaign_ids: [] }), undefined);
+  assert.deepEqual(campaignsFrom({ status: 'campaigns_listed', campaign_ids: [3, '4', 'x', 5, 6, 7, 8] }), { ids: [3, 4, 5, 6, 7] });
+  assert.equal(campaignsFrom({ status: 'info', campaign_ids: [1] }), undefined);
 });

@@ -196,6 +196,20 @@ export function askFrom(execution: Record<string, unknown> | undefined): CardAsk
   return { mode: a?.mode === 'form' ? 'form' : 'wizard', title: String(a?.title ?? '').trim() || 'A few questions', questions };
 }
 
+/** Campanhas que a Xiaolee listou (`list_campaigns`): o card busca os dados ao vivo pelos ids, então nunca fica velho. */
+export interface CardCampaigns {
+  ids: number[];
+}
+
+export function campaignsFrom(execution: Record<string, unknown> | undefined): CardCampaigns | undefined {
+  if (!execution || execution.status !== 'campaigns_listed') return undefined;
+  const ids = (Array.isArray(execution.campaign_ids) ? execution.campaign_ids : [])
+    .map(Number)
+    .filter((n) => Number.isInteger(n))
+    .slice(0, 5);
+  return ids.length ? { ids } : undefined;
+}
+
 /** Estado de card que acompanha uma mensagem da Xiaolee. */
 export interface ChatCards {
   transfer?: CardTransfer;
@@ -211,6 +225,7 @@ export interface ChatCards {
   draft?: CardDraft;
   options?: CardOptions;
   radar?: CardRadar;
+  campaigns?: CardCampaigns;
   /** Link do post, quando já publicado (some o botão, fica o link). */
   postUrl?: string;
 }
@@ -227,7 +242,7 @@ export interface StoredWithCards extends ChatCards {
 }
 
 export function hasCards(c: ChatCards): boolean {
-  return Boolean(c.transfer || c.claim || c.swap || c.post || c.insights || c.draft || c.options || c.radar);
+  return Boolean(c.transfer || c.claim || c.swap || c.post || c.insights || c.draft || c.options || c.radar || c.campaigns);
 }
 
 /**
@@ -250,7 +265,7 @@ export function matchCards(
     const i = pool.findIndex((s, idx) => !used.has(idx) && s.content.trim() === text);
     if (i === -1) return undefined;
     used.add(i);
-    const { transfer, txHash, claim, claimReceiptId, swap, swapTxHash, swapAmountOut, post, postUrl, insights, draft, options, radar, at } = pool[i];
-    return { at, transfer, txHash, claim, claimReceiptId, swap, swapTxHash, swapAmountOut, post, postUrl, insights, draft, options, radar };
+    const { transfer, txHash, claim, claimReceiptId, swap, swapTxHash, swapAmountOut, post, postUrl, insights, draft, options, radar, campaigns, at } = pool[i];
+    return { at, transfer, txHash, claim, claimReceiptId, swap, swapTxHash, swapAmountOut, post, postUrl, insights, draft, options, radar, campaigns };
   });
 }

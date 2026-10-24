@@ -791,9 +791,14 @@ class OrchestrationService:
                     return json.dumps({"error": "campaigns_read_failed", "message": str(exc)})
                 captured["actions"].append("list_campaigns")
                 campaigns = [c.model_dump() for c in resp.campaigns]
+                if interests:
+                    campaigns = rank_for_interests(campaigns, interests)
+                # O app mostra os cartões dessas campanhas (os 5 primeiros) logo abaixo da resposta.
+                if campaigns:
+                    captured["execution"] = {"status": "campaigns_listed", "campaign_ids": [c["id"] for c in campaigns[:5]]}
                 if not interests:
                     return json.dumps({"campaigns": campaigns})
-                return json.dumps({"your_interests": interests, "campaigns": rank_for_interests(campaigns, interests)})
+                return json.dumps({"your_interests": interests, "campaigns": campaigns})
 
             # As quatro tools abaixo escrevem no mesmo caminho que a UI usa
             # (POST /campaigns/*) — importam e chamam a função de rota direto,
