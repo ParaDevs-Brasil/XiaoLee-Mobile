@@ -41,9 +41,10 @@ export function Studio() {
   return (
     <section id="app" className="relative px-5 py-24 sm:px-8 sm:py-32">
       <div className="mx-auto max-w-6xl">
-        <SectionHead eyebrow={s.eyebrow} a={s.h2a} b={s.h2b} sub={s.sub} />
-        <div className="mt-14 grid items-center gap-12 lg:grid-cols-[1fr_auto] lg:gap-20">
-          <Reveal delay={0.1} className="order-2 lg:order-1">
+        <div className="grid items-start gap-12 lg:grid-cols-[1fr_auto] lg:gap-20">
+          <div className="order-2 lg:order-1">
+            <SectionHead eyebrow={s.eyebrow} a={s.h2a} b={s.h2b} sub={s.sub} />
+          <Reveal delay={0.1} className="mt-12">
             <ul role="tablist" aria-label={s.eyebrow} className="space-y-2">
               {s.items.map((it, i) => {
                 const on = i === active;
@@ -56,7 +57,7 @@ export function Studio() {
                       onPointerLeave={() => setHover(false)}
                       className={cn(
                         "group relative w-full rounded-3xl px-6 py-5 text-left transition-all duration-500 ease-spring focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
-                        on ? "bg-white shadow-[0_24px_50px_-28px_rgba(80,30,60,0.35)] ring-1 ring-ink/6" : "hover:bg-white/60",
+                        on ? "bg-surface shadow-[0_24px_50px_-28px_rgba(80,30,60,0.35)] ring-1 ring-ink/6" : "hover:bg-surface/60",
                       )}
                     >
                       <span className="flex items-center gap-3">
@@ -87,8 +88,9 @@ export function Studio() {
               })}
             </ul>
           </Reveal>
+          </div>
 
-          <Reveal delay={0.05} className="order-1 mx-auto w-full max-w-[340px] lg:order-2">
+          <Reveal delay={0.05} className="order-1 mx-auto w-full max-w-[340px] lg:sticky lg:top-28 lg:order-2 lg:mt-16">
             <div id="studio-panel" role="tabpanel" aria-label={item.title} className="relative">
               <div aria-hidden className="absolute -inset-10 -z-10 rounded-full bg-rose/50 blur-3xl" />
               <AppPhone>

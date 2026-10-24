@@ -98,7 +98,7 @@ export function AppPhone({
 
   return (
     <div className={cn("w-full max-w-[340px]", className)} aria-hidden>
-      <div className="rounded-[44px] bg-ink p-[9px] shadow-[0_60px_100px_-40px_rgba(60,15,40,0.55)] ring-1 ring-white/10">
+      <div className="rounded-[44px] bg-[#0b090d] p-[9px] shadow-[0_60px_100px_-40px_rgba(120,20,80,0.6)] ring-1 ring-white/12">
         <div
           ref={box}
           className={cn("app-ui relative overflow-hidden rounded-[35px]", light && "light")}
