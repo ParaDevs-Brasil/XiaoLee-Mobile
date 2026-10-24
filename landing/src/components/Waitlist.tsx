@@ -42,7 +42,7 @@ export const useWaitlist = () => {
 // 16px: below that iOS Safari zooms the page when a field gets focus. The 1px ring is the field boundary
 // (WCAG 1.4.11 asks for 3:1 against the surface), and the focus ring is solid accent.
 const field =
-  "w-full rounded-2xl bg-white px-4 py-3 text-base text-ink outline-none ring-1 ring-ink/50 transition-shadow duration-300 ease-spring hover:shadow-[0_8px_18px_-12px_rgba(60,15,40,0.35)] placeholder:text-ink-3 focus:ring-2 focus:ring-accent aria-[invalid=true]:ring-2 aria-[invalid=true]:ring-[#c23a3a]";
+  "w-full rounded-2xl bg-surface px-4 py-3 text-base text-ink outline-none ring-1 ring-ink/50 transition-shadow duration-300 ease-spring hover:shadow-[0_8px_18px_-12px_rgba(60,15,40,0.35)] placeholder:text-ink-3 focus:ring-2 focus:ring-accent aria-[invalid=true]:ring-2 aria-[invalid=true]:ring-[#c23a3a]";
 
 const ERR_ID = "xl-wl-err";
 type ErrField = "name" | "email" | "role";
@@ -51,7 +51,7 @@ function Chip({ name, value, label, checked, onChange, invalid }: { name: string
   return (
     <label className="cursor-pointer">
       <input type="radio" name={name} value={value} checked={checked} onChange={() => onChange(value)} className="peer sr-only" />
-      <span data-invalid={invalid || undefined} className="inline-block rounded-full bg-white px-4 py-2.5 text-[14px] font-semibold text-ink-2 ring-1 ring-ink/10 data-[invalid=true]:ring-[#c23a3a] transition-all duration-300 ease-spring hover:-translate-y-0.5 hover:shadow-[0_8px_16px_-10px_rgba(60,15,40,0.4)] hover:ring-ink/25 active:scale-95 peer-checked:bg-accent peer-checked:text-white peer-checked:ring-accent peer-focus-visible:ring-2 peer-focus-visible:ring-accent peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-cream">
+      <span data-invalid={invalid || undefined} className="inline-block rounded-full bg-surface px-4 py-2.5 text-[14px] font-semibold text-ink-2 ring-1 ring-ink/10 data-[invalid=true]:ring-[#c23a3a] transition-all duration-300 ease-spring hover:-translate-y-0.5 hover:shadow-[0_8px_16px_-10px_rgba(60,15,40,0.4)] hover:ring-ink/25 active:scale-95 peer-checked:bg-accent peer-checked:text-white peer-checked:ring-accent peer-focus-visible:ring-2 peer-focus-visible:ring-accent peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-cream">
         {label}
       </span>
     </label>
@@ -251,7 +251,7 @@ export function WaitlistProvider({ children }: { children: ReactNode }) {
       >
         <style>{`@keyframes wl-in{from{opacity:0;transform:translateY(24px) scale(.97)}to{opacity:1;transform:none}}`}</style>
         <div className="flex items-center gap-4 border-b border-line px-6 pb-4 pt-5">
-          <img src="/assets/xiaolee-icon-160.webp" width={48} height={48} alt="" className="size-12 rounded-full object-cover ring-[3px] ring-white" />
+          <img src="/assets/xiaolee-icon-160.webp" width={48} height={48} alt="" className="size-12 rounded-full object-cover ring-[3px] ring-surface" />
           <div className="min-w-0">
             <h2 id="xl-wl-title" className="text-[21px] font-bold tracking-tight">{w.title}</h2>
             {!done && <p className="text-[14px] text-ink-2">{step === 1 ? w.sub1 : w.sub2}</p>}
@@ -262,7 +262,7 @@ export function WaitlistProvider({ children }: { children: ReactNode }) {
         {done ? (
           <div className="grid place-items-center gap-3 px-8 py-14 text-center">
             <div className="wl-hero relative" aria-hidden="true">
-              <img src="/assets/xiaolee-icon-160.webp" width={80} height={80} alt="" className="size-20 rounded-full object-cover ring-4 ring-white" />
+              <img src="/assets/xiaolee-icon-160.webp" width={80} height={80} alt="" className="size-20 rounded-full object-cover ring-4 ring-surface" />
               <svg className="wl-check" viewBox="0 0 40 40"><circle cx="20" cy="20" r="17.5" /><path d="M12 20.5l5.5 5.5L28.5 14.5" /></svg>
               {SPARKS.map(([a, d, c]) => <i key={a} className="wl-spark" style={{ "--a": `${a}deg`, "--d": `${d}s`, "--c": c } as CSSProperties} />)}
             </div>
@@ -296,7 +296,7 @@ export function WaitlistProvider({ children }: { children: ReactNode }) {
                     ))}
                   </div>
                 </fieldset>
-                {err && <p id={ERR_ID} role="alert" className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-[14px] font-semibold text-[#b03030]">{err}</p>}
+                {err && <p id={ERR_ID} role="alert" className="mt-4 rounded-2xl bg-red-500/10 px-4 py-3 text-[14px] font-semibold text-[#b03030] in-data-[theme=dark]:text-red-300">{err}</p>}
                 <SubmitBtn>{w.submit}</SubmitBtn>
                 <p className="mt-4 text-center text-[12.5px] text-ink-3">
                   {w.fine1} <a className="underline underline-offset-2 transition-colors hover:text-accent" href="/terms" target="_blank" rel="noopener">{lang === "pt" ? "Termos" : "Terms"}</a> {w.fine2} <a className="underline underline-offset-2 transition-colors hover:text-accent" href="/privacy" target="_blank" rel="noopener">{lang === "pt" ? "Política de Privacidade" : "Privacy Policy"}</a>. {w.fine3}
@@ -311,7 +311,7 @@ export function WaitlistProvider({ children }: { children: ReactNode }) {
                   <p className="mt-1 text-[14px] leading-relaxed text-ink-2">{w.boostBody}</p>
                   <div className="mt-4 flex items-center gap-3 text-[12.5px] font-bold text-ink-2">
                     <span id="xl-wl-profile">{w.profile}</span>
-                    <div role="progressbar" aria-labelledby="xl-wl-profile" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} className="h-2 flex-1 overflow-hidden rounded-full bg-white">
+                    <div role="progressbar" aria-labelledby="xl-wl-profile" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} className="h-2 flex-1 overflow-hidden rounded-full bg-surface">
                       <div className="h-full origin-left rounded-full bg-accent transition-transform duration-700 ease-spring" style={{ transform: `scaleX(${pct / 100})` }} />
                     </div>
                     <span className="tabular-nums" aria-hidden="true">{pct}%</span>
@@ -330,7 +330,7 @@ export function WaitlistProvider({ children }: { children: ReactNode }) {
                   <legend className="mb-2 text-[13px] font-bold">{w.socials} <small className="font-medium text-ink-3">{w.socialsHint}</small></legend>
                   <div className="grid gap-2 sm:grid-cols-2">
                     {HANDLES.map((h) => (
-                      <label key={h} className={cn("flex items-center gap-2 rounded-2xl bg-white px-3 ring-1 transition-shadow duration-300 ease-spring hover:shadow-[0_8px_18px_-12px_rgba(60,15,40,0.35)] focus-within:ring-2 focus-within:ring-accent", v.main_platform === h ? "ring-accent" : "ring-ink/50")}>
+                      <label key={h} className={cn("flex items-center gap-2 rounded-2xl bg-surface px-3 ring-1 transition-shadow duration-300 ease-spring hover:shadow-[0_8px_18px_-12px_rgba(60,15,40,0.35)] focus-within:ring-2 focus-within:ring-accent", v.main_platform === h ? "ring-accent" : "ring-ink/50")}>
                         <span className="w-[68px] shrink-0 text-[12.5px] font-bold text-ink-2">{HANDLE_LABEL[h]}</span>
                         <input
                           ref={(el) => { handleInputs.current[h] = el; }}
@@ -388,17 +388,17 @@ export function WaitlistProvider({ children }: { children: ReactNode }) {
                 </div>
 
                 {nudge && (
-                  <div role="group" aria-labelledby="xl-wl-nudge" className="mt-5 rounded-3xl bg-amber-50 p-4 text-[14px] leading-relaxed text-amber-900 ring-1 ring-amber-200">
+                  <div role="group" aria-labelledby="xl-wl-nudge" className="mt-5 rounded-3xl bg-amber-500/10 p-4 text-[14px] leading-relaxed text-amber-900 in-data-[theme=dark]:text-amber-200 ring-1 ring-amber-500/30">
                     <strong id="xl-wl-nudge" className="block">{w.nudgeTitle}</strong>
                     {w.nudgeBody}
                     <div className="mt-3 flex flex-wrap gap-2">
                       <button ref={nudgeAddRef} type="button" onClick={() => { setNudge(false); focusHandle(); }} className="rounded-full bg-accent px-4 py-2.5 text-[13.5px] font-bold text-white transition-all duration-300 ease-spring hover:-translate-y-0.5 hover:bg-accent-hover active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">{w.nudgeAdd}</button>
-                      <button type="button" onClick={() => { setNudge(false); bodyRef.current?.requestSubmit(); }} className="rounded-full bg-white px-4 py-2.5 text-[13.5px] font-bold text-ink ring-1 ring-ink/10 transition-all duration-300 ease-spring hover:-translate-y-0.5 hover:ring-ink/25 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">{w.nudgeSkip}</button>
+                      <button type="button" onClick={() => { setNudge(false); bodyRef.current?.requestSubmit(); }} className="rounded-full bg-surface px-4 py-2.5 text-[13.5px] font-bold text-ink ring-1 ring-ink/10 transition-all duration-300 ease-spring hover:-translate-y-0.5 hover:ring-ink/25 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">{w.nudgeSkip}</button>
                     </div>
                   </div>
                 )}
 
-                {err && <p id={ERR_ID} role="alert" className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-[14px] font-semibold text-[#b03030]">{err}</p>}
+                {err && <p id={ERR_ID} role="alert" className="mt-4 rounded-2xl bg-red-500/10 px-4 py-3 text-[14px] font-semibold text-[#b03030] in-data-[theme=dark]:text-red-300">{err}</p>}
                 <SubmitBtn>{w.save}</SubmitBtn>
                 <button type="button" onClick={skip} className="mt-2 w-full rounded-full py-3 text-[14px] font-semibold text-ink-2 transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50">{w.skip}</button>
               </div>

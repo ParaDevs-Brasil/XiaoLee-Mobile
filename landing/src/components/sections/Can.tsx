@@ -39,7 +39,7 @@ const CHAT_DELAYS = [700, 1000, 900, 1100, 1000, 1000];
 
 function Typing() {
   return (
-    <div className="flex items-center gap-1 rounded-2xl rounded-bl-md bg-white px-3.5 py-3 shadow-sm ring-1 ring-ink/5">
+    <div className="flex items-center gap-1 rounded-2xl rounded-bl-md bg-surface px-3.5 py-3 shadow-sm ring-1 ring-ink/5">
       {[0, 1, 2].map((i) => (
         <motion.span key={i} className="size-1.5 rounded-full bg-ink-3" animate={{ y: [0, -3, 0], opacity: [0.4, 1, 0.4] }} transition={{ duration: 1, repeat: Infinity, delay: i * 0.15, ease: "easeInOut" }} />
       ))}
@@ -56,9 +56,9 @@ function ChatDemo() {
   const typing = next?.who === "bot" && step < msgs.length;
 
   return (
-    <div ref={ref} className="flex h-full min-h-[360px] flex-col overflow-hidden rounded-3xl bg-[#f1eee9] ring-1 ring-ink/5">
-      <div className="flex items-center gap-3 border-b border-ink/5 bg-white/60 px-4 py-3">
-        <img src="/assets/xiaolee-icon-160.webp" width={36} height={36} alt="" className="size-9 rounded-full object-cover ring-2 ring-white" />
+    <div ref={ref} className="flex h-full min-h-[360px] flex-col overflow-hidden rounded-3xl bg-line/45 ring-1 ring-ink/5">
+      <div className="flex items-center gap-3 border-b border-ink/5 bg-surface/60 px-4 py-3">
+        <img src="/assets/xiaolee-icon-160.webp" width={36} height={36} alt="" className="size-9 rounded-full object-cover ring-2 ring-surface" />
         <div>
           <div className="text-[14px] font-bold leading-none text-ink">{t.can.chat.title}</div>
           <div className="mt-1 text-[11px] font-semibold text-success">{t.can.chat.status}</div>
@@ -73,9 +73,9 @@ function ChatDemo() {
               className={cn("flex", m.who === "user" ? "justify-end" : "justify-start")}
             >
               {m.who === "user" ? (
-                <div className="max-w-[78%] rounded-[20px] rounded-br-md bg-ink px-4 py-2.5 text-[14.5px] font-medium text-white">{m.text}</div>
+                <div className="max-w-[78%] rounded-[20px] rounded-br-md bg-ink px-4 py-2.5 text-[14.5px] font-medium text-cream">{m.text}</div>
               ) : (
-                <div className="max-w-[84%] rounded-[20px] rounded-bl-md bg-white px-4 py-2.5 text-[14.5px] font-medium text-ink shadow-sm ring-1 ring-ink/5">
+                <div className="max-w-[84%] rounded-[20px] rounded-bl-md bg-surface px-4 py-2.5 text-[14.5px] font-medium text-ink shadow-sm ring-1 ring-ink/5">
                   {m.text}
                   {i === 3 && (
                     <div className="mt-2 flex items-center justify-center gap-2 rounded-xl bg-accent-soft px-3 py-2 text-[12.5px] font-bold text-accent"><IconCheck size={14} /> Confirm</div>
@@ -89,7 +89,7 @@ function ChatDemo() {
           )}
         </AnimatePresence>
       </div>
-      <div className="m-3 mt-0 flex items-center gap-2 rounded-full bg-white py-1.5 pl-4 pr-1.5 text-[13.5px] text-ink-3 ring-1 ring-ink/5">
+      <div className="m-3 mt-0 flex items-center gap-2 rounded-full bg-surface py-1.5 pl-4 pr-1.5 text-[13.5px] text-ink-3 ring-1 ring-ink/5">
         <span className="flex-1">{t.hero.inputHint}</span>
         <span className="grid size-8 place-items-center rounded-full bg-accent text-white"><IconSend size={15} /></span>
       </div>
@@ -108,7 +108,7 @@ function CampaignDemo() {
   const typing = step === c.chips.length; // every chip is in: she is composing her reply
   const asked = step > c.chips.length;
   return (
-    <div ref={ref} className="rounded-3xl bg-[#f1eee9] p-4 ring-1 ring-ink/5">
+    <div ref={ref} className="rounded-3xl bg-line/45 p-4 ring-1 ring-ink/5">
       <div className="flex flex-wrap gap-2">
         {c.chips.map((x, i) => (
           <motion.span
@@ -116,7 +116,7 @@ function CampaignDemo() {
             initial={false}
             animate={{ opacity: step > i ? 1 : 0.18, scale: step > i ? 1 : 0.92, y: step > i ? 0 : 6 }}
             transition={{ duration: 0.6, ease: EASE }}
-            className="rounded-full bg-white px-3.5 py-2 text-[13px] font-bold text-ink shadow-sm ring-1 ring-ink/5"
+            className="rounded-full bg-surface px-3.5 py-2 text-[13px] font-bold text-ink shadow-sm ring-1 ring-ink/5"
           >
             {x}
           </motion.span>
@@ -126,7 +126,7 @@ function CampaignDemo() {
         initial={false}
         animate={{ opacity: step >= c.chips.length ? 1 : 0.35, y: step >= c.chips.length ? 0 : 10 }}
         transition={{ duration: 0.7, ease: EASE }}
-        className="relative mt-4 overflow-hidden rounded-2xl bg-white p-4 shadow-sm ring-1 ring-ink/5"
+        className="relative mt-4 overflow-hidden rounded-2xl bg-surface p-4 shadow-sm ring-1 ring-ink/5"
       >
         <div className="flex min-h-[40px] items-center gap-2.5">
           <img src="/assets/xiaolee-icon-160.webp" width={32} height={32} alt="" className="size-8 shrink-0 rounded-full object-cover" />
@@ -162,13 +162,13 @@ function PayoutDemo() {
   const { ref, step } = useSequence(p.tasks.length + 1, PAYOUT_DELAYS, 3800);
   const claimed = step > p.tasks.length - 1;
   return (
-    <div ref={ref} className="rounded-3xl bg-[#f1eee9] p-4 ring-1 ring-ink/5">
+    <div ref={ref} className="rounded-3xl bg-line/45 p-4 ring-1 ring-ink/5">
       <ul className="space-y-2">
         {p.tasks.map((x, i) => {
           const done = step > i;
           const checking = step === i;
           return (
-            <li key={x} className="flex items-center gap-3 rounded-2xl bg-white px-3.5 py-2.5 shadow-sm ring-1 ring-ink/5">
+            <li key={x} className="flex items-center gap-3 rounded-2xl bg-surface px-3.5 py-2.5 shadow-sm ring-1 ring-ink/5">
               <span className="relative grid size-5 shrink-0 place-items-center">
                 <span className={cn("absolute inset-0 grid place-items-center rounded-full ring-1 transition-all duration-500 ease-spring", done ? "scale-100 bg-success text-white ring-success" : "scale-90 bg-transparent text-transparent ring-ink/20")}>
                   <IconCheck size={12} />
@@ -180,7 +180,7 @@ function PayoutDemo() {
           );
         })}
       </ul>
-      <div className={cn("relative mt-3 flex items-center justify-between overflow-hidden rounded-2xl px-4 py-3 transition-colors duration-700 ease-spring", claimed ? "bg-accent text-white" : "bg-white text-ink ring-1 ring-ink/5")}>
+      <div className={cn("relative mt-3 flex items-center justify-between overflow-hidden rounded-2xl px-4 py-3 transition-colors duration-700 ease-spring", claimed ? "bg-accent text-white" : "bg-surface text-ink ring-1 ring-ink/5")}>
         <div className="flex items-baseline gap-1.5">
           <span className="text-[26px] font-bold leading-none tracking-tight tabular-nums">
             +{claimed ? <NumberTicker key="claimed" value={0.3} decimalPlaces={2} className="text-inherit" /> : <span className="tracking-wider">0.00</span>}
@@ -192,7 +192,7 @@ function PayoutDemo() {
           {claimed && (
             <motion.span
               key="sheen" aria-hidden
-              className="pointer-events-none absolute inset-y-0 -left-1/3 w-1/3 -skew-x-[18deg] bg-white/25"
+              className="pointer-events-none absolute inset-y-0 -left-1/3 w-1/3 -skew-x-[18deg] bg-surface/25"
               initial={{ x: "-120%" }} animate={{ x: "480%" }} transition={{ duration: 1.1, ease: EASE }}
             />
           )}
@@ -244,9 +244,9 @@ function ClipperDemo() {
   }, [live, reduced, c.len]);
 
   return (
-    <div ref={ref} data-live={live} className="clip-stage flex h-full flex-col rounded-3xl bg-[#f1eee9] p-4 ring-1 ring-ink/5 sm:p-5">
-      <div className="flex items-center gap-3 rounded-2xl bg-white px-3.5 py-2.5 shadow-sm ring-1 ring-ink/5">
-        <span className="grid size-9 place-items-center rounded-xl bg-ink text-white">
+    <div ref={ref} data-live={live} className="clip-stage flex h-full flex-col rounded-3xl bg-line/45 p-4 ring-1 ring-ink/5 sm:p-5">
+      <div className="flex items-center gap-3 rounded-2xl bg-surface px-3.5 py-2.5 shadow-sm ring-1 ring-ink/5">
+        <span className="grid size-9 place-items-center rounded-xl bg-ink text-cream">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden><rect x="6" y="5" width="4" height="14" rx="1.2" /><rect x="14" y="5" width="4" height="14" rx="1.2" /></svg>
         </span>
         <div className="min-w-0 flex-1">
@@ -285,8 +285,8 @@ function ClipperDemo() {
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
                 <div className="absolute inset-x-2 bottom-2">
                   <span className="inline-block rounded-md bg-accent px-1.5 py-0.5 text-[10px] font-bold leading-tight text-white">{label}</span>
-                  <div className="mt-1 h-0.5 overflow-hidden rounded-full bg-white/30">
-                    <div className="clip-progress loop h-full w-full rounded-full bg-white" style={{ "--start": CUTS[i][0] / 100 } as CSSProperties} />
+                  <div className="mt-1 h-0.5 overflow-hidden rounded-full bg-surface/30">
+                    <div className="clip-progress loop h-full w-full rounded-full bg-surface" style={{ "--start": CUTS[i][0] / 100 } as CSSProperties} />
                   </div>
                 </div>
               </div>
@@ -304,15 +304,15 @@ function DoorsDemo() {
   const doors = [<IconPhone key="m" size={18} />, <IconGlobe key="w" size={18} />, <IconTelegram key="t" size={18} />, <IconX key="x" size={18} />];
   return (
     <div className="relative mx-auto flex size-[280px] items-center justify-center sm:size-[320px]">
-      <div aria-hidden className="absolute inset-4 rounded-full bg-[radial-gradient(closest-side,rgba(247,201,224,0.7),transparent)]" />
-      <div className="relative z-10 size-20 overflow-hidden rounded-full ring-4 ring-white shadow-[0_20px_40px_-12px_rgba(120,20,70,0.5)]">
+      <div aria-hidden className="absolute inset-4 rounded-full bg-[radial-gradient(closest-side,var(--halo),transparent)]" />
+      <div className="relative z-10 size-20 overflow-hidden rounded-full ring-4 ring-surface shadow-[0_20px_40px_-12px_rgba(120,20,70,0.5)]">
         <MascotVideo name="kawaii" position="50% 6%" zoom={1.5} />
       </div>
       <OrbitingCircles radius={92} iconSize={44} duration={22} className="border-0 bg-transparent">
-        {doors.slice(0, 2).map((d, i) => <span key={i} className="grid size-11 cursor-pointer place-items-center rounded-full bg-white text-ink shadow-md ring-1 ring-ink/8 transition-all duration-500 ease-spring hover:scale-125 hover:bg-accent hover:text-white hover:ring-accent">{d}</span>)}
+        {doors.slice(0, 2).map((d, i) => <span key={i} className="grid size-11 cursor-pointer place-items-center rounded-full bg-surface text-ink shadow-md ring-1 ring-ink/8 transition-all duration-500 ease-spring hover:scale-125 hover:bg-accent hover:text-white hover:ring-accent">{d}</span>)}
       </OrbitingCircles>
       <OrbitingCircles radius={140} iconSize={44} duration={30} reverse path className="border-0 bg-transparent">
-        {doors.slice(2).map((d, i) => <span key={i} className="grid size-11 cursor-pointer place-items-center rounded-full bg-ink text-white shadow-md transition-all duration-500 ease-spring hover:scale-125 hover:bg-accent">{d}</span>)}
+        {doors.slice(2).map((d, i) => <span key={i} className="grid size-11 cursor-pointer place-items-center rounded-full bg-ink text-cream shadow-md transition-all duration-500 ease-spring hover:scale-125 hover:bg-accent">{d}</span>)}
       </OrbitingCircles>
     </div>
   );
@@ -326,7 +326,7 @@ const SOURCES = [
   { label: "Stellar", icon: <img src="/assets/chain-stellar.png" alt="" className="h-[18px] w-auto" /> },
 ];
 const STAGE_DOTS = {
-  backgroundImage: "radial-gradient(rgba(26,25,23,0.11) 1px, transparent 1.3px)",
+  backgroundImage: "radial-gradient(color-mix(in srgb, var(--color-ink) 16%, transparent) 1px, transparent 1.3px)",
   backgroundSize: "18px 18px",
   maskImage: "radial-gradient(ellipse 85% 100% at 88% 50%, #000, transparent 78%)",
   WebkitMaskImage: "radial-gradient(ellipse 85% 100% at 88% 50%, #000, transparent 78%)",
@@ -377,7 +377,7 @@ function Coin({ className, style }: { className?: string; style?: CSSProperties 
 
 function Source({ label, icon, cardRef }: { label: string; icon: ReactNode; cardRef: (el: HTMLDivElement | null) => void }) {
   return (
-    <div ref={cardRef} className="relative z-10 flex w-28 items-center gap-2.5 rounded-2xl bg-white p-2 pr-3 shadow-[0_14px_28px_-16px_rgba(60,15,40,0.45)] ring-1 ring-ink/6 transition-all duration-500 ease-spring hover:-translate-y-0.5 hover:shadow-[0_22px_34px_-16px_rgba(200,24,111,0.5)] hover:ring-accent/30 sm:w-40 sm:gap-3 sm:p-2.5 sm:pr-4">
+    <div ref={cardRef} className="relative z-10 flex w-28 items-center gap-2.5 rounded-2xl bg-surface p-2 pr-3 shadow-[0_14px_28px_-16px_rgba(60,15,40,0.45)] ring-1 ring-ink/6 transition-all duration-500 ease-spring hover:-translate-y-0.5 hover:shadow-[0_22px_34px_-16px_rgba(200,24,111,0.5)] hover:ring-accent/30 sm:w-40 sm:gap-3 sm:p-2.5 sm:pr-4">
       <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-cream ring-1 ring-ink/5 sm:size-10">{icon}</span>
       <span className="text-[13px] font-bold text-ink sm:text-[14.5px]">{label}</span>
     </div>
@@ -395,19 +395,19 @@ function ChainsDemo() {
   const hub = useRef<HTMLDivElement | null>(null);
   const rails = useRails(ref, cards, hub);
   return (
-    <div ref={ref} data-live={live} className="rail-stage relative flex min-h-[290px] items-center justify-between overflow-hidden rounded-3xl bg-[#f1eee9] px-4 py-7 ring-1 ring-ink/5 sm:min-h-[320px] sm:px-8">
+    <div ref={ref} data-live={live} className="rail-stage relative flex min-h-[290px] items-center justify-between overflow-hidden rounded-3xl bg-ink/[0.035] px-4 py-7 ring-1 ring-ink/8 sm:min-h-[320px] sm:px-8">
       <div aria-hidden className="absolute inset-0" style={STAGE_DOTS} />
       <div className="flex flex-col gap-3.5">
         {SOURCES.map((s, i) => <Source key={s.label} label={s.label} icon={s.icon} cardRef={(el) => { cards.current[i] = el; }} />)}
       </div>
       <div className="relative">
-        <div aria-hidden className="absolute left-1/2 top-1/2 size-[380px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(247,201,224,0.85),transparent)] sm:size-[440px]" />
+        <div aria-hidden className="absolute left-1/2 top-1/2 size-[380px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(closest-side,var(--halo),transparent)] sm:size-[440px]" />
         <span aria-hidden className="rail-ring loop absolute inset-0 rounded-full ring-2 ring-accent" />
-        <div ref={hub} className="relative z-10 grid size-20 place-items-center rounded-full bg-ink shadow-[0_26px_44px_-14px_rgba(200,24,111,0.5)] ring-[5px] ring-white sm:size-28">
+        <div ref={hub} className="relative z-10 grid size-20 place-items-center rounded-full bg-night shadow-[0_26px_44px_-14px_rgba(224,40,132,0.55)] ring-[5px] ring-surface sm:size-28">
           <img src="/assets/logos/arc.svg" alt={t.can.chains.arc} className="h-5 w-auto brightness-0 invert sm:h-7" />
         </div>
         {/* out of flow, so the hub itself sits on the stage's centre line, level with the middle card */}
-        <span className="absolute left-1/2 top-full z-10 mt-4 inline-flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full bg-white py-1 pl-1.5 pr-3 text-[11px] font-bold text-ink-2 ring-1 ring-ink/8">
+        <span className="absolute left-1/2 top-full z-10 mt-4 inline-flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full bg-surface py-1 pl-1.5 pr-3 text-[11px] font-bold text-ink-2 ring-1 ring-ink/8">
           <Coin className="size-4 text-[9px]" />{t.can.chains.note}
         </span>
       </div>
@@ -416,7 +416,7 @@ function ChainsDemo() {
           <svg aria-hidden width={rails.w} height={rails.h} className="pointer-events-none absolute left-0 top-0 overflow-visible" fill="none">
             {rails.paths.map((d, i) => (
               <g key={i}>
-                <path d={d} stroke="rgba(26,25,23,0.26)" strokeWidth={2.5} strokeLinecap="round" strokeDasharray="0 7" />
+                <path d={d} style={{ stroke: "color-mix(in srgb, var(--color-ink) 34%, transparent)" }} strokeWidth={2.5} strokeLinecap="round" strokeDasharray="0 7" />
                 <path d={d} pathLength={1} className="rail-trail loop" stroke="var(--color-accent)" strokeWidth={2.5} strokeLinecap="round" style={{ "--i": i } as CSSProperties} />
               </g>
             ))}
@@ -430,9 +430,72 @@ function ChainsDemo() {
   );
 }
 
+/* ───────────────────────────── AI Creators ───────────────────────────── */
+/** Photo → voice → video, left to right: a light travels the connectors, the waveform breathes, the video "plays". */
+function CreatorsDemo() {
+  const { t } = useLang();
+  const c = t.can.creators;
+  const reduced = useReducedMotion();
+  const { ref, live } = useLive<HTMLDivElement>();
+  const Link = ({ i }: { i: number }) => (
+    <div aria-hidden className="relative hidden h-px w-10 shrink-0 self-center bg-[repeating-linear-gradient(90deg,var(--color-ink-3)_0_2px,transparent_2px_7px)] opacity-60 sm:block lg:w-14">
+      {!reduced && live && (
+        <motion.span
+          className="absolute -top-[3px] left-0 size-[7px] rounded-full bg-accent shadow-[0_0_10px_var(--color-accent)]"
+          animate={{ x: [0, 40, 40], opacity: [0, 1, 0] }} transition={{ duration: 2.4, repeat: Infinity, delay: i * 1.1, ease: EASE }}
+        />
+      )}
+    </div>
+  );
+  const Step = ({ label, children }: { label: string; children: ReactNode }) => (
+    <div className="flex flex-col items-center gap-2.5">
+      <div className="relative">{children}</div>
+      <span className="font-mono text-[10.5px] font-medium uppercase tracking-[0.18em] text-ink-3">{label}</span>
+    </div>
+  );
+  return (
+    <div ref={ref} data-live={live} className="relative flex min-h-[300px] flex-col items-center justify-center gap-6 overflow-hidden rounded-3xl bg-ink/[0.035] px-4 py-8 ring-1 ring-ink/8 sm:flex-row sm:gap-3 sm:px-8">
+      <div aria-hidden className="absolute left-1/2 top-1/2 size-[420px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(closest-side,var(--halo),transparent)]" />
+      <Step label={c.photo}>
+        <div className="w-[104px] -rotate-[4deg] overflow-hidden rounded-2xl bg-[#d3cfcc] shadow-[0_18px_30px_-16px_rgba(0,0,0,0.6)] ring-1 ring-ink/10 aspect-[3/4] sm:w-[120px]">
+          <img src="/mascot/kawaii.jpg" alt="" className="size-full object-cover object-top" loading="lazy" />
+        </div>
+      </Step>
+      <Link i={0} />
+      <Step label={c.voice}>
+        <div className="grid h-[132px] w-[150px] place-items-center rounded-2xl bg-surface p-3 shadow-[0_18px_30px_-16px_rgba(0,0,0,0.5)] ring-1 ring-ink/10 sm:w-[168px]">
+          <div className="flex h-12 items-center gap-[3px]">
+            {Array.from({ length: 17 }, (_, i) => {
+              const h = 22 + Math.abs(Math.sin(i * 1.3)) * 78;
+              return (
+                <motion.i
+                  key={i} className="block w-[3px] rounded-full bg-accent" style={{ height: `${h}%`, transformOrigin: "center" }}
+                  animate={reduced || !live ? undefined : { scaleY: [1, 0.35 + (i % 4) * 0.18, 1] }}
+                  transition={{ duration: 1.1 + (i % 5) * 0.12, repeat: Infinity, ease: "easeInOut", delay: i * 0.04 }}
+                />
+              );
+            })}
+          </div>
+          <span className="text-[12px] font-bold text-ink">{c.voiceName}</span>
+        </div>
+      </Step>
+      <Link i={1} />
+      <Step label={c.video}>
+        <div className="relative w-[104px] overflow-hidden rounded-2xl bg-[#d3cfcc] shadow-[0_22px_36px_-16px_rgba(224,40,132,0.55)] ring-1 ring-ink/10 aspect-[9/16] sm:w-[118px]">
+          <img src="/mascot/hello.jpg" alt="" className="size-full object-cover object-top" loading="lazy" />
+          <span className="absolute inset-x-2 bottom-2 h-1 overflow-hidden rounded-full bg-black/30">
+            <motion.i className="block h-full origin-left rounded-full bg-accent" animate={reduced || !live ? { scaleX: 0.6 } : { scaleX: [0, 1] }} transition={{ duration: 3, repeat: Infinity, ease: "linear" }} />
+          </span>
+          <span className="absolute right-2 top-2 rounded-full bg-success px-2 py-0.5 text-[9.5px] font-bold text-[#04140d]">{c.ready}</span>
+        </div>
+      </Step>
+    </div>
+  );
+}
+
 /* ───────────────────────────── section ────────────────────────── */
 function Pill({ children }: { children: ReactNode }) {
-  return <span className="cursor-default whitespace-nowrap rounded-full bg-white/80 px-5 py-3 text-[14.5px] font-semibold text-ink ring-1 ring-ink/8 transition-all duration-500 ease-spring hover:-translate-y-0.5 hover:bg-accent hover:text-white hover:ring-accent">{children}</span>;
+  return <span className="cursor-default whitespace-nowrap rounded-full bg-surface/80 px-5 py-3 text-[14.5px] font-semibold text-ink ring-1 ring-ink/8 transition-all duration-500 ease-spring hover:-translate-y-0.5 hover:bg-accent hover:text-white hover:ring-accent">{children}</span>;
 }
 
 export function Can() {
@@ -440,7 +503,7 @@ export function Can() {
   const k = t.can.tiles;
   return (
     <section id="can" className="relative py-28 sm:py-40">
-      <div aria-hidden className="absolute inset-x-0 top-0 -z-10 h-full bg-[linear-gradient(180deg,transparent,rgba(253,240,246,0.7)_35%,rgba(253,240,246,0.7)_75%,transparent)]" />
+      <div aria-hidden className="absolute inset-x-0 top-0 -z-10 h-full bg-[linear-gradient(180deg,transparent,var(--wash)_35%,var(--wash)_75%,transparent)]" />
       <div className="mx-auto max-w-[1280px] px-5 sm:px-8">
         <SectionHead eyebrow={t.can.eyebrow} a={t.can.h2a} b={t.can.h2b} sub={t.can.sub} />
 
@@ -450,6 +513,7 @@ export function Can() {
           <Tile className="lg:col-span-5" tag={k.campaign.tag} title={k.campaign.title} body={k.campaign.body}><CampaignDemo /></Tile>
           <Tile className="lg:col-span-7" tag={k.chat.tag} title={k.chat.title} body={k.chat.body}><ChatDemo /></Tile>
           <Tile className="lg:col-span-5" tag={k.doors.tag} title={k.doors.title} body={k.doors.body} visualClass="flex items-center justify-center"><DoorsDemo /></Tile>
+          <Tile className="lg:col-span-12" split tag={k.creators.tag} title={k.creators.title} body={k.creators.body}><CreatorsDemo /></Tile>
           <Tile className="lg:col-span-12" split tag={k.chains.tag} title={k.chains.title} body={k.chains.body}><ChainsDemo /></Tile>
         </div>
       </div>

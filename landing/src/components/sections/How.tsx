@@ -12,11 +12,11 @@ const EASE = [0.32, 0.72, 0, 1] as const;
 function Phone({ children }: { children: ReactNode }) {
   return (
     <Tilt max={6} lift={1.015} glare className="mx-auto w-full max-w-[330px] rounded-[48px]">
-    <Bezel radius={48} pad={9} className="w-full bg-ink/90 shadow-[0_60px_100px_-40px_rgba(60,15,40,0.55)]" coreClassName="aspect-[9/17] bg-cream">
-      <div aria-hidden className="absolute left-1/2 top-2.5 z-20 h-5 w-20 -translate-x-1/2 rounded-full bg-ink" />
+    <Bezel radius={48} pad={9} className="w-full bg-night shadow-[0_60px_100px_-40px_rgba(60,15,40,0.55)]" coreClassName="aspect-[9/17] bg-cream">
+      <div aria-hidden className="absolute left-1/2 top-2.5 z-20 h-5 w-20 -translate-x-1/2 rounded-full bg-night" />
       <div className="flex h-full flex-col px-4 pb-4 pt-12">
         {children}
-        <div className="mt-auto flex items-center gap-2 rounded-full bg-white py-1.5 pl-4 pr-1.5 text-[12.5px] text-ink-3 ring-1 ring-ink/8">
+        <div className="mt-auto flex items-center gap-2 rounded-full bg-surface py-1.5 pl-4 pr-1.5 text-[12.5px] text-ink-3 ring-1 ring-ink/8">
           <span className="flex-1">Xiaolee…</span>
           <span className="grid size-7 place-items-center rounded-full bg-accent text-white"><IconSend size={13} /></span>
         </div>
@@ -32,11 +32,11 @@ function Screen({ i }: { i: number }) {
   if (i === 0) {
     return (
       <Phone>
-        <div className="relative mx-auto size-40 overflow-hidden rounded-full bg-[#d3cfcc] ring-4 ring-white shadow-[0_24px_40px_-16px_rgba(120,20,70,0.5)]">
+        <div className="relative mx-auto size-40 overflow-hidden rounded-full bg-[#d3cfcc] ring-4 ring-surface shadow-[0_24px_40px_-16px_rgba(120,20,70,0.5)]">
           <MascotVideo name="hello" position="50% 6%" zoom={1.5} />
         </div>
-        <div className="mt-6 rounded-[22px] rounded-tl-md bg-white p-4 text-[14.5px] font-semibold leading-snug text-ink shadow-sm ring-1 ring-ink/5">{m.hi}</div>
-        <div className="mt-3 flex items-center gap-2 self-start rounded-full bg-emerald-50 px-3 py-2 text-[12.5px] font-bold text-success"><IconWallet size={15} /> {m.walletReady}</div>
+        <div className="mt-6 rounded-[22px] rounded-tl-md bg-surface p-4 text-[14.5px] font-semibold leading-snug text-ink shadow-sm ring-1 ring-ink/5">{m.hi}</div>
+        <div className="mt-3 flex items-center gap-2 self-start rounded-full bg-success/12 px-3 py-2 text-[12.5px] font-bold text-success"><IconWallet size={15} /> {m.walletReady}</div>
       </Phone>
     );
   }
@@ -45,7 +45,7 @@ function Screen({ i }: { i: number }) {
       <Phone>
         <div className="space-y-3">
           {m.campaigns.map((c, n) => (
-            <div key={c} className={cn("group/cc relative cursor-pointer overflow-hidden rounded-3xl bg-white p-4 shadow-sm ring-1 transition-all duration-500 ease-spring hover:-translate-y-0.5 hover:shadow-[0_14px_24px_-14px_rgba(60,15,40,0.4)]", n === 0 ? "ring-accent/30" : "ring-ink/5")}>
+            <div key={c} className={cn("group/cc relative cursor-pointer overflow-hidden rounded-3xl bg-surface p-4 shadow-sm ring-1 transition-all duration-500 ease-spring hover:-translate-y-0.5 hover:shadow-[0_14px_24px_-14px_rgba(60,15,40,0.4)]", n === 0 ? "ring-accent/30" : "ring-ink/5")}>
               <div className="flex items-center gap-3">
                 <span className={cn("grid size-10 place-items-center rounded-2xl", n === 0 ? "bg-accent text-white" : "bg-ink/5 text-ink-2")}><IconTarget size={20} /></span>
                 <div className="min-w-0 flex-1">
@@ -64,9 +64,9 @@ function Screen({ i }: { i: number }) {
   if (i === 2) {
     return (
       <Phone>
-        <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-ink/5">
+        <div className="rounded-3xl bg-surface p-4 shadow-sm ring-1 ring-ink/5">
           <div className="flex items-center gap-3">
-            <span className="grid size-10 place-items-center rounded-2xl bg-ink text-white"><IconTarget size={20} /></span>
+            <span className="grid size-10 place-items-center rounded-2xl bg-ink text-cream"><IconTarget size={20} /></span>
             <div className="text-[13.5px] font-bold text-ink">{m.checking}</div>
           </div>
           <div className="mt-4 space-y-2.5">
@@ -81,26 +81,26 @@ function Screen({ i }: { i: number }) {
             ))}
           </div>
         </div>
-        <div className="relative mt-4 aspect-square w-32 self-center overflow-hidden rounded-full bg-[#d3cfcc] ring-4 ring-white">
+        <div className="relative mt-4 aspect-square w-32 self-center overflow-hidden rounded-full bg-[#d3cfcc] ring-4 ring-surface">
           <MascotVideo name="cheer" position="50% 6%" zoom={1.5} />
         </div>
-        <div className="mt-3 self-center rounded-full bg-emerald-50 px-4 py-2 text-[13px] font-bold text-success">{m.verified} ✓</div>
+        <div className="mt-3 self-center rounded-full bg-success/12 px-4 py-2 text-[13px] font-bold text-success">{m.verified} ✓</div>
       </Phone>
     );
   }
   return (
     <Phone>
-      <div className="relative overflow-hidden rounded-3xl bg-white p-5 text-center shadow-sm ring-1 ring-ink/5">
+      <div className="relative overflow-hidden rounded-3xl bg-surface p-5 text-center shadow-sm ring-1 ring-ink/5">
         <div className="mx-auto grid size-12 place-items-center rounded-2xl bg-accent-soft text-accent"><IconShield size={24} /></div>
         <div className="mt-3 text-[12.5px] font-bold uppercase tracking-wider text-ink-3">{m.sign}</div>
         <div className="mt-1 text-[40px] font-bold leading-none tracking-tight text-ink">0.30 <span className="text-[16px] text-ink-3">USDC</span></div>
         <div className="mt-4 rounded-full bg-accent py-3 text-[14px] font-bold text-white">{m.signCta}</div>
         <BorderBeam size={90} duration={4.5} colorFrom="#d81b78" colorTo="#f7c9e0" borderWidth={1.5} />
       </div>
-      <div className="relative mt-4 aspect-square w-32 self-center overflow-hidden rounded-full bg-[#d3cfcc] ring-4 ring-white">
+      <div className="relative mt-4 aspect-square w-32 self-center overflow-hidden rounded-full bg-[#d3cfcc] ring-4 ring-surface">
         <MascotVideo name="love" position="50% 6%" zoom={1.5} />
       </div>
-      <div className="mt-3 self-center rounded-full bg-emerald-50 px-4 py-2 text-[13px] font-bold text-success">{m.received} ✓</div>
+      <div className="mt-3 self-center rounded-full bg-success/12 px-4 py-2 text-[13px] font-bold text-success">{m.received} ✓</div>
     </Phone>
   );
 }
@@ -154,7 +154,7 @@ export function How() {
             </div>
 
             <div className="relative hidden lg:block">
-              <div aria-hidden className="absolute -inset-10 -z-10 rounded-full bg-[radial-gradient(closest-side,rgba(247,201,224,0.7),transparent_75%)]" />
+              <div aria-hidden className="absolute -inset-10 -z-10 rounded-full bg-[radial-gradient(closest-side,var(--halo),transparent_75%)]" />
               <AnimatePresence mode="wait">
                 <motion.div
                   key={active}

@@ -1,8 +1,11 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { motion, useReducedMotion, useScroll, useSpring } from "motion/react";
 import { cn } from "@/lib/utils";
+import { Moon, Sun } from "lucide-react";
 import { useLang } from "@/lib/lang";
+import { useTheme } from "@/lib/theme";
 import { useWaitlist } from "@/components/Waitlist";
+import { useDownload } from "@/components/Download";
 import { FlowButton } from "@/components/ui/flow-button";
 import { AnimatedWordmark } from "@/components/ui/animated-logo";
 
@@ -23,19 +26,36 @@ function LangToggle({ dark = false }: { dark?: boolean }) {
           key={l}
           className={cn(
             "relative rounded-full px-2.5 py-1.5 uppercase transition-colors duration-500 ease-spring",
-            lang === l ? (dark ? "text-ink" : "text-white") : dark ? "text-white/60" : "text-ink-2",
+            lang === l ? (dark ? "text-ink" : "text-cream") : dark ? "text-white/60" : "text-ink-2",
           )}
         >
           {lang === l && (
             <motion.span
               layoutId={id} aria-hidden
-              className={cn("absolute inset-0 rounded-full", dark ? "bg-white" : "bg-ink")}
+              className={cn("absolute inset-0 rounded-full", dark ? "bg-surface" : "bg-ink")}
               transition={{ type: "spring", stiffness: 420, damping: 32 }}
             />
           )}
           <span className="relative">{l}</span>
         </span>
       ))}
+    </button>
+  );
+}
+
+/** Theme switch. Named by the action ("Switch to light theme"), not by the state. The 44px touch target comes from before:. */
+function ThemeToggle() {
+  const { theme, toggle } = useTheme();
+  const { lang } = useLang();
+  const toLight = theme === "dark";
+  const label = lang === "pt" ? (toLight ? "Mudar para o tema claro" : "Mudar para o tema escuro") : toLight ? "Switch to light theme" : "Switch to dark theme";
+  return (
+    <button
+      type="button" aria-label={label} title={label} onClick={toggle}
+      className="relative grid size-9 cursor-pointer place-items-center rounded-full bg-ink/5 text-ink outline-none transition-[background-color,transform] duration-500 ease-spring before:absolute before:-inset-1 before:content-[''] hover:bg-ink/10 active:scale-95 focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-cream"
+    >
+      <Sun size={17} strokeWidth={1.6} aria-hidden className={cn("absolute transition-all duration-700 ease-spring", toLight ? "rotate-0 scale-100 opacity-100" : "-rotate-90 scale-50 opacity-0")} />
+      <Moon size={17} strokeWidth={1.6} aria-hidden className={cn("absolute transition-all duration-700 ease-spring", toLight ? "rotate-90 scale-50 opacity-0" : "rotate-0 scale-100 opacity-100")} />
     </button>
   );
 }
@@ -57,6 +77,7 @@ function ScrollRing() {
 export function Nav() {
   const { t } = useLang();
   const { open } = useWaitlist();
+  const { start: startDownload } = useDownload();
   const [scrolled, setScrolled] = useState(false);
   const [menu, setMenu] = useState(false);
   const [hover, setHover] = useState<string | null>(null);
@@ -102,14 +123,14 @@ export function Nav() {
           className={cn(
             "flex w-full max-w-[860px] items-center justify-between rounded-full py-2 pl-5 pr-2 transition-all duration-700 ease-spring",
             scrolled || menu
-              ? "bg-white/90 shadow-[0_20px_50px_-24px_rgba(60,15,40,0.35)] ring-1 ring-ink/8 backdrop-blur-xl"
+              ? "bg-surface/90 shadow-[0_20px_50px_-24px_rgba(60,15,40,0.35)] ring-1 ring-ink/8 backdrop-blur-xl"
               : "bg-transparent ring-1 ring-transparent",
           )}
         >
           <a href="#top" aria-label="Xiaolee" className="group/logo flex items-center gap-2.5">
             <span className="relative grid size-8 place-items-center">
               <ScrollRing />
-              <img src="/assets/xiaolee-icon-160.webp" width={32} height={32} alt="" className="size-8 rounded-full object-cover ring-2 ring-white transition-all duration-500 ease-spring group-hover/logo:rotate-[14deg] group-hover/logo:scale-110 group-hover/logo:ring-accent/70" />
+              <img src="/assets/xiaolee-icon-160.webp" width={32} height={32} alt="" className="size-8 rounded-full object-cover ring-2 ring-surface transition-all duration-500 ease-spring group-hover/logo:rotate-[14deg] group-hover/logo:scale-110 group-hover/logo:ring-accent/70" />
             </span>
             <AnimatedWordmark className="text-[23px]" />
           </a>
@@ -128,8 +149,9 @@ export function Nav() {
           </ul>
 
           <div className="flex items-center gap-2">
+            <ThemeToggle />
             <LangToggle />
-            <FlowButton onClick={open} size="sm" className="hidden sm:inline-flex">
+            <FlowButton onClick={startDownload} size="sm" className="hidden sm:inline-flex">
               {t.nav.cta}
             </FlowButton>
             <button
@@ -169,7 +191,7 @@ export function Nav() {
         <FlowButton
           // focus goes back to the menu button first: the dialog returns focus to whatever had it when it opened,
           // and this button is about to turn invisible
-          onClick={() => { setMenu(false); menuBtn.current?.focus(); open(); }}
+          onClick={() => { setMenu(false); menuBtn.current?.focus(); startDownload(); }}
           className={cn("mt-10 text-[16px] transition-all duration-700", menu ? "translate-y-0 opacity-100" : "translate-y-8 opacity-0")}
           style={{ transitionDelay: menu ? "440ms" : "0ms" }}
         >

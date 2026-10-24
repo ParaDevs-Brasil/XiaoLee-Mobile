@@ -19,7 +19,7 @@ export function Eyebrow({ children, dark = false, className }: { children: React
     <span
       className={cn(
         "inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[10.5px] font-semibold uppercase tracking-[0.22em]",
-        dark ? "bg-white/6 text-white/70 ring-1 ring-white/10" : "bg-white/70 text-ink-2 ring-1 ring-ink/8",
+        dark ? "bg-white/6 text-white/70 ring-1 ring-white/10" : "bg-surface/70 text-ink-2 ring-1 ring-ink/8",
         className,
       )}
     >
@@ -68,11 +68,11 @@ export function Bezel({
 
 /** Primary pill CTA: morphs to a rounded square on hover, a circle floods it and the arrows swap sides. */
 export function CtaButton({
-  children, onClick, variant = "accent", className,
-}: { children: ReactNode; onClick?: () => void; variant?: "accent" | "ink"; className?: string }) {
+  children, onClick, variant = "accent", className, href, download,
+}: { children: ReactNode; onClick?: () => void; variant?: "accent" | "ink"; className?: string; href?: string; download?: boolean | string }) {
   return (
     <Magnetic className="inline-block" strength={0.22}>
-      <FlowButton onClick={onClick} variant={variant} className={className}>
+      <FlowButton onClick={onClick} variant={variant} className={className} href={href} download={download}>
         {children}
       </FlowButton>
     </Magnetic>
@@ -90,6 +90,21 @@ export function GhostButton({ children, href }: { children: ReactNode; href: str
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M6 13l6 6 6-6" /></svg>
       </span>
     </a>
+  );
+}
+
+/** Secondary action with the ghost look, as a real button (opens the waitlist). */
+export function GhostAction({ children, onClick }: { children: ReactNode; onClick: () => void }) {
+  return (
+    <button
+      type="button" onClick={onClick}
+      className="group/g inline-flex cursor-pointer items-center gap-3 rounded-full py-2 pl-6 pr-2 text-[15px] font-semibold tracking-tight text-ink ring-1 ring-ink/15 transition-all duration-500 ease-spring hover:bg-ink/5 hover:ring-ink/25 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+    >
+      {children}
+      <span className="grid size-9 place-items-center rounded-full bg-ink/8 transition-all duration-500 ease-spring group-hover/g:translate-x-0.5 group-hover/g:bg-accent group-hover/g:text-white">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+      </span>
+    </button>
   );
 }
 

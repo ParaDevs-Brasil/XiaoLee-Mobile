@@ -1,6 +1,7 @@
 import { useLang } from "@/lib/lang";
-import { Bezel, CtaButton, Eyebrow, MascotVideo, Reveal, Wordmark } from "@/components/kit";
+import { Bezel, CtaButton, Eyebrow, GhostAction, MascotVideo, Reveal, Wordmark } from "@/components/kit";
 import { useWaitlist } from "@/components/Waitlist";
+import { useDownload } from "@/components/Download";
 import { Meteors } from "@/components/ui/meteors";
 import { Tilt } from "@/components/ui/tilt";
 import { ClipTrail } from "@/components/ui/clip-trail";
@@ -13,12 +14,13 @@ const TRAIL = ["/mascot/clip-1.jpg", "/mascot/hello.jpg", "/mascot/clip-2.jpg", 
 export function Cta() {
   const { t } = useLang();
   const { open } = useWaitlist();
+  const { start: startDownload } = useDownload();
   return (
     <section className="px-3 pb-6 pt-24 sm:px-5 sm:pt-36">
       <Reveal y={40}>
-        <div className="relative isolate mx-auto max-w-[1280px] overflow-hidden rounded-[2.5rem] bg-[linear-gradient(135deg,#fdf0f6_0%,#f7c9e0_55%,#f3b6d4_100%)] ring-1 ring-accent/15 sm:rounded-[3.5rem]">
+        <div className="relative isolate mx-auto max-w-[1280px] overflow-hidden rounded-[2.5rem] bg-[linear-gradient(135deg,var(--cta-a)_0%,var(--cta-b)_55%,var(--cta-c)_100%)] ring-1 ring-accent/15 sm:rounded-[3.5rem]">
           <Meteors number={6} className="before:from-accent/60" />
-          <div aria-hidden className="absolute -right-24 top-0 -z-10 h-[620px] w-[620px] rounded-full bg-[radial-gradient(closest-side,rgba(255,255,255,0.75),transparent_70%)]" />
+          <div aria-hidden className="absolute -right-24 top-0 -z-10 h-[620px] w-[620px] rounded-full bg-[radial-gradient(closest-side,var(--cta-glow),transparent_70%)]" />
           <IconSpark size={34} className="absolute right-[46%] top-[10%] animate-float text-accent/40" />
           <IconSpark size={22} className="absolute bottom-[22%] left-[44%] animate-float-slow text-accent/40" />
           <ClipTrail images={TRAIL} />
@@ -30,7 +32,10 @@ export function Cta() {
                 {t.cta.h2a} <span className="serif-em text-accent">{t.cta.h2b}</span>
               </h2>
               <p className="mt-6 max-w-md text-[17px] leading-relaxed text-ink/65">{t.cta.sub}</p>
-              <div className="mt-9"><CtaButton onClick={open} variant="ink">{t.cta.btn}</CtaButton></div>
+              <div className="mt-9 flex flex-wrap items-center gap-3">
+                <CtaButton onClick={startDownload} variant="ink">{t.cta.btn}</CtaButton>
+                <GhostAction onClick={open}>{t.hero.cta2}</GhostAction>
+              </div>
             </div>
             <div className="relative mx-auto -mb-px w-full max-w-[400px] self-end">
               <Tilt max={4} lift={1.01}>
@@ -53,7 +58,7 @@ export function Footer() {
       <div className="flex flex-col gap-8 md:flex-row md:items-end md:justify-between">
         <div>
           <div className="flex items-center gap-3">
-            <img src="/assets/xiaolee-icon-160.webp" width={40} height={40} alt="" className="size-10 rounded-full object-cover ring-2 ring-white transition-transform duration-500 ease-spring hover:rotate-12 hover:scale-110" />
+            <img src="/assets/xiaolee-icon-160.webp" width={40} height={40} alt="" className="size-10 rounded-full object-cover ring-2 ring-surface transition-transform duration-500 ease-spring hover:rotate-12 hover:scale-110" />
             <Wordmark className="text-[32px]" />
           </div>
           <p className="mt-4 max-w-sm text-[14.5px] leading-relaxed text-ink-2">{t.footer.tag}</p>

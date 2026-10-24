@@ -1,12 +1,16 @@
-import { Fragment, useRef, type CSSProperties } from "react";
+import { Fragment, useRef, useState, type CSSProperties } from "react";
 import { animate, motion, useInView, useMotionValue, useReducedMotion, useSpring, useTransform } from "motion/react";
 import { cn } from "@/lib/utils";
 import { useLang } from "@/lib/lang";
 import { useTypewriter } from "@/lib/hooks";
-import { Bezel, CtaButton, GhostButton, MascotVideo, Reveal } from "@/components/kit";
+import { Bezel, CtaButton, GhostAction, MascotVideo, Reveal } from "@/components/kit";
+import { ClipStream } from "@/components/ui/clip-stream";
+import { AppPhone } from "@/components/app/AppPhone";
+import { HomeScreen } from "@/components/app/screens";
 import { SparkleField } from "@/components/ui/sparkle-field";
 import { Marquee } from "@/components/ui/marquee";
 import { useWaitlist } from "@/components/Waitlist";
+import { useDownload } from "@/components/Download";
 import { IconCheck, IconSend, IconSpark } from "@/components/icons";
 import { ClipCard, Depth, PayoutTicket, VerifiedStamp } from "./hero-objects";
 
@@ -66,7 +70,7 @@ function PromptPill() {
         {text}
         <span className="ml-px inline-block h-[1.05em] w-[2px] translate-y-[3px] animate-pulse bg-accent" />
       </span>
-      <span className="grid size-10 shrink-0 place-items-center rounded-full bg-ink text-white transition-all duration-500 ease-spring group-hover/p:rotate-12 group-hover/p:bg-accent"><IconSend size={17} /></span>
+      <span className="grid size-10 shrink-0 place-items-center rounded-full bg-ink text-cream transition-all duration-500 ease-spring group-hover/p:rotate-12 group-hover/p:bg-accent"><IconSend size={17} /></span>
     </Bezel>
   );
 }
@@ -95,13 +99,17 @@ function Portrait() {
   const thunk = () => { animate(bump, [1, 0.982, 1.004, 1], { duration: 0.6, ease: EASE, times: [0, 0.22, 0.6, 1] }); };
 
   return (
-    <div ref={box} data-live={live} onPointerMove={onMove} onPointerLeave={onLeave} className="relative mx-auto w-full max-w-[440px] [perspective:1200px]">
+    <div ref={box} data-live={live} onPointerMove={onMove} onPointerLeave={onLeave} className="relative mx-auto w-full max-w-[520px] [perspective:1200px]">
       <motion.div style={{ rotateX: rotX, rotateY: rotY, scale: bump, transformStyle: "preserve-3d" }} className="relative">
-        {/* halo */}
-        <div aria-hidden className="absolute -inset-10 -z-10 rounded-[60px] bg-[radial-gradient(closest-side,rgba(216,27,120,0.28),rgba(247,201,224,0.25)_55%,transparent)]" />
-        <Bezel radius={48} pad={8} className="shadow-[0_60px_120px_-40px_rgba(120,20,70,0.45)]" coreClassName="aspect-[4/5] bg-[#d3cfcc]">
-          <MascotVideo name="hello" position="50% 4%" zoom={1.32} />
-        </Bezel>
+        {/* the mascot sits behind and to the left; the real app is in front. Below md only the phone shows. */}
+        <div aria-hidden className="absolute -left-[6%] top-[8%] hidden w-[62%] -rotate-[5deg] md:block">
+          <Bezel radius={40} pad={7} className="shadow-[0_50px_90px_-40px_rgba(224,40,132,0.5)]" coreClassName="aspect-[4/5] bg-[#d3cfcc]">
+            <MascotVideo name="hello" position="50% 4%" zoom={1.32} />
+          </Bezel>
+        </div>
+        <div className="relative mx-auto flex w-full justify-end md:pl-[26%]">
+          <AppPhone className="max-w-[330px]"><HomeScreen /></AppPhone>
+        </div>
 
         <Depth z={70} className="-left-[2%] top-[54%] sm:-left-[15%]"><ClipCard delay={BEAT.clip} /></Depth>
         <Depth z={125} className="right-[1%] top-[11%] sm:-right-[9%]"><VerifiedStamp delay={BEAT.stamp} onLand={thunk} /></Depth>
@@ -122,7 +130,9 @@ const LOGOS: { src: string; alt: string; cls: string }[] = [
 export function Hero() {
   const { t } = useLang();
   const { open } = useWaitlist();
+  const { start: startDownload } = useDownload();
   const reduced = useReducedMotion();
+  const [wide] = useState(() => window.matchMedia("(min-width: 1024px)").matches);
 
   // the aurora drifts against the cursor at three depths (transform only)
   const mx = useMotionValue(0);
@@ -150,9 +160,12 @@ export function Hero() {
     <section id="top" onPointerMove={onMove} className="relative isolate overflow-hidden">
       {/* aurora: layered radial gradients, no blur filters on large areas */}
       <div aria-hidden className="absolute inset-0 -z-10">
-        <motion.div style={{ x: a1x, y: a1y }} className="absolute -right-[10%] -top-[20%] h-[900px] w-[900px] rounded-full bg-[radial-gradient(closest-side,rgba(247,201,224,0.9),rgba(247,201,224,0)_70%)]" />
-        <motion.div style={{ x: a2x, y: a2y }} className="absolute -left-[15%] top-[35%] h-[800px] w-[800px] rounded-full bg-[radial-gradient(closest-side,rgba(255,226,206,0.7),rgba(255,226,206,0)_70%)]" />
-        <motion.div style={{ x: a3x, y: a3y }} className="absolute right-[20%] top-[55%] h-[600px] w-[600px] rounded-full bg-[radial-gradient(closest-side,rgba(47,93,143,0.10),rgba(47,93,143,0)_70%)]" />
+        <motion.div style={{ x: a1x, y: a1y }} className="absolute -right-[10%] -top-[20%] h-[900px] w-[900px] rounded-full bg-[radial-gradient(closest-side,var(--aurora-1),transparent_70%)]" />
+        <motion.div style={{ x: a2x, y: a2y }} className="absolute -left-[15%] top-[35%] h-[800px] w-[800px] rounded-full bg-[radial-gradient(closest-side,var(--aurora-2),transparent_70%)]" />
+        <motion.div style={{ x: a3x, y: a3y }} className="absolute right-[20%] top-[55%] h-[600px] w-[600px] rounded-full bg-[radial-gradient(closest-side,var(--aurora-3),transparent_70%)]" />
+        <div className="absolute inset-0 [mask-image:linear-gradient(90deg,transparent_0%,transparent_30%,rgba(0,0,0,0.45)_50%,#000_72%)] max-lg:[mask-image:linear-gradient(180deg,transparent_0%,rgba(0,0,0,0.3)_35%,#000_70%)]">
+          <ClipStream cx={wide ? 0.74 : 0.5} cy={wide ? 0.5 : 0.72} count={100} />
+        </div>
         <SparkleField />
       </div>
 
@@ -169,8 +182,8 @@ export function Hero() {
           <Reveal delay={0.62} className="mt-8"><PromptPill /></Reveal>
           <Reveal delay={0.74}>
             <div className="mt-9 flex flex-wrap items-center gap-3">
-              <CtaButton onClick={open}>{t.hero.cta1}</CtaButton>
-              <GhostButton href="#can">{t.hero.cta2}</GhostButton>
+              <CtaButton onClick={startDownload}>{t.hero.cta1}</CtaButton>
+              <GhostAction onClick={open}>{t.hero.cta2}</GhostAction>
             </div>
           </Reveal>
           <Reveal delay={0.86}>
@@ -185,12 +198,12 @@ export function Hero() {
         <Reveal delay={0.35} y={40}><Portrait /></Reveal>
       </div>
 
-      <div className="border-y border-line/80 bg-white/40 py-9">
+      <div className="border-y border-line/80 bg-surface/40 py-9">
         <p className="mb-6 text-center text-[11px] font-bold uppercase tracking-[0.24em] text-ink-3">{t.partners}</p>
         <Marquee pauseOnHover className="hairline-fade [--duration:36s] [--gap:5rem]">
           {[...LOGOS, ...LOGOS].map((l, i) => (
             <img key={i} src={`/assets/logos/${l.src}`} alt={i < LOGOS.length ? l.alt : ""} loading="lazy"
-              className={`${l.cls} w-auto opacity-45 brightness-0 transition-[opacity,scale] duration-500 ease-spring hover:scale-110 hover:opacity-90`} />
+              className={`${l.cls} w-auto opacity-45 brightness-0 in-data-[theme=dark]:invert transition-[opacity,scale] duration-500 ease-spring hover:scale-110 hover:opacity-90`} />
           ))}
         </Marquee>
       </div>
