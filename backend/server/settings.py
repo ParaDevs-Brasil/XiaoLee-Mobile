@@ -75,7 +75,9 @@ class Settings:
     radar_tools_enabled: bool = os.getenv("RADAR_TOOLS_ENABLED", "false").lower() in ("true", "1", "yes")
     xai_api_key: str = os.getenv("XAI_API_KEY", "")
     xai_model: str = os.getenv("XAI_MODEL", "grok-4.7")
-    radar_max_runs_per_day: int = int(os.getenv("RADAR_MAX_RUNS_PER_DAY", "10"))
+    radar_max_runs_per_day: int = int(os.getenv("RADAR_MAX_RUNS_PER_DAY", "7"))
+    # Disjuntor da casa: gasto estimado do radar (Grok + Claude) por dia, somando todos os creators. 0 = sem teto.
+    radar_daily_usd_cap: float = float(os.getenv("RADAR_DAILY_USD_CAP", "20"))
     # X (OAuth 2.0 PKCE, app público: só Client ID, sem secret). Teto mensal por creator = custo da casa limitado.
     x_oauth_client_id: str = os.getenv("X_OAUTH_CLIENT_ID", "")
     x_oauth_redirect: str = os.getenv("X_OAUTH_REDIRECT", "xiaolee://social/x")

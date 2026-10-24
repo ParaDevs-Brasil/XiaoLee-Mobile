@@ -47,12 +47,18 @@ def fake(monkeypatch):
     monkeypatch.setattr(radar, "_resolve_user", resolve)
     monkeypatch.setattr(radar, "_runs", {})
     monkeypatch.setattr(radar, "_jobs", {})
+    monkeypatch.setattr(radar, "_cache", {})
+    monkeypatch.setattr(radar, "_spend", {})
     calls = []
 
     async def ask(niche, hours):
         calls.append((niche, hours))
         return {"trends": [{"topic": f"t{i}", "why": "w", "hook": "h"} for i in range(7)] + [{"why": "sem topic"}]}, 0.28
     monkeypatch.setattr(radar, "_ask_grok", ask)
+
+    async def no_angles(niche, trends):  # sem rede: o Claude real não entra nestes testes
+        return trends, 0.0
+    monkeypatch.setattr(radar, "_write_angles", no_angles)
     return calls
 
 
@@ -80,7 +86,7 @@ def test_returns_pending_card_then_job_becomes_ready_capped_and_owner_only(fake,
         assert (await radar.radar_status(job_id, "Bearer tok", None))["status"] == "pending"
         await asyncio.gather(*radar._tasks)
         done = await radar.radar_status(job_id, "Bearer tok", None)
-        assert done["status"] == "ready" and len(done["trends"]) == 5 and fake == [("ia", 168)]
+        assert done["status"] == "ready" and len(done["trends"]) == 4 and fake == [("ia", 168)]
         monkeypatch.setattr(radar, "_resolve_user", lambda db, auth, strict=False: _user(8))
         with pytest.raises(radar.HTTPException) as e:
             await radar.radar_status(job_id, "Bearer other", None)
@@ -104,4 +110,70 @@ def test_grok_failure_becomes_error_job(fake, monkeypatch):
         await asyncio.gather(*radar._tasks)
         st = await radar.radar_status(ex["radar"]["job_id"], "Bearer tok", None)
         assert st["status"] == "error" and "message" in st
+    asyncio.run(go())
+
+
+def test_angles_fall_back_to_the_facts_without_a_key_and_attach_hook_with_one(monkeypatch):
+    trends = [{"topic": "a", "why": "w", "hook": "old"}]
+    set_settings(monkeypatch, anthropic_api_key="")
+    assert asyncio.run(radar._write_angles("ia", trends)) == (trends, 0.0)
+
+    class Msg:
+        content = [types.SimpleNamespace(type="text", text='{"items":[{"i":0,"angles":[{"kind":"opiniao","text":"acho X"},{"kind":"zzz","text":"descarta"}]}]}')]
+
+    class Client:
+        def __init__(self, **kw):
+            self.messages = types.SimpleNamespace(create=self.create)
+
+        async def create(self, **kw):
+            return Msg()
+
+    set_settings(monkeypatch, anthropic_api_key="k")
+    monkeypatch.setitem(__import__("sys").modules, "anthropic", types.SimpleNamespace(AsyncAnthropic=Client))
+    out, _ = asyncio.run(radar._write_angles("ia", trends))
+    assert out[0]["hook"] == "acho X" and out[0]["angles"] == [{"kind": "opiniao", "text": "acho X"}]
+
+
+def test_angle_filter_drops_invented_experience_new_numbers_and_long_text():
+    fact = "Arc e Morpho: sessão com taxa de 0,1% e 3 mercados"
+    assert radar._angle_ok("Taxa de 0,1% em 3 mercados muda a conta de quem manda remessa.", fact)
+    assert not radar._angle_ok("Assisti a sessão e gostei da taxa de 0,1%.", fact)
+    assert not radar._angle_ok("Sempre achei esquisito esse modelo.", fact)
+    assert not radar._angle_ok("A taxa de 0,01% é ridícula.", fact)
+    assert not radar._angle_ok("x" * 221, fact)
+
+
+def test_cache_serves_same_niche_free_and_failed_or_empty_runs_keep_the_quota(fake, monkeypatch):
+    set_settings(monkeypatch, radar_tools_enabled=True, xai_api_key="k", radar_max_runs_per_day=1)
+
+    async def go():
+        out, ex = await radar.run("get_trend_radar", {"niche": "IA  Cripto"}, None, "tok")
+        await asyncio.gather(*radar._tasks)
+        # mesmo nicho (outro creator, outra caixa): vem do cache, não chama o Grok e não esbarra no teto de 1/dia
+        monkeypatch.setattr(radar, "_resolve_user", lambda db, auth, strict=False: _user(8))
+        out, ex = await radar.run("get_trend_radar", {"niche": "ia cripto"}, None, "tok")
+        st = await radar.radar_status(ex["radar"]["job_id"], "Bearer tok", None)
+        assert st["status"] == "ready" and len(fake) == 1
+
+        async def empty(niche, hours):
+            return {"trends": []}, 0.15
+        monkeypatch.setattr(radar, "_ask_grok", empty)
+        out, ex = await radar.run("get_trend_radar", {"niche": "vago"}, None, "tok")
+        await asyncio.gather(*radar._tasks)
+        st = await radar.radar_status(ex["radar"]["job_id"], "Bearer tok", None)
+        assert st["status"] == "error" and "específico" in st["message"]
+        out, ex = await radar.run("get_trend_radar", {"niche": "outro"}, None, "tok")
+        assert "error" not in out  # a rodada vazia devolveu a cota
+        await asyncio.gather(*radar._tasks)
+    asyncio.run(go())
+
+
+def test_daily_usd_cap_pauses_the_radar(fake, monkeypatch):
+    set_settings(monkeypatch, radar_tools_enabled=True, xai_api_key="k", radar_daily_usd_cap=0.25)
+
+    async def go():
+        await radar.run("get_trend_radar", {"niche": "a"}, None, "tok")  # fake gasta 0.28 + 0.02
+        await asyncio.gather(*radar._tasks)
+        out, ex = await radar.run("get_trend_radar", {"niche": "b"}, None, "tok")
+        assert out["error"] == "radar_off" and ex is None and len(fake) == 1
     asyncio.run(go())
