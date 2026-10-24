@@ -3,8 +3,9 @@
 Guia para quem mexe nas telas do Studio (AI Creators: personagens, Talk, Mimic, Replace) e precisa rodar o app e o
 backend sem as chaves pagas da casa. Escrito em 2026-10-24.
 
-**Resumo:** quase tudo se vê de graça, com chaves falsas e dados de exemplo. Só **gerar um vídeo de verdade** custa
-dinheiro (fal + ElevenLabs + pagamento em USDC na Arc) e tem um passo à parte, na seção 5.
+**Resumo:** quase tudo se vê de graça, com chaves falsas e dados de exemplo. **Gerar um vídeo de verdade** custa
+dinheiro (fal + ElevenLabs): para isso o Gustavo manda chaves dedicadas com teto de gasto e você liga um interruptor de
+desenvolvimento que dispensa o pagamento em USDC (seção 5).
 
 ## 1. O que NÃO pedir nem receber
 
@@ -91,44 +92,67 @@ erro, criar personagem e subir foto (vai para o R2 de mentira).
 
 ## 4. O que NÃO funciona com chaves falsas (esperado)
 
-- **Gerar vídeo novo**: o app assina o pagamento em USDC e o backend tenta o relay on-chain; sem a chave de relay
-  da casa cai no erro "The payment didn't go through". Esse erro também é um estado de tela para revisar.
+- **Gerar vídeo novo**: chama a fal de verdade; com chave falsa o vídeo falha. Para gerar de verdade, siga a seção 5.
 - **Prévia do Replace nova** e **amostra de voz**: chamam a fal e a ElevenLabs.
 - Qualquer coisa que dependa do Privy real: use uma conta de teste sua.
 
-## 5. Validar a geração de verdade (paga)
+## 5. Gerar vídeo de verdade (paga)
 
-Isso gasta dinheiro de verdade em duas pontas e **o sistema de pagamento não tem modo de teste**: o app assina uma
-transferência de USDC na Arc **mainnet** (EIP-3009) para `CREATORS_PAY_TO`, e a casa paga o gás do relay. Por isso:
+Em produção o app assina uma transferência de USDC na Arc mainnet (EIP-3009) e o backend faz o relay on-chain com
+a chave de gás da casa. Essa chave **não sai do Gustavo**. Para você testar a geração no seu backend, existe um
+interruptor **só de desenvolvimento** que pula o relay e vai direto para a fal e a ElevenLabs. O app continua
+assinando, e o backend ainda confere valor, destino e nonce; só o pagamento on-chain é pulado.
 
-- **Quem faz:** o Gustavo (dono das chaves e da carteira). O Josh valida a UI com o seed (seção 3) e, quando
-  precisar ver um vídeo real, pede para o Gustavo rodar o roteiro abaixo e mandar o resultado/gravação de tela.
-- Se for **inevitável** o Josh rodar a geração paga: ele precisa de chaves **dedicadas, com teto de gasto**
-  (ex.: US$ 5 no painel da fal e da ElevenLabs), criadas pelo Gustavo e **revogadas depois**. Nunca as da casa.
-  A carteira do Josh precisa de USDC na Arc mainnet, e o relay precisa da chave de gás da casa, que não sai do
-  Gustavo. Na prática, só o Gustavo fecha esse ciclo.
+**O que você precisa** (o Gustavo manda por canal seguro, nunca por chat nem git; são chaves **dedicadas, com teto de
+gasto** e serão revogadas depois):
 
-**Custo por vídeo** (o app cobra o dobro do custo na fal; preço cobrado em USDC por duração de 5 / 10 / 15 s):
+- `FAL_KEY` (vídeo) e `ELEVENLABS_API_KEY` (voz do Talk e amostras)
+- opcional: `ANTHROPIC_API_KEY`, só para a Xiaolee escrever o roteiro
 
-| Tipo | Qualidade | Custo fal por s (US$) | Preço cobrado 5 / 10 / 15 s |
-|---|---|---|---|
-| Talk | Standard | 0,080 | 0,80 / 1,60 / 2,40 |
-| Talk | Pro | 0,140 | 1,40 / 2,80 / 4,20 |
-| Talk | Pro+ | 0,303 | 3,04 / 6,07 / 9,11 |
-| Mimic | Standard | 0,070 | 0,70 / 1,40 / 2,10 |
-| Mimic | Plus | 0,126 | 1,26 / 2,52 / 3,78 |
-| Mimic | Pro | 0,168 | 1,68 / 3,36 / 5,04 |
-| Replace | Plus | 0,126 | 1,26 / 2,52 / 3,78 |
-| Replace | Pro | 0,168 | 1,68 / 3,36 / 5,04 |
+**No `backend/.env`**, troque as chaves falsas da seção 2 pelas reais e ligue o interruptor:
 
-**Roteiro mínimo de validação paga** (menos de US$ 3 de custo real, tudo com 5 s):
+```bash
+FAL_KEY=<a que o Gustavo mandou>
+ELEVENLABS_API_KEY=<a que o Gustavo mandou>
+CREATORS_PAY_TO=0x000000000000000000000000000000000000dEaD   # qualquer endereço; o app paga para ele
+CREATORS_DEV_SKIP_PAYMENT=true
+# XIAOLEE_ENV não definido = "dev" (o padrão). Se estiver como "production", o interruptor é IGNORADO e o log avisa.
+```
 
-1. Talk Standard (US$ 0,40 de fal): confirma pagamento, estados `queued → voice → video → done` e o vídeo pronto.
-2. Mimic Standard (US$ 0,35): confirma o upload do vídeo de movimento e o estado final.
-3. Replace Plus (US$ 0,63 + prévia grátis): confirma prévia, aprovação e vídeo final.
-4. Um caso de falha (ex.: foto de pessoa real no Replace): confirma a mensagem e o reembolso.
+Reinicie o backend. No app, gere normalmente: o vídeo entra na fila (`payment_tx` aparece como `dev-skip-...`), passa
+por `voice` e `video` e fica `done` com o vídeo real. O limite por usuário (`CREATORS_DAILY_VIDEOS_PER_USER`, 10 por
+dia) continua valendo e ajuda a segurar o gasto.
 
-O pagamento volta para `CREATORS_PAY_TO` (a própria carteira da casa), então o custo líquido é fal + ElevenLabs + gás.
+**Regras**
+
+- Nunca coloque `CREATORS_DEV_SKIP_PAYMENT` em nenhum ambiente que não seja o seu local. No Railway ele não existe e
+  não deve existir.
+- Nunca faça commit de `.env`. Eles estão no `.gitignore`; confira com `git status` antes de cada commit.
+- Teto de gasto: se a chave acabar, a geração falha com "We couldn't make this video." Peça outra ao Gustavo.
+
+**Custo por vídeo** (custo real na fal por segundo; o app mostra ao usuário o dobro disso). Com o interruptor ligado
+você paga só o custo da fal e da ElevenLabs:
+
+| Tipo | Qualidade | Custo fal por s (US$) | Custo em 5 / 10 / 15 s | Preço ao usuário 5 / 10 / 15 s |
+|---|---|---|---|---|
+| Talk | Standard | 0,080 | 0,40 / 0,80 / 1,20 | 0,80 / 1,60 / 2,40 |
+| Talk | Pro | 0,140 | 0,70 / 1,40 / 2,10 | 1,40 / 2,80 / 4,20 |
+| Talk | Pro+ | 0,303 | 1,52 / 3,03 / 4,55 | 3,04 / 6,07 / 9,11 |
+| Mimic | Standard | 0,070 | 0,35 / 0,70 / 1,05 | 0,70 / 1,40 / 2,10 |
+| Mimic | Plus | 0,126 | 0,63 / 1,26 / 1,89 | 1,26 / 2,52 / 3,78 |
+| Mimic | Pro | 0,168 | 0,84 / 1,68 / 2,52 | 1,68 / 3,36 / 5,04 |
+| Replace | Plus | 0,126 | 0,63 / 1,26 / 1,89 | 1,26 / 2,52 / 3,78 |
+| Replace | Pro | 0,168 | 0,84 / 1,68 / 2,52 | 1,68 / 3,36 / 5,04 |
+
+**Roteiro mínimo de validação** (tudo com 5 s, menos de US$ 3 no total):
+
+1. Talk Standard (US$ 0,40): estados `queued → voice → video → done` e o vídeo pronto.
+2. Mimic Standard (US$ 0,35): upload do vídeo de movimento e estado final.
+3. Replace Plus (US$ 0,63; a prévia é grátis e limitada): prévia, aprovação e vídeo final.
+4. Um caso de falha (ex.: foto de pessoa real no Replace): mensagem e reembolso.
+
+O fluxo de pagamento de verdade (assinatura, saldo, relay) **não** é exercitado com o interruptor ligado. Quem valida
+isso é o Gustavo, uma vez, antes do deploy.
 
 ## 6. Pegadinhas
 

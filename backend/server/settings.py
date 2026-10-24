@@ -159,6 +159,9 @@ class Settings:
     fal_key:            str = os.getenv("FAL_KEY", "")
     # Endereço Arc que recebe o USDC dos vídeos. Vazio = feature desligada (503).
     creators_pay_to:    str = os.getenv("CREATORS_PAY_TO", "")
+    # SÓ desenvolvimento local: pula o relay do pagamento para quem testa a geração com chaves próprias da fal/ElevenLabs.
+    # Ignorado (com erro no log) se XIAOLEE_ENV != "dev"; nunca defina no Railway.
+    creators_dev_skip_payment: bool = os.getenv("CREATORS_DEV_SKIP_PAYMENT", "false").lower() in ("true", "1", "yes")
     creators_daily_videos_per_user: int = int(os.getenv("CREATORS_DAILY_VIDEOS_PER_USER", "10"))
     # Prévias do Swap são grátis para o usuário (uns centavos para nós): o teto diário limita o gasto.
     creators_daily_previews_per_user: int = int(os.getenv("CREATORS_DAILY_PREVIEWS_PER_USER", "8"))

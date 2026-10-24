@@ -117,6 +117,29 @@ async def test_pays_then_queues_the_video(db, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_dev_skip_payment_queues_without_relay_but_only_in_dev(db, monkeypatch):
+    cid, h = await _persona(db)
+    calls = []
+    _relay_ok(monkeypatch, calls)
+    body = {"quality": "standard", "duration_s": 5, "script": "oi", "payment": _payment(800_000)}
+
+    # produção com o interruptor esquecido: ignora e cobra como sempre
+    monkeypatch.setattr(routes, "settings", dataclasses.replace(routes.settings, creators_dev_skip_payment=True, environment="production"))
+    r = client.post(f"/v1/creators/{cid}/videos", headers=h, json=body)
+    assert r.status_code == 200 and r.json()["payment_tx"] == "0xtx" and len(calls) == 1
+
+    # dev: pula o relay, ainda confere valor e destino, e não registra repasse
+    monkeypatch.setattr(routes, "settings", dataclasses.replace(routes.settings, creators_dev_skip_payment=True, environment="dev"))
+    body["payment"] = _payment(800_000, nonce="0x" + "2" * 64)
+    r = client.post(f"/v1/creators/{cid}/videos", headers=h, json=body)
+    assert r.status_code == 200 and r.json()["status"] == "queued" and r.json()["payment_tx"].startswith("dev-skip-")
+    assert len(calls) == 1
+    assert len((await db.execute(select(ArcTransfer))).scalars().all()) == 1
+    body["payment"] = _payment(700_000, nonce="0x" + "3" * 64)
+    assert client.post(f"/v1/creators/{cid}/videos", headers=h, json=body).status_code == 422
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("value,to", [(700_000, PAY_TO), (800_000, "0x" + "d" * 40)])
 async def test_rejects_wrong_amount_or_destination(db, monkeypatch, value, to):
     cid, h = await _persona(db)

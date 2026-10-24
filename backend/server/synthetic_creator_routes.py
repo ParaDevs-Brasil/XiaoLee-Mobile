@@ -47,6 +47,17 @@ router = APIRouter(prefix="/v1/creators", tags=["creators"])
 IMAGE_TYPES = ("image/jpeg", "image/png", "image/webp")
 MAX_IMAGE_BYTES = 15 * 1024 * 1024
 _EVM_ADDR_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
+
+
+def _skip_payment() -> bool:
+    """Interruptor só de desenvolvimento (CREATORS_DEV_SKIP_PAYMENT): trava em XIAOLEE_ENV=dev para um valor esquecido
+    no Railway não deixar ninguém gerar vídeo (e gastar a fal) sem pagar."""
+    if not settings.creators_dev_skip_payment:
+        return False
+    if settings.environment != "dev":
+        logger.error("CREATORS_DEV_SKIP_PAYMENT is set but XIAOLEE_ENV=%s: payment is NOT skipped", settings.environment)
+        return False
+    return True
 _NONCE_RE = re.compile(r"^0x[0-9a-fA-F]{64}$")
 
 
@@ -368,22 +379,27 @@ async def create_video(creator_id: int, body: VideoCreate, background: Backgroun
         await db.rollback()
         raise HTTPException(409, "That payment was already used. Try again.")
 
-    from server.routes.arc_routes import _arc_native
-    try:
-        result = await _arc_native().relay_transfer_authorization(
-            from_address=p.from_address, to_address=p.to_address, value=p.value,
-            valid_after=p.valid_after, valid_before=p.valid_before, nonce=p.nonce, signature=p.signature,
-        )
-    except Exception as exc:
-        logger.warning("creator video payment relay failed: %s", exc)
-        v.status, v.error = "failed", "payment failed"
+    if _skip_payment():
+        # Dev local: valor, destino e nonce já foram conferidos acima; só o relay on-chain (e o registro do repasse) é pulado.
+        v.payment_tx, v.status = f"dev-skip-{p.nonce.lower()[:18]}", "queued"
         await db.commit()
-        raise HTTPException(402, "The payment didn't go through. Check your USDC balance and try again.")
+    else:
+        from server.routes.arc_routes import _arc_native
+        try:
+            result = await _arc_native().relay_transfer_authorization(
+                from_address=p.from_address, to_address=p.to_address, value=p.value,
+                valid_after=p.valid_after, valid_before=p.valid_before, nonce=p.nonce, signature=p.signature,
+            )
+        except Exception as exc:
+            logger.warning("creator video payment relay failed: %s", exc)
+            v.status, v.error = "failed", "payment failed"
+            await db.commit()
+            raise HTTPException(402, "The payment didn't go through. Check your USDC balance and try again.")
 
-    v.payment_tx, v.status = result.tx_hash, "queued"
-    db.add(ArcTransfer(from_address=p.from_address.lower(), to_address=p.to_address.lower(),
-                       amount_usdc=price, tx_hash=result.tx_hash))
-    await db.commit()
+        v.payment_tx, v.status = result.tx_hash, "queued"
+        db.add(ArcTransfer(from_address=p.from_address.lower(), to_address=p.to_address.lower(),
+                           amount_usdc=price, tx_hash=result.tx_hash))
+        await db.commit()
     background.add_task(run_video, v.id)
     return _video_out(v)
 
