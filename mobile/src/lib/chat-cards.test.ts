@@ -7,7 +7,7 @@
  */
 import assert from 'node:assert/strict';
 
-import { draftFrom, insightsFrom, matchCards, optionsFrom, type StoredWithCards } from './chat-cards.ts';
+import { askFrom, campaignsFrom, draftFrom, insightsFrom, matchCards, optionsFrom, radarFrom, trendsFrom, type StoredWithCards } from './chat-cards.ts';
 
 function test(name: string, fn: () => void) {
   fn();
@@ -113,4 +113,50 @@ test('formulário de rascunho e opções de post vêm do execution e voltam ao r
   );
   assert.deepEqual(m?.draft, draft);
   assert.deepEqual(m?.options, options);
+});
+
+test('radar: só o card pendente com job vira card; qualquer outra coisa é ignorada', () => {
+  assert.deepEqual(radarFrom({ status: 'radar_pending', radar: { job_id: 'abc', niche: 'IA' } }), {
+    jobId: 'abc', niche: 'IA', status: 'pending', trends: [],
+  });
+  assert.equal(radarFrom({ status: 'radar_pending', radar: {} }), undefined);
+  assert.equal(radarFrom({ status: 'post_ready' }), undefined);
+  assert.equal(radarFrom(undefined), undefined);
+});
+
+test('radar: tendências sem tópico caem, no máximo 5, campos ausentes viram texto vazio', () => {
+  const t = trendsFrom([{ topic: ' A ', why: 'w' }, { why: 'sem topic' }, null, ...Array.from({ length: 8 }, (_, i) => ({ topic: `t${i}` }))]);
+  assert.equal(t.length, 5);
+  assert.deepEqual(t[0], { topic: 'A', why: 'w', hook: '', angles: [] });
+  assert.deepEqual(trendsFrom('lixo'), []);
+});
+
+test('radar: o resultado guardado volta junto da mensagem ao reabrir a conversa', () => {
+  const radar = { jobId: 'abc', niche: 'IA', status: 'ready' as const, trends: [{ topic: 'A', why: '', hook: '', angles: [] }] };
+  const out = matchCards(
+    [{ role: 'assistant', content: 'Fui vasculhar o X' }],
+    [{ role: 'assistant', content: 'Fui vasculhar o X', at: '9', radar }],
+  );
+  assert.deepEqual(out[0]?.radar, radar);
+});
+
+test('askFrom: cartão de perguntas só com status ask_open e pelo menos uma pergunta', () => {
+  assert.equal(askFrom(undefined), undefined);
+  assert.equal(askFrom({ status: 'ask_open', ask: { questions: [] } }), undefined);
+  const ask = askFrom({
+    status: 'ask_open',
+    ask: { mode: 'form', title: 'Plan', questions: [{ id: 'q0', label: 'Goal?', short: 'Goal', options: ['A', ' B '], multi: true, other: true }] },
+  });
+  assert.deepEqual(ask, {
+    mode: 'form', title: 'Plan',
+    questions: [{ id: 'q0', label: 'Goal?', short: 'Goal', options: ['A', 'B'], multi: true, other: true }],
+  });
+  assert.equal(askFrom({ status: 'ask_open', ask: { questions: [{ label: 'x', options: [] }] } })?.mode, 'wizard');
+});
+
+test('campaignsFrom: só com status campaigns_listed, até 5 ids inteiros', () => {
+  assert.equal(campaignsFrom(undefined), undefined);
+  assert.equal(campaignsFrom({ status: 'campaigns_listed', campaign_ids: [] }), undefined);
+  assert.deepEqual(campaignsFrom({ status: 'campaigns_listed', campaign_ids: [3, '4', 'x', 5, 6, 7, 8] }), { ids: [3, 4, 5, 6, 7] });
+  assert.equal(campaignsFrom({ status: 'info', campaign_ids: [1] }), undefined);
 });

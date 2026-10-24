@@ -443,7 +443,7 @@ export default function CreatorScreen() {
                   </View>
                   {v.status === 'failed' && v.error ? <Text style={styles.error}>{v.error}</Text> : null}
                   <Text style={styles.desc} numberOfLines={2}>
-                    {v.script || { mimic: 'Mimic', swap: 'Swap' }[catalog?.qualities.find((q) => q.quality === v.quality)?.kind as string] || ''}
+                    {v.script || { mimic: 'Mimic', swap: 'Replace' }[catalog?.qualities.find((q) => q.quality === v.quality)?.kind as string] || ''}
                   </Text>
                   <Text style={styles.desc}>
                     {v.duration_s}s · ${v.price_usdc.toFixed(2)}{v.payment_tx ? ` · ${shortHash(v.payment_tx)}` : ''}

@@ -118,14 +118,19 @@ class XPoller:
             # ("database is locked", SQLite só aceita um escritor por vez).
             await session.commit()
 
-            result = await self._orchestrator.execute(
-                text, sender_id, history=history, platform="x",
-            )
+            from server import usage_quota
+            decision = await usage_quota.consume(session, usage_quota.subject_for_user("x", sender_id))
+            if decision.allowed:
+                reply = (await self._orchestrator.execute(
+                    text, sender_id, history=history, platform="x",
+                ))["reply_text"]
+            else:
+                reply = usage_quota.exceeded_message(decision)
 
-            await repo.log_dm(user.id, "x", result["reply_text"], message_type="bot")
+            await repo.log_dm(user.id, "x", reply, message_type="bot")
             await session.commit()
 
-        await self._send_reply(conversation_id, result["reply_text"])
+        await self._send_reply(conversation_id, reply)
         logger.info("X: respondeu user %s na conversa %s", sender_id, conversation_id)
 
     # ------------------------------------------------------------------

@@ -15,7 +15,7 @@ from server.integrations.solana_client import SolanaClient
 from server.integrations.stellar_adapter import StellarAdapter
 from server.schemas import IntentResponse
 from server.settings import settings
-from server import social_chat_tools
+from server import ask_chat_tools, radar_chat_tools, social_chat_tools
 
 logger = logging.getLogger(__name__)
 
@@ -700,6 +700,8 @@ class OrchestrationService:
             "não estiver conectada, peça para conectar via 'Connect Wallet' na navbar (qualquer wallet "
             "compatível: MetaMask, Rabby, Phantom, Freighter). " + language_rule(language)
             + (f"\n\nPUBLICAR NAS REDES:\n{social_chat_tools.SOCIAL_PROMPT}" if self._social_on(stellar_wallet) else "")
+            + (f"\n\nRADAR DE TENDÊNCIAS:\n{radar_chat_tools.RADAR_PROMPT}" if self._radar_on(stellar_wallet) else "")
+            + (f"\n\nPERGUNTAS NO CHAT:\n{ask_chat_tools.ASK_PROMPT}" if settings.ask_cards_enabled else "")
         )
 
     def _make_stellar_executor(
@@ -789,9 +791,14 @@ class OrchestrationService:
                     return json.dumps({"error": "campaigns_read_failed", "message": str(exc)})
                 captured["actions"].append("list_campaigns")
                 campaigns = [c.model_dump() for c in resp.campaigns]
+                if interests:
+                    campaigns = rank_for_interests(campaigns, interests)
+                # O app mostra os cartões dessas campanhas (os 5 primeiros) logo abaixo da resposta.
+                if campaigns:
+                    captured["execution"] = {"status": "campaigns_listed", "campaign_ids": [c["id"] for c in campaigns[:5]]}
                 if not interests:
                     return json.dumps({"campaigns": campaigns})
-                return json.dumps({"your_interests": interests, "campaigns": rank_for_interests(campaigns, interests)})
+                return json.dumps({"your_interests": interests, "campaigns": campaigns})
 
             # As quatro tools abaixo escrevem no mesmo caminho que a UI usa
             # (POST /campaigns/*) — importam e chamam a função de rota direto,
@@ -800,15 +807,23 @@ class OrchestrationService:
             # (ver `app.py::chat_compat`, `session_token or "web_anonymous"`),
             # então reconstruir `Bearer {user_id}` é exatamente o Authorization
             # que o endpoint REST receberia do app.
-            if tool_name in social_chat_tools.SOCIAL_TOOL_NAMES:
+            if tool_name in ask_chat_tools.ASK_TOOL_NAMES and settings.ask_cards_enabled:
+                result, execution = await ask_chat_tools.run(tool_name, tool_input)
+                captured["actions"].append(tool_name)
+                if execution:
+                    captured["execution"] = execution
+                return json.dumps(result)
+
+            if tool_name in social_chat_tools.SOCIAL_TOOL_NAMES | radar_chat_tools.RADAR_TOOL_NAMES:
                 if user_id == "web_anonymous" or unverified_caller.get():
                     return json.dumps({
                         "error": "no_session",
                         "message": "Usuário precisa estar logado para isso — peça para conectar/entrar antes.",
                     })
+                tools_mod = radar_chat_tools if tool_name in radar_chat_tools.RADAR_TOOL_NAMES else social_chat_tools
                 try:
                     async with _campaigns_db() as db:
-                        result, execution = await social_chat_tools.run(tool_name, tool_input, db, user_id)
+                        result, execution = await tools_mod.run(tool_name, tool_input, db, user_id)
                 except Exception as exc:
                     logger.warning("[chat-tool] %s failed input=%r", tool_name, tool_input, exc_info=True)
                     return json.dumps({"error": "social_tool_failed", "message": str(exc)})
@@ -1081,6 +1096,10 @@ class OrchestrationService:
         # Flag desligada (padrão) ou conversa Stellar: o chat fica exatamente como era.
         return settings.social_tools_enabled and not stellar_wallet
 
+    @staticmethod
+    def _radar_on(stellar_wallet: str | None) -> bool:
+        return settings.radar_tools_enabled and bool(settings.xai_api_key) and not stellar_wallet
+
     @classmethod
     def _tools_for(cls, stellar_wallet: str | None, evm_wallet: str | None) -> list:
         """Tools do chat conforme a(s) carteira(s) conectada(s).
@@ -1089,6 +1108,8 @@ class OrchestrationService:
         "conectar a Freighter". Stellar (ou nenhuma wallet): como sempre foi.
         """
         social = social_chat_tools.SOCIAL_TOOLS if cls._social_on(stellar_wallet) else []
+        social = [*social, *(radar_chat_tools.RADAR_TOOLS if cls._radar_on(stellar_wallet) else [])]
+        social = [*social, *(ask_chat_tools.ASK_TOOLS if settings.ask_cards_enabled else [])]
         if not evm_wallet:
             return [*STELLAR_AGENT_TOOLS, *social]
         tools = [t for t in STELLAR_AGENT_TOOLS if stellar_wallet or t["function"]["name"] != "stellar_swap_quote"]
