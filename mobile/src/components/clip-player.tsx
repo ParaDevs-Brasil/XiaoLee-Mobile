@@ -76,6 +76,46 @@ export function ClipPlayer({
 
 type Source = { url: string } | { error: string } | null;
 
+/** Player em tela cheia para um vídeo que já tem URL (os vídeos dos personagens); mesma tela do `ClipPlayer`. */
+export function VideoPlayerModal({
+  video,
+  onClose,
+  onSave,
+  onShare,
+  busy = null,
+  saved = false,
+  actionsDisabled = false,
+}: {
+  /** `null` = fechado. */
+  video: { title: string; url: string; durationS: number } | null;
+  onClose: () => void;
+  onSave?: () => void;
+  onShare?: () => void;
+  busy?: ClipBusy;
+  saved?: boolean;
+  actionsDisabled?: boolean;
+}) {
+  return (
+    <Modal visible={video !== null} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
+      {video ? (
+        <PlayerScreen
+          key={video.url}
+          title={video.title}
+          source={{ url: video.url }}
+          fallbackDuration={video.durationS}
+          labels={{
+            share: `Share video: ${video.title}`,
+            save: `Save video to your gallery: ${video.title}`,
+            saved: 'Video saved to your gallery',
+          }}
+          onClose={onClose}
+          actions={{ onSave, onShare, busy, saved, disabled: actionsDisabled }}
+        />
+      ) : null}
+    </Modal>
+  );
+}
+
 /** Salvar e compartilhar de dentro do player — quem está vendo decide ali, sem fechar para achar o botão. */
 interface PlayerActions {
   onSave?: () => void;
@@ -96,9 +136,6 @@ function PlayerBody({
   onClose: () => void;
   actions: PlayerActions;
 }) {
-  const styles = useStyles();
-  const insets = useSafeAreaInsets();
-  const { width, height } = useWindowDimensions();
   const [source, setSource] = useState<Source>(null);
 
   useEffect(() => {
@@ -116,18 +153,58 @@ function PlayerBody({
     };
   }, [mediaId, clip.id]);
 
+  return (
+    <PlayerScreen
+      title={clip.title}
+      source={source}
+      fallbackDuration={clip.end_s - clip.start_s}
+      labels={{
+        share: `Share clip ${clip.rank}: ${clip.title}`,
+        save: `Save clip ${clip.rank} to your gallery: ${clip.title}`,
+        saved: `Clip ${clip.rank} saved to your gallery`,
+      }}
+      onClose={onClose}
+      actions={actions}
+    />
+  );
+}
+
+interface PlayerLabels {
+  share: string;
+  save: string;
+  saved: string;
+}
+
+/** Tela do player, igual para cortes e para vídeos de personagens: só muda de onde vem a URL e os rótulos. */
+function PlayerScreen({
+  title,
+  source,
+  fallbackDuration,
+  labels,
+  onClose,
+  actions,
+}: {
+  title: string;
+  source: Source;
+  fallbackDuration: number;
+  labels: PlayerLabels;
+  onClose: () => void;
+  actions: PlayerActions;
+}) {
+  const styles = useStyles();
+  const insets = useSafeAreaInsets();
+  const { width, height } = useWindowDimensions();
   // 9:16 inteiro na tela: limitado pela largura ou pela altura que sobra
   // depois do cabeçalho, o que for menor.
   const available = height - insets.top - insets.bottom - HEADER_HEIGHT - CONTROLS_HEIGHT - Spacing.three;
   const videoWidth = Math.min(width, (available * 9) / 16);
-
   return (
     <View style={[styles.screen, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       {/* Fundo escuro: ícones claros na barra de status enquanto o player está aberto. */}
       <StatusBar style="light" />
       <View style={styles.header}>
         <Text style={styles.title} numberOfLines={1}>
-          {clip.title}
+          {title}
         </Text>
         <Pressable
           onPress={onClose}
@@ -147,8 +224,8 @@ function PlayerBody({
           <Video
             url={source.url}
             width={videoWidth}
-            fallbackDuration={clip.end_s - clip.start_s}
-            clip={clip}
+            fallbackDuration={fallbackDuration}
+            labels={labels}
             actions={actions}
           />
         ) : null}
@@ -161,13 +238,13 @@ function Video({
   url,
   width,
   fallbackDuration,
-  clip,
+  labels,
   actions,
 }: {
   url: string;
   width: number;
   fallbackDuration: number;
-  clip: MediaClip;
+  labels: PlayerLabels;
   actions: PlayerActions;
 }) {
   const styles = useStyles();
@@ -253,7 +330,7 @@ function Video({
               disabled={actions.disabled}
               style={({ pressed }) => [styles.shareButton, actions.disabled && actions.busy !== 'share' && styles.dimmed, pressed && styles.pressed]}
               accessibilityRole="button"
-              accessibilityLabel={`Share clip ${clip.rank}: ${clip.title}`}
+              accessibilityLabel={labels.share}
               accessibilityState={{ busy: actions.busy === 'share', disabled: actions.disabled }}
             >
               {actions.busy === 'share' ? <ActivityIndicator size="small" color={WHITE} /> : <IconSend size={20} sw={2} color={WHITE} />}
@@ -271,11 +348,7 @@ function Video({
                 pressed && styles.pressed,
               ]}
               accessibilityRole="button"
-              accessibilityLabel={
-                actions.saved
-                  ? `Clip ${clip.rank} saved to your gallery`
-                  : `Save clip ${clip.rank} to your gallery: ${clip.title}`
-              }
+              accessibilityLabel={actions.saved ? labels.saved : labels.save}
               accessibilityState={{ busy: actions.busy === 'save', disabled: actions.disabled || actions.saved }}
             >
               {actions.busy === 'save' ? (
