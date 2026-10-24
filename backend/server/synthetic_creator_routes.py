@@ -329,7 +329,7 @@ async def create_video(creator_id: int, body: VideoCreate, background: Backgroun
         if swap and body.preview_id is None:
             raise HTTPException(422, "Make a preview first, then create the video.")
         if not swap and body.preview_id is not None:
-            raise HTTPException(422, "Previews are only for Swap.")
+            raise HTTPException(422, "Previews are only for Replace.")
         if body.preview_id is not None:
             preview = (await db.execute(select(CreatorPreview).where(
                 CreatorPreview.id == body.preview_id, CreatorPreview.user_id == user.id))).scalars().first()
@@ -448,7 +448,7 @@ async def create_preview(creator_id: int, body: PreviewCreate, background: Backg
         raise HTTPException(503, "We couldn't check the photo right now. Try again.")
     kind = await sc.image_kind(image, c.ref_content_type)
     if kind == "real_person_photo":
-        raise HTTPException(422, "Swap doesn't accept photos of real people yet. Use an illustrated or 3D character.")
+        raise HTTPException(422, "Replace doesn't accept photos of real people yet. Use an illustrated or 3D character.")
     if kind != "character":
         raise HTTPException(422, "We couldn't check this photo. Try again, or use another image.")
 

@@ -14,7 +14,7 @@ export type CreatorFormat = 'speech' | 'mimic' | 'swap';
 const FORMATS: { id: CreatorFormat; title: string; text: string; Icon: typeof IconPlay }[] = [
   { id: 'speech', title: 'Talk', text: 'Says what you write', Icon: IconMessageDots },
   { id: 'mimic', title: 'Mimic', text: 'Copies the moves, in your photo’s scene', Icon: IconPlay },
-  { id: 'swap', title: 'Swap', text: 'Your video, with your character in it', Icon: IconArrowsLeftRight },
+  { id: 'swap', title: 'Replace', text: 'Your video, with your character in it', Icon: IconArrowsLeftRight },
 ];
 
 export function CreatorFormatPicker({ value, onChange }: { value: CreatorFormat; onChange: (f: CreatorFormat) => void }) {
