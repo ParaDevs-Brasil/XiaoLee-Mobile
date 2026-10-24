@@ -43,7 +43,7 @@ export function Studio() {
       <div className="mx-auto max-w-6xl">
         <div className="grid items-start gap-12 lg:grid-cols-[1fr_auto] lg:gap-20">
           <div className="order-2 lg:order-1">
-            <SectionHead eyebrow={s.eyebrow} a={s.h2a} b={s.h2b} sub={s.sub} />
+            <SectionHead a={s.h2a} b={s.h2b} sub={s.sub} />
           <Reveal delay={0.1} className="mt-12">
             <ul role="tablist" aria-label={s.eyebrow} className="space-y-2">
               {s.items.map((it, i) => {

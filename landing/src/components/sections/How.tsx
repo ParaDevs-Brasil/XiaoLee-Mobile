@@ -122,7 +122,7 @@ export function How() {
   return (
     <section id="how" className="relative">
       <div className="mx-auto max-w-[1280px] px-5 pt-12 sm:px-8 lg:pt-24">
-        <SectionHead eyebrow={t.how.eyebrow} a={t.how.h2a} b={t.how.h2b} />
+        <SectionHead a={t.how.h2a} b={t.how.h2b} />
       </div>
 
       {/* desktop: pinned stage driven by scroll; mobile: plain stacked steps */}
