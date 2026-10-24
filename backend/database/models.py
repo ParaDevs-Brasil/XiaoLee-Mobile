@@ -8,7 +8,7 @@ All models inherit from Base which provides id, created_at, updated_at automatic
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import BigInteger, String, Integer, ForeignKey, Numeric, Text, Boolean, DateTime, UniqueConstraint, func
+from sqlalchemy import BigInteger, Float, String, Integer, ForeignKey, Numeric, Text, Boolean, DateTime, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.orm import DeclarativeBase
 
@@ -470,6 +470,8 @@ class CreatorVideo(Base):
     audio: Mapped[str] = mapped_column(String(10), default='none', server_default='none')
     # Swap: a prévia aprovada (`creator_previews.id`) cujo quadro vira a imagem do vídeo.
     preview_id: Mapped[Optional[int]] = mapped_column(nullable=True, index=True)
+    # Mimic/Swap: segundo do vídeo de referência onde o trecho de `duration_s` começa (0 = do início).
+    motion_start_s: Mapped[float] = mapped_column(Float, default=0.0, server_default='0')
 
 
 class CreatorPreview(Base):
@@ -480,6 +482,7 @@ class CreatorPreview(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     creator_id: Mapped[int] = mapped_column(ForeignKey("synthetic_creators.id"), index=True)
     motion_key: Mapped[str] = mapped_column(Text)
+    motion_start_s: Mapped[float] = mapped_column(Float, default=0.0, server_default='0')
     frame_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default='working')
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

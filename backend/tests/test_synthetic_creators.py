@@ -58,7 +58,8 @@ async def db(db_session, monkeypatch):
         yield db_session
 
     app_module.app.dependency_overrides[get_db_session] = _override
-    s = dataclasses.replace(routes.settings, elevenlabs_api_key="el", fal_key="fal", creators_pay_to=PAY_TO)
+    s = dataclasses.replace(routes.settings, elevenlabs_api_key="el", fal_key="fal", creators_pay_to=PAY_TO,
+                            creators_dev_skip_payment=False)
     monkeypatch.setattr(routes, "settings", s)
     monkeypatch.setattr(sc, "settings", s)
     monkeypatch.setattr(routes.media_storage, "presign_get", lambda key, expires=3600: f"https://r2/{key}")
@@ -294,6 +295,21 @@ async def test_mimic_needs_an_uploaded_video_at_least_as_long_as_the_paid_durati
     _motion_ok(monkeypatch, length=3.0)
     short = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_mimic_body())
     assert short.status_code == 422 and "shorter" in short.json()["detail"] and calls == []
+
+
+@pytest.mark.asyncio
+async def test_mimic_part_must_fit_after_its_start_and_the_start_is_kept(db, monkeypatch):
+    cid, h = await _persona(db)
+    calls = []
+    _relay_ok(monkeypatch, calls)
+    _motion_ok(monkeypatch, length=12.0)
+    # 5 s a partir do segundo 10 de um vídeo de 12 s: não cabe, e nada é cobrado.
+    late = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_mimic_body(motion_start_s=10))
+    assert late.status_code == 422 and calls == []
+    ok = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_mimic_body(motion_start_s=6.5))
+    assert ok.status_code == 200, ok.text
+    v = (await db.execute(select(CreatorVideo))).scalars().one()
+    assert v.motion_start_s == 6.5
 
 
 @pytest.mark.asyncio
@@ -590,3 +606,16 @@ def test_brazilian_voices_get_a_portuguese_sample_phrase(monkeypatch):
         assert client.get(f"/v1/creators/voices/{v['id']}/sample").status_code == 200
     assert said[pt["id"]].startswith("Olá, eu sou") and said[en["id"]].startswith("Hi, I'm")
     sc._SAMPLE_CACHE.clear()
+
+
+@pytest.mark.asyncio
+async def test_preview_start_must_fall_inside_the_reference_video(db, monkeypatch):
+    cid, h = await _persona(db)
+    _swap_env(monkeypatch)
+    _motion_ok(monkeypatch, length=12.0)
+    late = client.post(f"/v1/creators/{cid}/previews", headers=h, json=_preview_body(motion_start_s=30))
+    assert late.status_code == 422 and (await db.execute(select(CreatorPreview))).scalars().all() == []
+    ok = client.post(f"/v1/creators/{cid}/previews", headers=h, json=_preview_body(motion_start_s=4))
+    assert ok.status_code == 200, ok.text
+    assert (await db.execute(select(CreatorPreview))).scalars().one().motion_start_s == 4
+

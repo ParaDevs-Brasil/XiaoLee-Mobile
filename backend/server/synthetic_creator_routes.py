@@ -114,6 +114,7 @@ class MotionUpload(BaseModel):
 
 class PreviewCreate(BaseModel):
     motion_key: str
+    motion_start_s: float = Field(default=0, ge=0, le=36000)
     motion_rights_confirmed: bool = False
 
 
@@ -137,6 +138,8 @@ class VideoCreate(BaseModel):
     audio: Literal["none", "original", "voice"] = "none"
     # swap: a prévia aprovada; o vídeo sai do quadro dela e não da foto do personagem.
     preview_id: Optional[int] = None
+    # mimic/swap: o trecho usado começa neste segundo do vídeo de referência.
+    motion_start_s: float = Field(default=0, ge=0, le=36000)
 
 
 class VideoOut(BaseModel):
@@ -344,7 +347,8 @@ async def create_video(creator_id: int, body: VideoCreate, background: Backgroun
         if body.preview_id is not None:
             preview = (await db.execute(select(CreatorPreview).where(
                 CreatorPreview.id == body.preview_id, CreatorPreview.user_id == user.id))).scalars().first()
-            if not preview or preview.creator_id != c.id or preview.motion_key != body.motion_key:
+            if not preview or preview.creator_id != c.id or preview.motion_key != body.motion_key \
+                    or abs(preview.motion_start_s - body.motion_start_s) > 0.05:
                 raise HTTPException(422, "That preview doesn't match this video. Make a new preview.")
             if preview.status != "ready" or not preview.frame_key:
                 raise HTTPException(409, "The preview isn't ready yet.")
@@ -369,7 +373,8 @@ async def create_video(creator_id: int, body: VideoCreate, background: Backgroun
     v = CreatorVideo(user_id=user.id, creator_id=c.id, quality=body.quality, model=sc.QUALITIES[body.quality]["model"],
                      duration_s=body.duration_s, script=script_text, price_usdc=price,
                      payment_from=p.from_address.lower(), payment_nonce=p.nonce.lower(), status="paying",
-                     motion_key=body.motion_key if mimic else None, audio=body.audio if mimic else "none",
+                     motion_key=body.motion_key if mimic else None,
+                     motion_start_s=body.motion_start_s if mimic else 0.0, audio=body.audio if mimic else "none",
                      preview_id=preview.id if preview else None,
                      motion_rights_at=datetime.utcnow() if mimic else None)
     db.add(v)
@@ -426,8 +431,8 @@ async def _check_motion(user_id: int, body: VideoCreate) -> None:
         length = await sc.probe_duration(url)
     except ValueError:
         raise HTTPException(422, "We couldn't read that video. Try another file.")
-    if length < body.duration_s - 0.5:
-        raise HTTPException(422, f"Your video is {length:.0f}s long, shorter than the {body.duration_s}s you chose. Pick a longer video or a shorter length.")
+    if length - body.motion_start_s < body.duration_s - 0.5:
+        raise HTTPException(422, f"Your video is {length:.0f}s long and the part you picked starts at {body.motion_start_s:.0f}s, shorter than the {body.duration_s}s you chose. Move the selection or pick a shorter length.")
 
 
 def _preview_out(p: CreatorPreview) -> PreviewOut:
@@ -449,9 +454,16 @@ async def create_preview(creator_id: int, body: PreviewCreate, background: Backg
     c = await _owned_creator(db, user.id, creator_id)
     if c.status != "ready":
         raise HTTPException(409, "This character isn't ready yet.")
-    await _check_motion_key(user.id, body.motion_key, body.motion_rights_confirmed)
+    url = await _check_motion_key(user.id, body.motion_key, body.motion_rights_confirmed)
+    if body.motion_start_s > 0:
+        try:
+            length = await sc.probe_duration(url)
+        except ValueError:
+            raise HTTPException(422, "We couldn't read that video. Try another file.")
+        if body.motion_start_s > length - 0.5:
+            raise HTTPException(422, "The part you picked starts after the end of the video. Move the selection.")
 
-    since = datetime.utcnow() - timedelta(days=1)
+    since =datetime.utcnow() - timedelta(days=1)
     today = (await db.execute(select(func.count()).select_from(CreatorPreview).where(
         CreatorPreview.user_id == user.id, CreatorPreview.created_at >= since))).scalar_one()
     if today >= settings.creators_daily_previews_per_user:
@@ -468,7 +480,8 @@ async def create_preview(creator_id: int, body: PreviewCreate, background: Backg
     if kind != "character":
         raise HTTPException(422, "We couldn't check this photo. Try again, or use another image.")
 
-    p = CreatorPreview(user_id=user.id, creator_id=c.id, motion_key=body.motion_key, status="working")
+    p = CreatorPreview(user_id=user.id, creator_id=c.id, motion_key=body.motion_key,
+                      motion_start_s=body.motion_start_s, status="working")
     db.add(p)
     await db.commit()
     background.add_task(run_preview, p.id)
@@ -540,13 +553,14 @@ async def run_video(video_id: int) -> None:
                     await sc.render_swap(quality=v.quality, instructions="" if v.audio == "voice" else v.script,
                                          duration_s=v.duration_s, ref_image_key=c.ref_image_key,
                                          ref_content_type=c.ref_content_type, frame_key=preview.frame_key,
-                                         motion_key=v.motion_key, video_key=key, audio=v.audio, voice_id=c.voice_id,
-                                         script=v.script, on_step=on_step)
+                                         motion_key=v.motion_key, start_s=v.motion_start_s, video_key=key,
+                                         audio=v.audio, voice_id=c.voice_id, script=v.script, on_step=on_step)
                 else:
                     await sc.render_mimic(quality=v.quality, prompt="" if v.audio == "voice" else v.script,
                                           duration_s=v.duration_s, ref_image_key=c.ref_image_key,
-                                          ref_content_type=c.ref_content_type, motion_key=v.motion_key, video_key=key,
-                                          audio=v.audio, voice_id=c.voice_id, script=v.script, on_step=on_step)
+                                          ref_content_type=c.ref_content_type, motion_key=v.motion_key, start_s=v.motion_start_s,
+                                          video_key=key, audio=v.audio, voice_id=c.voice_id, script=v.script,
+                                          on_step=on_step)
             else:
                 await sc.render(quality=v.quality, voice_id=c.voice_id, script=v.script, duration_s=v.duration_s,
                                 ref_image_key=c.ref_image_key, ref_content_type=c.ref_content_type, video_key=key,
@@ -566,7 +580,7 @@ async def run_preview(preview_id: int) -> None:
         p = await db.get(CreatorPreview, preview_id)
         c = await db.get(SyntheticCreator, p.creator_id)
         try:
-            png = await sc.compose_frame(motion_key=p.motion_key, ref_image_key=c.ref_image_key,
+            png = await sc.compose_frame(motion_key=p.motion_key, start_s=p.motion_start_s, ref_image_key=c.ref_image_key,
                                          ref_content_type=c.ref_content_type)
             key = f"creators/{p.user_id}/previews/{p.id}-{uuid.uuid4().hex[:8]}.png"
             with tempfile.NamedTemporaryFile(suffix=".png") as f:
