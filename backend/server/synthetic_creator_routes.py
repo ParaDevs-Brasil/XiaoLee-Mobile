@@ -47,6 +47,17 @@ router = APIRouter(prefix="/v1/creators", tags=["creators"])
 IMAGE_TYPES = ("image/jpeg", "image/png", "image/webp")
 MAX_IMAGE_BYTES = 15 * 1024 * 1024
 _EVM_ADDR_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
+
+
+def _skip_payment() -> bool:
+    """Interruptor só de desenvolvimento (CREATORS_DEV_SKIP_PAYMENT): trava em XIAOLEE_ENV=dev para um valor esquecido
+    no Railway não deixar ninguém gerar vídeo (e gastar a fal) sem pagar."""
+    if not settings.creators_dev_skip_payment:
+        return False
+    if settings.environment != "dev":
+        logger.error("CREATORS_DEV_SKIP_PAYMENT is set but XIAOLEE_ENV=%s: payment is NOT skipped", settings.environment)
+        return False
+    return True
 _NONCE_RE = re.compile(r"^0x[0-9a-fA-F]{64}$")
 
 
@@ -57,6 +68,11 @@ class CreatorCreate(BaseModel):
     size_bytes: int = Field(gt=0)
     # Termo aceito no app: a imagem é do creator, ou é paródia/fan content, e não será usada para enganar ou assediar.
     rights_confirmed: bool = False
+
+
+class CreatorUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, max_length=60)
+    voice_id: Optional[str] = None
 
 
 class CreatorOut(BaseModel):
@@ -103,6 +119,7 @@ class MotionUpload(BaseModel):
 
 class PreviewCreate(BaseModel):
     motion_key: str
+    motion_start_s: float = Field(default=0, ge=0, le=36000)
     motion_rights_confirmed: bool = False
 
 
@@ -126,6 +143,8 @@ class VideoCreate(BaseModel):
     audio: Literal["none", "original", "voice"] = "none"
     # swap: a prévia aprovada; o vídeo sai do quadro dela e não da foto do personagem.
     preview_id: Optional[int] = None
+    # mimic/swap: o trecho usado começa neste segundo do vídeo de referência.
+    motion_start_s: float = Field(default=0, ge=0, le=36000)
 
 
 class VideoOut(BaseModel):
@@ -257,6 +276,25 @@ async def list_creators(authorization: Optional[str] = Header(default=None),
     return [_creator_out(c) for c in rows]
 
 
+@router.patch("/{creator_id}", response_model=CreatorOut)
+async def update_creator(creator_id: int, body: CreatorUpdate, authorization: Optional[str] = Header(default=None),
+                         db: AsyncSession = Depends(get_db_session)):
+    user = await _resolve_user(db, authorization, strict=True)
+    c = await _owned_creator(db, user.id, creator_id)
+    if c.status != "ready":
+        raise HTTPException(404, "Character not found.")
+    if body.voice_id is not None and body.voice_id not in sc.VOICE_IDS:
+        raise HTTPException(422, "Pick a voice from the list.")
+    if body.name is not None:
+        if not body.name.strip():
+            raise HTTPException(422, "Give the character a name.")
+        c.name = body.name.strip()
+    if body.voice_id is not None:
+        c.voice_id = body.voice_id
+    await db.commit()
+    return _creator_out(c)
+
+
 @router.delete("/{creator_id}", status_code=204)
 async def delete_creator(creator_id: int, authorization: Optional[str] = Header(default=None),
                          db: AsyncSession = Depends(get_db_session)):
@@ -329,11 +367,12 @@ async def create_video(creator_id: int, body: VideoCreate, background: Backgroun
         if swap and body.preview_id is None:
             raise HTTPException(422, "Make a preview first, then create the video.")
         if not swap and body.preview_id is not None:
-            raise HTTPException(422, "Previews are only for Swap.")
+            raise HTTPException(422, "Previews are only for Replace.")
         if body.preview_id is not None:
             preview = (await db.execute(select(CreatorPreview).where(
                 CreatorPreview.id == body.preview_id, CreatorPreview.user_id == user.id))).scalars().first()
-            if not preview or preview.creator_id != c.id or preview.motion_key != body.motion_key:
+            if not preview or preview.creator_id != c.id or preview.motion_key != body.motion_key \
+                    or abs(preview.motion_start_s - body.motion_start_s) > 0.05:
                 raise HTTPException(422, "That preview doesn't match this video. Make a new preview.")
             if preview.status != "ready" or not preview.frame_key:
                 raise HTTPException(409, "The preview isn't ready yet.")
@@ -358,7 +397,8 @@ async def create_video(creator_id: int, body: VideoCreate, background: Backgroun
     v = CreatorVideo(user_id=user.id, creator_id=c.id, quality=body.quality, model=sc.QUALITIES[body.quality]["model"],
                      duration_s=body.duration_s, script=script_text, price_usdc=price,
                      payment_from=p.from_address.lower(), payment_nonce=p.nonce.lower(), status="paying",
-                     motion_key=body.motion_key if mimic else None, audio=body.audio if mimic else "none",
+                     motion_key=body.motion_key if mimic else None,
+                     motion_start_s=body.motion_start_s if mimic else 0.0, audio=body.audio if mimic else "none",
                      preview_id=preview.id if preview else None,
                      motion_rights_at=datetime.utcnow() if mimic else None)
     db.add(v)
@@ -368,22 +408,27 @@ async def create_video(creator_id: int, body: VideoCreate, background: Backgroun
         await db.rollback()
         raise HTTPException(409, "That payment was already used. Try again.")
 
-    from server.routes.arc_routes import _arc_native
-    try:
-        result = await _arc_native().relay_transfer_authorization(
-            from_address=p.from_address, to_address=p.to_address, value=p.value,
-            valid_after=p.valid_after, valid_before=p.valid_before, nonce=p.nonce, signature=p.signature,
-        )
-    except Exception as exc:
-        logger.warning("creator video payment relay failed: %s", exc)
-        v.status, v.error = "failed", "payment failed"
+    if _skip_payment():
+        # Dev local: valor, destino e nonce já foram conferidos acima; só o relay on-chain (e o registro do repasse) é pulado.
+        v.payment_tx, v.status = f"dev-skip-{p.nonce.lower()[:18]}", "queued"
         await db.commit()
-        raise HTTPException(402, "The payment didn't go through. Check your USDC balance and try again.")
+    else:
+        from server.routes.arc_routes import _arc_native
+        try:
+            result = await _arc_native().relay_transfer_authorization(
+                from_address=p.from_address, to_address=p.to_address, value=p.value,
+                valid_after=p.valid_after, valid_before=p.valid_before, nonce=p.nonce, signature=p.signature,
+            )
+        except Exception as exc:
+            logger.warning("creator video payment relay failed: %s", exc)
+            v.status, v.error = "failed", "payment failed"
+            await db.commit()
+            raise HTTPException(402, "The payment didn't go through. Check your USDC balance and try again.")
 
-    v.payment_tx, v.status = result.tx_hash, "queued"
-    db.add(ArcTransfer(from_address=p.from_address.lower(), to_address=p.to_address.lower(),
-                       amount_usdc=price, tx_hash=result.tx_hash))
-    await db.commit()
+        v.payment_tx, v.status = result.tx_hash, "queued"
+        db.add(ArcTransfer(from_address=p.from_address.lower(), to_address=p.to_address.lower(),
+                           amount_usdc=price, tx_hash=result.tx_hash))
+        await db.commit()
     background.add_task(run_video, v.id)
     return _video_out(v)
 
@@ -410,8 +455,8 @@ async def _check_motion(user_id: int, body: VideoCreate) -> None:
         length = await sc.probe_duration(url)
     except ValueError:
         raise HTTPException(422, "We couldn't read that video. Try another file.")
-    if length < body.duration_s - 0.5:
-        raise HTTPException(422, f"Your video is {length:.0f}s long, shorter than the {body.duration_s}s you chose. Pick a longer video or a shorter length.")
+    if length - body.motion_start_s < body.duration_s - 0.5:
+        raise HTTPException(422, f"Your video is {length:.0f}s long and the part you picked starts at {body.motion_start_s:.0f}s, shorter than the {body.duration_s}s you chose. Move the selection or pick a shorter length.")
 
 
 def _preview_out(p: CreatorPreview) -> PreviewOut:
@@ -433,9 +478,16 @@ async def create_preview(creator_id: int, body: PreviewCreate, background: Backg
     c = await _owned_creator(db, user.id, creator_id)
     if c.status != "ready":
         raise HTTPException(409, "This character isn't ready yet.")
-    await _check_motion_key(user.id, body.motion_key, body.motion_rights_confirmed)
+    url = await _check_motion_key(user.id, body.motion_key, body.motion_rights_confirmed)
+    if body.motion_start_s > 0:
+        try:
+            length = await sc.probe_duration(url)
+        except ValueError:
+            raise HTTPException(422, "We couldn't read that video. Try another file.")
+        if body.motion_start_s > length - 0.5:
+            raise HTTPException(422, "The part you picked starts after the end of the video. Move the selection.")
 
-    since = datetime.utcnow() - timedelta(days=1)
+    since =datetime.utcnow() - timedelta(days=1)
     today = (await db.execute(select(func.count()).select_from(CreatorPreview).where(
         CreatorPreview.user_id == user.id, CreatorPreview.created_at >= since))).scalar_one()
     if today >= settings.creators_daily_previews_per_user:
@@ -448,11 +500,12 @@ async def create_preview(creator_id: int, body: PreviewCreate, background: Backg
         raise HTTPException(503, "We couldn't check the photo right now. Try again.")
     kind = await sc.image_kind(image, c.ref_content_type)
     if kind == "real_person_photo":
-        raise HTTPException(422, "Swap doesn't accept photos of real people yet. Use an illustrated or 3D character.")
+        raise HTTPException(422, "Replace doesn't accept photos of real people yet. Use an illustrated or 3D character.")
     if kind != "character":
         raise HTTPException(422, "We couldn't check this photo. Try again, or use another image.")
 
-    p = CreatorPreview(user_id=user.id, creator_id=c.id, motion_key=body.motion_key, status="working")
+    p = CreatorPreview(user_id=user.id, creator_id=c.id, motion_key=body.motion_key,
+                      motion_start_s=body.motion_start_s, status="working")
     db.add(p)
     await db.commit()
     background.add_task(run_preview, p.id)
@@ -524,13 +577,14 @@ async def run_video(video_id: int) -> None:
                     await sc.render_swap(quality=v.quality, instructions="" if v.audio == "voice" else v.script,
                                          duration_s=v.duration_s, ref_image_key=c.ref_image_key,
                                          ref_content_type=c.ref_content_type, frame_key=preview.frame_key,
-                                         motion_key=v.motion_key, video_key=key, audio=v.audio, voice_id=c.voice_id,
-                                         script=v.script, on_step=on_step)
+                                         motion_key=v.motion_key, start_s=v.motion_start_s, video_key=key,
+                                         audio=v.audio, voice_id=c.voice_id, script=v.script, on_step=on_step)
                 else:
                     await sc.render_mimic(quality=v.quality, prompt="" if v.audio == "voice" else v.script,
                                           duration_s=v.duration_s, ref_image_key=c.ref_image_key,
-                                          ref_content_type=c.ref_content_type, motion_key=v.motion_key, video_key=key,
-                                          audio=v.audio, voice_id=c.voice_id, script=v.script, on_step=on_step)
+                                          ref_content_type=c.ref_content_type, motion_key=v.motion_key, start_s=v.motion_start_s,
+                                          video_key=key, audio=v.audio, voice_id=c.voice_id, script=v.script,
+                                          on_step=on_step)
             else:
                 await sc.render(quality=v.quality, voice_id=c.voice_id, script=v.script, duration_s=v.duration_s,
                                 ref_image_key=c.ref_image_key, ref_content_type=c.ref_content_type, video_key=key,
@@ -550,7 +604,7 @@ async def run_preview(preview_id: int) -> None:
         p = await db.get(CreatorPreview, preview_id)
         c = await db.get(SyntheticCreator, p.creator_id)
         try:
-            png = await sc.compose_frame(motion_key=p.motion_key, ref_image_key=c.ref_image_key,
+            png = await sc.compose_frame(motion_key=p.motion_key, start_s=p.motion_start_s, ref_image_key=c.ref_image_key,
                                          ref_content_type=c.ref_content_type)
             key = f"creators/{p.user_id}/previews/{p.id}-{uuid.uuid4().hex[:8]}.png"
             with tempfile.NamedTemporaryFile(suffix=".png") as f:

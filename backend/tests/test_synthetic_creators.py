@@ -58,7 +58,8 @@ async def db(db_session, monkeypatch):
         yield db_session
 
     app_module.app.dependency_overrides[get_db_session] = _override
-    s = dataclasses.replace(routes.settings, elevenlabs_api_key="el", fal_key="fal", creators_pay_to=PAY_TO)
+    s = dataclasses.replace(routes.settings, elevenlabs_api_key="el", fal_key="fal", creators_pay_to=PAY_TO,
+                            creators_dev_skip_payment=False)
     monkeypatch.setattr(routes, "settings", s)
     monkeypatch.setattr(sc, "settings", s)
     monkeypatch.setattr(routes.media_storage, "presign_get", lambda key, expires=3600: f"https://r2/{key}")
@@ -114,6 +115,29 @@ async def test_pays_then_queues_the_video(db, monkeypatch):
     again = client.post(f"/v1/creators/{cid}/videos", headers=h,
                         json={"quality": "standard", "duration_s": 5, "script": "oi", "payment": _payment(800_000)})
     assert again.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_dev_skip_payment_queues_without_relay_but_only_in_dev(db, monkeypatch):
+    cid, h = await _persona(db)
+    calls = []
+    _relay_ok(monkeypatch, calls)
+    body = {"quality": "standard", "duration_s": 5, "script": "oi", "payment": _payment(800_000)}
+
+    # produção com o interruptor esquecido: ignora e cobra como sempre
+    monkeypatch.setattr(routes, "settings", dataclasses.replace(routes.settings, creators_dev_skip_payment=True, environment="production"))
+    r = client.post(f"/v1/creators/{cid}/videos", headers=h, json=body)
+    assert r.status_code == 200 and r.json()["payment_tx"] == "0xtx" and len(calls) == 1
+
+    # dev: pula o relay, ainda confere valor e destino, e não registra repasse
+    monkeypatch.setattr(routes, "settings", dataclasses.replace(routes.settings, creators_dev_skip_payment=True, environment="dev"))
+    body["payment"] = _payment(800_000, nonce="0x" + "2" * 64)
+    r = client.post(f"/v1/creators/{cid}/videos", headers=h, json=body)
+    assert r.status_code == 200 and r.json()["status"] == "queued" and r.json()["payment_tx"].startswith("dev-skip-")
+    assert len(calls) == 1
+    assert len((await db.execute(select(ArcTransfer))).scalars().all()) == 1
+    body["payment"] = _payment(700_000, nonce="0x" + "3" * 64)
+    assert client.post(f"/v1/creators/{cid}/videos", headers=h, json=body).status_code == 422
 
 
 @pytest.mark.asyncio
@@ -271,6 +295,21 @@ async def test_mimic_needs_an_uploaded_video_at_least_as_long_as_the_paid_durati
     _motion_ok(monkeypatch, length=3.0)
     short = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_mimic_body())
     assert short.status_code == 422 and "shorter" in short.json()["detail"] and calls == []
+
+
+@pytest.mark.asyncio
+async def test_mimic_part_must_fit_after_its_start_and_the_start_is_kept(db, monkeypatch):
+    cid, h = await _persona(db)
+    calls = []
+    _relay_ok(monkeypatch, calls)
+    _motion_ok(monkeypatch, length=12.0)
+    # 5 s a partir do segundo 10 de um vídeo de 12 s: não cabe, e nada é cobrado.
+    late = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_mimic_body(motion_start_s=10))
+    assert late.status_code == 422 and calls == []
+    ok = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_mimic_body(motion_start_s=6.5))
+    assert ok.status_code == 200, ok.text
+    v = (await db.execute(select(CreatorVideo))).scalars().one()
+    assert v.motion_start_s == 6.5
 
 
 @pytest.mark.asyncio
@@ -567,3 +606,30 @@ def test_brazilian_voices_get_a_portuguese_sample_phrase(monkeypatch):
         assert client.get(f"/v1/creators/voices/{v['id']}/sample").status_code == 200
     assert said[pt["id"]].startswith("Olá, eu sou") and said[en["id"]].startswith("Hi, I'm")
     sc._SAMPLE_CACHE.clear()
+
+
+@pytest.mark.asyncio
+async def test_preview_start_must_fall_inside_the_reference_video(db, monkeypatch):
+    cid, h = await _persona(db)
+    _swap_env(monkeypatch)
+    _motion_ok(monkeypatch, length=12.0)
+    late = client.post(f"/v1/creators/{cid}/previews", headers=h, json=_preview_body(motion_start_s=30))
+    assert late.status_code == 422 and (await db.execute(select(CreatorPreview))).scalars().all() == []
+    ok = client.post(f"/v1/creators/{cid}/previews", headers=h, json=_preview_body(motion_start_s=4))
+    assert ok.status_code == 200, ok.text
+    assert (await db.execute(select(CreatorPreview))).scalars().one().motion_start_s == 4
+
+
+@pytest.mark.asyncio
+async def test_character_can_be_renamed_and_change_voice(db):
+    cid, h = await _persona(db)
+    voice = sc.VOICES[1]["id"]
+    r = client.patch(f"/v1/creators/{cid}", headers=h, json={"name": "  Luna ", "voice_id": voice})
+    assert r.status_code == 200, r.text
+    assert r.json()["name"] == "Luna" and r.json()["voice_id"] == voice
+    only_name = client.patch(f"/v1/creators/{cid}", headers=h, json={"name": "Nova"})
+    assert only_name.json()["name"] == "Nova" and only_name.json()["voice_id"] == voice
+    assert client.patch(f"/v1/creators/{cid}", headers=h, json={"name": "   "}).status_code == 422
+    assert client.patch(f"/v1/creators/{cid}", headers=h, json={"voice_id": "nope"}).status_code == 422
+    assert client.patch(f"/v1/creators/{cid + 99}", headers=h, json={"name": "x"}).status_code == 404
+    assert client.patch(f"/v1/creators/{cid}", json={"name": "x"}).status_code in (401, 403)

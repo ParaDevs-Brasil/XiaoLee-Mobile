@@ -8,7 +8,7 @@ All models inherit from Base which provides id, created_at, updated_at automatic
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import BigInteger, String, ForeignKey, Numeric, Text, Boolean, DateTime, UniqueConstraint, func
+from sqlalchemy import BigInteger, Float, String, Integer, ForeignKey, Numeric, Text, Boolean, DateTime, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.orm import DeclarativeBase
 
@@ -205,6 +205,16 @@ class UsedPayment(Base):
     amount_xlm: Mapped[Optional[float]] = mapped_column(Numeric(20, 8), nullable=True)
     network: Mapped[str] = mapped_column(String(16), default='testnet')
     verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class UsageCounter(Base):
+    """Contador diário (UTC) de mensagens que chegam na LLM, por identidade e global (key='global')."""
+    __tablename__ = 'usage_counters'
+    __table_args__ = (UniqueConstraint('key', 'day', name='uq_usage_counters_key_day'),)
+
+    key: Mapped[str] = mapped_column(String(255), index=True)
+    day: Mapped[str] = mapped_column(String(10))  # YYYY-MM-DD
+    count: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class PaymentIntent(Base):
@@ -460,6 +470,8 @@ class CreatorVideo(Base):
     audio: Mapped[str] = mapped_column(String(10), default='none', server_default='none')
     # Swap: a prévia aprovada (`creator_previews.id`) cujo quadro vira a imagem do vídeo.
     preview_id: Mapped[Optional[int]] = mapped_column(nullable=True, index=True)
+    # Mimic/Swap: segundo do vídeo de referência onde o trecho de `duration_s` começa (0 = do início).
+    motion_start_s: Mapped[float] = mapped_column(Float, default=0.0, server_default='0')
 
 
 class CreatorPreview(Base):
@@ -470,6 +482,7 @@ class CreatorPreview(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     creator_id: Mapped[int] = mapped_column(ForeignKey("synthetic_creators.id"), index=True)
     motion_key: Mapped[str] = mapped_column(Text)
+    motion_start_s: Mapped[float] = mapped_column(Float, default=0.0, server_default='0')
     frame_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default='working')
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

@@ -9,6 +9,7 @@ import { SectionCard } from '@/components/section-card';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { uploadMotion, type PickedMotion } from '@/lib/creators';
+import { clampStart } from '@/lib/creators-core';
 
 const POLL_MS = 3000;
 
@@ -19,6 +20,7 @@ const POLL_MS = 3000;
 export function SwapPreview({
   creatorId,
   motion,
+  windowS,
   rights,
   motionKey,
   onMotionKey,
@@ -28,6 +30,8 @@ export function SwapPreview({
 }: {
   creatorId: number;
   motion: PickedMotion | null;
+  /** Duração escolhida: o trecho do vídeo que o preview mostra começa no corte e dura isso. */
+  windowS: number;
   rights: boolean;
   /** Chave do vídeo já enviado ao storage (reaproveitada no pagamento, sem subir de novo). */
   motionKey: string | null;
@@ -55,7 +59,11 @@ export function SwapPreview({
     try {
       const key = motionKey ?? (await uploadMotion(motion));
       onMotionKey(key);
-      onPreview(await createSwapPreview(creatorId, { motion_key: key, motion_rights_confirmed: true }));
+      onPreview(await createSwapPreview(creatorId, {
+          motion_key: key,
+          motion_rights_confirmed: true,
+          motion_start_s: clampStart(motion.startS, motion.seconds, windowS),
+        }));
     } catch (e) {
       onError(e instanceof ApiError || e instanceof Error ? e : new Error('Something went wrong. Try again.'));
     } finally {

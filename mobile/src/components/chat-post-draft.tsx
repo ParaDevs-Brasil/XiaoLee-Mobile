@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { IconCheck } from '@/components/icons';
+import { IconArrowRight, IconCheck } from '@/components/icons';
 import { NETWORK_NAMES, SocialLogo } from '@/components/social-logos';
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
@@ -12,6 +12,7 @@ const TONES = ['Casual', 'Professional', 'Playful', 'Bold'];
 const AUDIENCES = ['Crypto natives', 'New to crypto', 'Mixed'];
 
 function Chip({ label, on, onPress, children }: { label: string; on: boolean; onPress: () => void; children?: React.ReactNode }) {
+  const colors = useTheme();
   const styles = useStyles();
   return (
     <Pressable
@@ -20,6 +21,7 @@ function Chip({ label, on, onPress, children }: { label: string; on: boolean; on
       accessibilityRole="button"
       accessibilityState={{ selected: on }}
     >
+      {on ? <IconCheck size={13} sw={2.6} color={colors.onAccent} /> : null}
       {children}
       <Text style={[styles.chipText, on && styles.chipTextOn]}>{label}</Text>
     </Pressable>
@@ -59,7 +61,9 @@ export function PostDraftCard({ draft, onAsk }: { draft: CardDraft; onAsk: (mess
     <View style={styles.card}>
       <View style={styles.head}>
         <Text style={styles.title}>New post</Text>
-        <Text style={styles.tag}>Draft</Text>
+        <View style={styles.tagPill}>
+          <Text style={styles.tag}>Draft</Text>
+        </View>
       </View>
 
       {draft.networks.length > 1 ? (
@@ -82,7 +86,7 @@ export function PostDraftCard({ draft, onAsk }: { draft: CardDraft; onAsk: (mess
         multiline
         placeholder="What do you want to say? A rough idea is enough."
         placeholderTextColor={colors.ink3}
-        style={styles.input}
+        style={[styles.input, idea.trim() ? styles.inputOn : null]}
         accessibilityLabel="Post idea"
       />
 
@@ -113,7 +117,8 @@ export function PostDraftCard({ draft, onAsk }: { draft: CardDraft; onAsk: (mess
         style={({ pressed }) => [styles.submit, !idea.trim() && styles.submitOff, pressed && styles.pressed]}
         accessibilityRole="button"
       >
-        <Text style={styles.submitText}>Get post options</Text>
+        <Text style={styles.submitText}>Generate post</Text>
+        <IconArrowRight size={16} sw={2.2} color={colors.onAccent} />
       </Pressable>
     </View>
   );
@@ -122,22 +127,26 @@ export function PostDraftCard({ draft, onAsk }: { draft: CardDraft; onAsk: (mess
 const useStyles = makeStyles((colors) => ({
   pressed: { opacity: 0.7 },
   card: {
-    gap: Spacing.two,
-    padding: Spacing.two + 2,
-    borderRadius: Radius.md,
-    backgroundColor: colors.bg,
+    gap: Spacing.two + 2,
+    padding: Spacing.three,
+    borderRadius: Radius.lg,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
   },
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  title: { fontFamily: Fonts.bold, fontSize: 13, color: colors.ink },
-  tag: { fontFamily: Fonts.sans, fontSize: 11, color: colors.ink3 },
-  label: { fontFamily: Fonts.bold, fontSize: 12, color: colors.ink2, marginTop: Spacing.one },
+  title: { fontFamily: Fonts.bold, fontSize: 16, color: colors.ink },
+  tagPill: { paddingHorizontal: 10, height: 22, justifyContent: 'center', borderRadius: Radius.pill, backgroundColor: colors.bg },
+  tag: { fontFamily: Fonts.medium, fontSize: 11, color: colors.ink3 },
+  label: { fontFamily: Fonts.bold, fontSize: 13, color: colors.ink, marginTop: Spacing.one },
+  inputOn: { borderColor: colors.accent, backgroundColor: colors.card },
   input: {
-    minHeight: 72,
-    padding: Spacing.two + 2,
+    minHeight: 84,
+    padding: Spacing.two + 4,
     borderRadius: Radius.md,
-    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    backgroundColor: colors.bg,
     fontFamily: Fonts.sans,
     fontSize: 14,
     lineHeight: 20,
@@ -149,26 +158,28 @@ const useStyles = makeStyles((colors) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: Spacing.two + 4,
-    paddingVertical: 7,
+    height: 36,
+    paddingHorizontal: 14,
     borderRadius: Radius.pill,
     backgroundColor: colors.card,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
   },
   chipOn: { backgroundColor: colors.accentFill, borderColor: colors.accentFill },
-  chipText: { fontFamily: Fonts.sans, fontSize: 12, color: colors.ink2 },
+  chipText: { fontFamily: Fonts.medium, fontSize: 13, color: colors.ink2 },
   chipTextOn: { fontFamily: Fonts.bold, color: colors.onAccent },
   submit: {
-    minHeight: 44,
+    height: 48,
+    flexDirection: 'row',
+    gap: 8,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: Spacing.one,
-    borderRadius: Radius.pill,
+    borderRadius: Radius.md,
     backgroundColor: colors.accentFill,
   },
   submitOff: { opacity: 0.5 },
   submitText: { fontFamily: Fonts.bold, fontSize: 14, color: colors.onAccent },
-  sent: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  sent: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   sentText: { fontFamily: Fonts.bold, fontSize: 13, color: colors.success },
 }));

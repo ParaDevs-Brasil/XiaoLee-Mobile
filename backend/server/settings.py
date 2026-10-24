@@ -71,6 +71,15 @@ class Settings:
     # Publicação nas redes do creator (server/social_routes.py). Desligado = rotas respondem 404.
     social_tools_enabled: bool = os.getenv("SOCIAL_TOOLS_ENABLED", "false").lower() in ("true", "1", "yes")
     social_max_posts_per_day: int = int(os.getenv("SOCIAL_MAX_POSTS_PER_DAY", "10"))
+    # Radar de tendências (server/radar_chat_tools.py): Grok com busca no X. Desligado ou sem chave = o chat não ganha a tool.
+    radar_tools_enabled: bool = os.getenv("RADAR_TOOLS_ENABLED", "false").lower() in ("true", "1", "yes")
+    xai_api_key: str = os.getenv("XAI_API_KEY", "")
+    xai_model: str = os.getenv("XAI_MODEL", "grok-4.7")
+    # Cartões de perguntas no chat (server/ask_chat_tools.py). Desligado = a Xiaolee pergunta em texto, como sempre.
+    ask_cards_enabled: bool = os.getenv("ASK_CARDS_ENABLED", "false").lower() in ("true", "1", "yes")
+    radar_max_runs_per_day: int = int(os.getenv("RADAR_MAX_RUNS_PER_DAY", "7"))
+    # Disjuntor da casa: gasto estimado do radar (Grok + Claude) por dia, somando todos os creators. 0 = sem teto.
+    radar_daily_usd_cap: float = float(os.getenv("RADAR_DAILY_USD_CAP", "20"))
     # X (OAuth 2.0 PKCE, app público: só Client ID, sem secret). Teto mensal por creator = custo da casa limitado.
     x_oauth_client_id: str = os.getenv("X_OAUTH_CLIENT_ID", "")
     x_oauth_redirect: str = os.getenv("X_OAUTH_REDIRECT", "xiaolee://social/x")
@@ -113,6 +122,14 @@ class Settings:
     onoff_forward_fee_tier: str = os.getenv("ONOFF_FORWARD_FEE_TIER", "med")  # low | med | high
     onoff_sandbox_secret: str = os.getenv("ONOFF_SANDBOX_SECRET", "")
     campaign_require_funds: bool = os.getenv("CAMPAIGN_REQUIRE_FUNDS", "true").lower() == "true"
+
+    # Cota diária de mensagens que chegam na LLM (UTC). 0 = sem limite.
+    free_daily_messages: int = int(os.getenv("FREE_DAILY_MESSAGES", "25"))   # logado / usuário de bot
+    anon_daily_messages: int = int(os.getenv("ANON_DAILY_MESSAGES", "5"))    # sem login, por IP
+    llm_global_daily_messages: int = int(os.getenv("LLM_GLOBAL_DAILY_MESSAGES", "0"))  # disjuntor global
+    # Quantos proxies confiáveis ficam na frente (Railway = 1): o IP do cliente é o N-ésimo de trás
+    # para frente em X-Forwarded-For (o início da lista é forjável). 0 = usa o IP da conexão.
+    trusted_proxy_hops: int = int(os.getenv("TRUSTED_PROXY_HOPS", "1"))
     cors_allowed_origins: list[str] = None
     cors_allowed_origin_regex: str = ""
     
@@ -142,6 +159,9 @@ class Settings:
     fal_key:            str = os.getenv("FAL_KEY", "")
     # Endereço Arc que recebe o USDC dos vídeos. Vazio = feature desligada (503).
     creators_pay_to:    str = os.getenv("CREATORS_PAY_TO", "")
+    # SÓ desenvolvimento local: pula o relay do pagamento para quem testa a geração com chaves próprias da fal/ElevenLabs.
+    # Ignorado (com erro no log) se XIAOLEE_ENV != "dev"; nunca defina no Railway.
+    creators_dev_skip_payment: bool = os.getenv("CREATORS_DEV_SKIP_PAYMENT", "false").lower() in ("true", "1", "yes")
     creators_daily_videos_per_user: int = int(os.getenv("CREATORS_DAILY_VIDEOS_PER_USER", "10"))
     # Prévias do Swap são grátis para o usuário (uns centavos para nós): o teto diário limita o gasto.
     creators_daily_previews_per_user: int = int(os.getenv("CREATORS_DAILY_PREVIEWS_PER_USER", "8"))

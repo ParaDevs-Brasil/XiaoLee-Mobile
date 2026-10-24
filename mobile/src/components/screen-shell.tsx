@@ -1,13 +1,14 @@
 import { useRouter } from 'expo-router';
 import type { ReactNode } from 'react';
-import { useState } from 'react';
-import { Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { InteractionManager, Text, View } from 'react-native';
 
 import { ConnectWalletSheet } from '@/components/connect-wallet-sheet';
+import { Skeleton } from '@/components/feedback';
 import { HeaderBar } from '@/components/header-bar';
+import { Reveal } from '@/components/motion';
 import { BottomNav } from '@/components/bottom-nav';
 import { ProfileMenu } from '@/components/profile-menu';
-import { ShareProfileSheet } from '@/components/share-profile-sheet';
 import { Fonts, Spacing } from '@/constants/theme';
 import { makeStyles } from '@/hooks/use-theme';
 import { useUnreadNotificationsCount } from '@/hooks/use-unread-notifications';
@@ -33,11 +34,37 @@ export const FAB_CLEARANCE = Spacing.four;
 /** Qual painel do header está aberto — só um por vez, como no Figma. */
 type OpenPanel = 'none' | 'profile';
 
-export function ScreenShell({ children }: { children: ReactNode }) {
+/**
+ * Esqueleto do conteúdo de uma aba: título, linha de apoio, o controle de seções e três cartões. Aparece no mesmo
+ * quadro do toque na barra de baixo, enquanto a tela de verdade monta.
+ */
+function ContentSkeleton() {
+  return (
+    <View style={{ paddingHorizontal: Spacing.three, paddingTop: 20, gap: Spacing.three }}>
+      <View style={{ gap: Spacing.two }}>
+        <Skeleton height={30} width="45%" />
+        <Skeleton height={14} width="70%" />
+      </View>
+      <Skeleton height={44} radius={22} />
+      <Skeleton height={120} radius={20} />
+      <Skeleton height={120} radius={20} />
+      <Skeleton height={120} radius={20} />
+    </View>
+  );
+}
+
+export function ScreenShell({ children, deferContent = false }: { children: ReactNode; deferContent?: boolean }) {
   const styles = useStyles();
+  // Com `deferContent` o cabeçalho e a barra de baixo respondem já; o conteúdo entra depois do primeiro quadro (e da
+  // transição), em vez de segurar o toque até a tela inteira montar.
+  const [ready, setReady] = useState(!deferContent);
+  useEffect(() => {
+    if (!deferContent) return;
+    const task = InteractionManager.runAfterInteractions(() => setReady(true));
+    return () => task.cancel();
+  }, [deferContent]);
   const [panel, setPanel] = useState<OpenPanel>('none');
   const [walletSheet, setWalletSheet] = useState(false);
-  const [shareSheet, setShareSheet] = useState(false);
   const router = useRouter();
   // A carteira É a identidade do app (`lib/wallet.tsx` grava a sessão
   // ao conectar) — não há mais um login separado dela para esperar aqui.
@@ -68,7 +95,11 @@ export function ScreenShell({ children }: { children: ReactNode }) {
         unreadCount={unreadCount}
       />
 
-      {children}
+      {ready ? (
+        deferContent ? <Reveal style={{ flex: 1 }}>{children}</Reveal> : children
+      ) : (
+        <ContentSkeleton />
+      )}
 
       <BottomNav />
 
@@ -80,13 +111,8 @@ export function ScreenShell({ children }: { children: ReactNode }) {
           close();
           setWalletSheet(true);
         }}
-        onShareProfile={() => {
-          close();
-          setShareSheet(true);
-        }}
       />
       <ConnectWalletSheet visible={walletSheet} onClose={() => setWalletSheet(false)} />
-      <ShareProfileSheet visible={shareSheet} onClose={() => setShareSheet(false)} />
     </View>
   );
 }

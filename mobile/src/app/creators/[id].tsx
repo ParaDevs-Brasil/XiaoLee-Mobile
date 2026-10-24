@@ -1,15 +1,16 @@
 import { Image } from 'expo-image';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useVideoPlayer, VideoView } from 'expo-video';
-import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Dimensions, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Defs, LinearGradient, Rect, Stop, Svg } from 'react-native-svg';
 
 import {
   createCreatorVideo,
   getCreatorCatalog,
   listCreatorVideos,
   listCreators,
+  updateCreator,
   writeCreatorScript,
   type CreatorCatalog,
   type CreatorPreview,
@@ -19,28 +20,38 @@ import {
 } from '@/api/backend';
 import { ApiError } from '@/api/client';
 import { useCreatorStyles as useStyles } from '@/components/creator-styles';
+import { CreatorEditSheet } from '@/components/creator-edit-sheet';
 import { CreatorFormatPicker, type CreatorFormat } from '@/components/creator-format-picker';
+import { VideoPlayerModal } from '@/components/clip-player';
+import { ExpandButton, PhotoViewer } from '@/components/photo-viewer';
+import { PressableScale } from '@/components/touch-motion';
 import { SwapPreview } from '@/components/swap-preview';
-import { UploadTile } from '@/components/upload-tile';
+import { VideoAction } from '@/components/video-action';
+import { MotionPicker } from '@/components/motion-picker';
 import { EmptyState } from '@/components/feedback';
 import {
   IconArrowRight,
   IconCheck,
   IconChevronLeft,
   IconChevronRight,
-  IconClose,
-  IconDollar,
+  IconDownload,
+  IconEdit,
   IconFileText,
   IconLightbulb,
+  IconMic,
   IconPlay,
+  IconSend,
   IconSpark,
   IconUser,
 } from '@/components/icons';
 import { FAB_CLEARANCE, PageHeading, ScreenShell } from '@/components/screen-shell';
 import { SectionCard } from '@/components/section-card';
+import { useVideoActions } from '@/hooks/use-video-actions';
+import { useKeyboard } from '@/hooks/use-keyboard';
 import { useTheme } from '@/hooks/use-theme';
 import { pickMotionVideo, uploadMotion, type PickedMotion } from '@/lib/creators';
-import { isVideoPending, maxWords, motionDurations, videoStatusLabel, wordCount } from '@/lib/creators-core';
+import { clampStart, isVideoPending, maxWords, motionDurations, videoStatusLabel, wordCount } from '@/lib/creators-core';
+import { canSaveClips, canShareClips } from '@/lib/clip-share';
 import { shortHash } from '@/lib/format';
 import { usePrivyWallet } from '@/lib/wallet';
 
@@ -65,6 +76,11 @@ export default function CreatorScreen() {
   const styles = useStyles();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const keyboard = useKeyboard();
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollY = useRef(0);
+  const [viewingPhoto, setViewingPhoto] = useState(false);
+  const [editing, setEditing] = useState(false);
   const wallet = usePrivyWallet();
 
   const [catalog, setCatalog] = useState<CreatorCatalog | null>(null);
@@ -86,7 +102,8 @@ export default function CreatorScreen() {
   const [chosenQuality, setQuality] = useState<CreatorQuality['quality']>('standard');
   const [confirming, setConfirming] = useState(false);
   const [paying, setPaying] = useState(false);
-  const [playing, setPlaying] = useState<string | null>(null);
+  const [playing, setPlaying] = useState<CreatorVideo | null>(null);
+  const { action, savedIds, run } = useVideoActions();
 
   const fail = (e: unknown) =>
     setError(e instanceof ApiError || e instanceof Error ? e.message : 'Something went wrong. Try again.');
@@ -130,6 +147,18 @@ export default function CreatorScreen() {
   const ready = moves
     ? Boolean(motion && motionRights && durations.includes(duration)) && (!narrated || scriptOk) && (!swap || preview?.status === 'ready')
     : scriptOk;
+  // O que falta para liberar o botão, na ordem em que a pessoa resolve.
+  const blocker = !catalog?.enabled
+    ? 'Not available right now'
+    : moves && !motion
+      ? 'Choose your video first'
+      : moves && !motionRights
+        ? 'Confirm you have the rights'
+        : narrated && !scriptOk
+          ? 'Add your script first'
+          : swap && preview?.status !== 'ready'
+            ? 'Make the free preview first'
+            : 'Almost there';
   const canPay = Boolean(catalog?.enabled && catalog.pay_to && price && ready) && !paying;
 
   async function pickMotion() {
@@ -146,8 +175,34 @@ export default function CreatorScreen() {
     }
   }
 
+  // Soltou a janela do corte noutro ponto: a prévia do Swap era de outro trecho, então refaz.
+  function pickStart(startS: number) {
+    setMotion((m) => (m ? { ...m, startS } : m));
+    setPreview(null);
+  }
+
+  // No Android com edge-to-edge o teclado cobre o campo e a lista não rola sozinha: quando ele sobe, leva o campo em
+  // foco para um pouco acima das teclas.
+  useEffect(() => {
+    if (!keyboard.visible) return;
+    const timer = setTimeout(() => {
+      const scroll = scrollRef.current;
+      const input = TextInput.State.currentlyFocusedInput?.();
+      if (!scroll || !input) return;
+      input.measure((_x, _y, _w, height, _pageX, pageY) => {
+        const bottom = pageY + height + 24;
+        const visibleBottom = Dimensions.get('window').height - keyboard.height;
+        if (bottom > visibleBottom) {
+          scroll.scrollTo({ y: scrollY.current + (bottom - visibleBottom), animated: true });
+        }
+      });
+    }, 60);
+    return () => clearTimeout(timer);
+  }, [keyboard.visible, keyboard.height]);
+
   async function writeForMe() {
     if (topic.trim().length < 3 || writing) return;
+    Keyboard.dismiss();
     setWriting(true);
     setError(null);
     try {
@@ -173,7 +228,14 @@ export default function CreatorScreen() {
         duration_s: duration,
         script: narrated ? script : scene,
         payment,
-        ...(key ? { motion_key: key, motion_rights_confirmed: true, audio } : {}),
+        ...(key && motion
+          ? {
+              motion_key: key,
+              motion_rights_confirmed: true,
+              audio,
+              motion_start_s: clampStart(motion.startS, motion.seconds, duration),
+            }
+          : {}),
         ...(swap && preview ? { preview_id: preview.id } : {}),
       });
       setVideos((list) => [video, ...list]);
@@ -192,6 +254,10 @@ export default function CreatorScreen() {
     }
   }
 
+  // Salvar ou compartilhar um vídeo pronto; um por vez, porque cada um baixa o MP4.
+  const runVideoAction = (video: CreatorVideo, kind: 'save' | 'share') =>
+    run(video, kind, `${creator?.name ?? 'Video'} · ${video.duration_s}s`);
+
   if (creator === null) {
     return (
       <ScreenShell>
@@ -204,29 +270,66 @@ export default function CreatorScreen() {
 
   return (
     <ScreenShell>
+      {/* O recuo do tamanho do teclado mantém o fim da lista alcançável; a barra de pagamento sai de cena enquanto se digita. */}
+      <View style={{ flex: 1, paddingBottom: keyboard.height }}>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: FAB_CLEARANCE + insets.bottom }]}
+        ref={scrollRef}
+        contentContainerStyle={[styles.content, { paddingBottom: FAB_CLEARANCE + (keyboard.visible ? 0 : insets.bottom) }]}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        onScroll={(e) => {
+          scrollY.current = e.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
       >
-        <View>
-          {router.canGoBack() ? (
-            <Pressable onPress={() => router.back()} style={styles.backBtn} accessibilityRole="button" accessibilityLabel="Back">
-              <IconChevronLeft size={20} sw={2.2} color={colors.ink} />
-            </Pressable>
-          ) : null}
-          <PageHeading title={creator?.name ?? 'Character'} subtitle="Choose what it does, then pay to make the video." />
-        </View>
-
         {creator?.image_url ? (
-          <View style={styles.heroWrap}>
-            <Image source={{ uri: creator.image_url }} style={{ width: '100%', height: 170 }} contentFit="cover" contentPosition={{ top: '28%' }} />
-            <View style={styles.heroPill}>
-              <IconSpark size={13} color={colors.onMedia} />
-              <Text style={styles.heroPillText}>AI Video</Text>
+          <View style={styles.heroTall}>
+            <Image source={{ uri: creator.image_url }} style={StyleSheet.absoluteFill} contentFit="cover" contentPosition={{ top: '12%' }} transition={200} />
+            {/* Fade suave do pé da foto: o nome e a voz ficam legíveis sem uma faixa dura cortando a imagem. */}
+            <Svg style={styles.heroFade} width="100%" height="100%" preserveAspectRatio="none" pointerEvents="none">
+              <Defs>
+                <LinearGradient id="heroFade" x1="0" y1="0" x2="0" y2="1">
+                  <Stop offset="0" stopColor="#1a1714" stopOpacity="0" />
+                  <Stop offset="1" stopColor="#1a1714" stopOpacity="0.82" />
+                </LinearGradient>
+              </Defs>
+              <Rect x="0" y="0" width="100%" height="100%" fill="url(#heroFade)" />
+            </Svg>
+            <View style={styles.heroActions}>
+              <PressableScale onPress={() => setEditing(true)} scaleTo={0.88} style={styles.heroBtn} accessibilityRole="button" accessibilityLabel="Edit character">
+                <IconEdit size={18} color={colors.ink} />
+              </PressableScale>
+              {/* A capa recorta a foto; este botão abre ela inteira. */}
+              <ExpandButton onPress={() => setViewingPhoto(true)} />
+            </View>
+            {router.canGoBack() ? (
+              <Pressable onPress={() => router.back()} style={styles.heroBack} accessibilityRole="button" accessibilityLabel="Back">
+                <IconChevronLeft size={20} sw={2.2} color={colors.ink} />
+              </Pressable>
+            ) : null}
+            <View style={styles.heroFoot}>
+              <Text style={styles.heroName} numberOfLines={1}>
+                {creator.name}
+              </Text>
+              {catalog?.voices.find((v) => v.id === creator.voice_id) ? (
+                <View style={styles.heroVoice}>
+                  <IconMic size={12} color={colors.onMedia} />
+                  <Text style={styles.heroVoiceText}>Voice: {catalog.voices.find((v) => v.id === creator.voice_id)?.name}</Text>
+                </View>
+              ) : null}
             </View>
           </View>
-        ) : null}
+        ) : (
+          <View>
+            {router.canGoBack() ? (
+              <Pressable onPress={() => router.back()} style={styles.backBtn} accessibilityRole="button" accessibilityLabel="Back">
+                <IconChevronLeft size={20} sw={2.2} color={colors.ink} />
+              </Pressable>
+            ) : null}
+            <PageHeading title={creator?.name ?? 'Character'} subtitle="Choose what it does, then pay to make the video." />
+          </View>
+        )}
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -241,19 +344,16 @@ export default function CreatorScreen() {
                 : 'Your character copies the moves from a video. The scene comes from the character’s photo.'
             }
           >
-            <UploadTile
-              title="Choose a video"
+            <MotionPicker
+              motion={motion}
+              windowS={moves ? duration : 0}
+              onPick={pickMotion}
+              onStart={pickStart}
               hint={
                 swap
                   ? 'The person you want to replace should be clearly in view.'
                   : 'One person, full body, staying in place, steady camera.'
               }
-              onPress={pickMotion}
-              Icon={IconPlay}
-              chosen={Boolean(motion)}
-              chosenTitle={motion ? `Video chosen · ${Math.round(motion.seconds)}s` : undefined}
-              height={150}
-              accessibilityLabel="Choose a video"
             />
             <Text style={styles.label}>Sound</Text>
             <View style={styles.chips}>
@@ -303,6 +403,7 @@ export default function CreatorScreen() {
           <SwapPreview
             creatorId={creatorId}
             motion={motion}
+            windowS={duration}
             rights={motionRights}
             motionKey={motionKey}
             onMotionKey={setMotionKey}
@@ -333,6 +434,10 @@ export default function CreatorScreen() {
                 placeholder="Give a topic and Xiaolee writes it"
                 placeholderTextColor={colors.ink3}
                 maxLength={500}
+                returnKeyType="send"
+                submitBehavior="blurAndSubmit"
+                onSubmitEditing={writeForMe}
+                autoCapitalize="sentences"
                 style={styles.topicInput}
               />
               <Pressable
@@ -396,92 +501,128 @@ export default function CreatorScreen() {
           ))}
         </SectionCard>
 
-        {!confirming ? (
-          <Pressable
-            onPress={() => setConfirming(true)}
-            disabled={!canPay}
-            style={[styles.generate, !canPay && styles.disabled]}
-            accessibilityRole="button"
-            accessibilityLabel={`Generate video${price !== null ? `, ${price.toFixed(2)} USDC` : ''}`}
-          >
-            <View style={styles.generateLabel}>
-              <IconSpark size={18} color={colors.onAccent} />
-              <Text style={styles.generateText}>Generate video</Text>
-            </View>
-            {price !== null ? (
-              <View style={styles.generatePrice}>
-                <IconDollar size={16} sw={2.2} color={colors.onAccent} />
-                <Text style={styles.generatePriceText}>{price.toFixed(2)} USDC</Text>
-              </View>
-            ) : null}
-          </Pressable>
-        ) : (
-          <SectionCard title={`Pay $${price?.toFixed(2)} in USDC?`} subtitle="Paid from your wallet. We start as soon as the payment goes through.">
-            <Pressable onPress={pay} disabled={paying} style={styles.primary} accessibilityRole="button">
-              {paying ? <ActivityIndicator color={colors.onAccent} /> : <Text style={styles.btnText}>Confirm &amp; pay</Text>}
-            </Pressable>
-            <Pressable onPress={() => setConfirming(false)} disabled={paying} accessibilityRole="button">
-              <Text style={styles.cancel}>Cancel</Text>
-            </Pressable>
-          </SectionCard>
-        )}
-
         {videos.length > 0 ? (
           <SectionCard title="Videos" subtitle={`${videos.length}`}>
             {videos.map((v) => (
-              <Pressable
-                key={v.id}
-                onPress={() => v.video_url && setPlaying(v.video_url)}
-                disabled={!v.video_url}
-                style={styles.row}
-                accessibilityRole="button"
-              >
-                <View style={styles.rowBody}>
-                  <View style={styles.rowTop}>
-                    {v.status === 'done' ? <IconCheck size={14} color={colors.accent} /> : null}
-                    <Text style={styles.provider}>{videoStatusLabel(v.status)}</Text>
+              <View key={v.id} style={styles.row}>
+                <Pressable
+                  onPress={() => v.video_url && setPlaying(v)}
+                  disabled={!v.video_url}
+                  style={[styles.rowBody, styles.rowTop]}
+                  accessibilityRole="button"
+                  accessibilityLabel={v.video_url ? `Play video, ${v.duration_s} seconds` : videoStatusLabel(v.status)}
+                >
+                  <View style={styles.rowBody}>
+                    <View style={styles.rowTop}>
+                      {v.status === 'done' ? <IconCheck size={14} color={colors.accent} /> : null}
+                      <Text style={styles.provider}>{videoStatusLabel(v.status)}</Text>
+                    </View>
+                    {v.status === 'failed' && v.error ? <Text style={styles.error}>{v.error}</Text> : null}
+                    <Text style={styles.desc} numberOfLines={2}>
+                      {v.script || { mimic: 'Mimic', swap: 'Replace' }[catalog?.qualities.find((q) => q.quality === v.quality)?.kind as string] || ''}
+                    </Text>
+                    <Text style={styles.desc}>
+                      {v.duration_s}s · ${v.price_usdc.toFixed(2)}{v.payment_tx ? ` · ${shortHash(v.payment_tx)}` : ''}
+                      {v.refund_due ? ' · refund pending' : ''}
+                    </Text>
                   </View>
-                  {v.status === 'failed' && v.error ? <Text style={styles.error}>{v.error}</Text> : null}
-                  <Text style={styles.desc} numberOfLines={2}>
-                    {v.script || { mimic: 'Mimic', swap: 'Swap' }[catalog?.qualities.find((q) => q.quality === v.quality)?.kind as string] || ''}
-                  </Text>
-                  <Text style={styles.desc}>
-                    {v.duration_s}s · ${v.price_usdc.toFixed(2)}{v.payment_tx ? ` · ${shortHash(v.payment_tx)}` : ''}
-                    {v.refund_due ? ' · refund pending' : ''}
-                  </Text>
-                </View>
-                {isVideoPending(v.status) ? <ActivityIndicator color={colors.accent} /> : null}
-                {v.video_url ? <IconPlay size={20} color={colors.accent} /> : null}
-              </Pressable>
+                  {isVideoPending(v.status) ? <ActivityIndicator color={colors.accent} /> : null}
+                  {v.video_url ? <IconPlay size={20} color={colors.accent} /> : null}
+                </Pressable>
+                {v.video_url ? (
+                  <View style={styles.rowTop}>
+                    {canSaveClips ? (
+                      <VideoAction
+                        Icon={savedIds.has(v.id) ? IconCheck : IconDownload}
+                        label={savedIds.has(v.id) ? 'Video saved to your gallery' : 'Save video to your gallery'}
+                        busy={action?.id === v.id && action.kind === 'save'}
+                        disabled={action !== null || savedIds.has(v.id)}
+                        onPress={() => runVideoAction(v, 'save')}
+                      />
+                    ) : null}
+                    {canShareClips ? (
+                      <VideoAction
+                        Icon={IconSend}
+                        label="Share video"
+                        busy={action?.id === v.id && action.kind === 'share'}
+                        disabled={action !== null}
+                        onPress={() => runVideoAction(v, 'share')}
+                      />
+                    ) : null}
+                  </View>
+                ) : null}
+              </View>
             ))}
           </SectionCard>
         ) : null}
       </ScrollView>
 
-      <Modal visible={playing !== null} animationType="slide" onRequestClose={() => setPlaying(null)}>
-        {playing ? <Player url={playing} onClose={() => setPlaying(null)} /> : null}
-      </Modal>
-    </ScreenShell>
-  );
-}
+      {keyboard.visible ? null : (
+      <View style={styles.payBar}>
+        {confirming ? (
+          <>
+            <View style={styles.payInfo}>
+              <Text style={styles.payTitle}>Pay ${price?.toFixed(2)} in USDC?</Text>
+              <Text style={styles.payHint} numberOfLines={2}>
+                Paid from your wallet. We start as soon as it goes through.
+              </Text>
+            </View>
+            <Pressable onPress={() => setConfirming(false)} disabled={paying} style={styles.payCancel} accessibilityRole="button">
+              <Text style={styles.payCancelText}>Cancel</Text>
+            </Pressable>
+            <Pressable onPress={pay} disabled={paying} style={styles.payBtn} accessibilityRole="button">
+              {paying ? <ActivityIndicator color={colors.onAccent} /> : <Text style={styles.payBtnText}>Confirm &amp; pay</Text>}
+            </Pressable>
+          </>
+        ) : (
+          <>
+            <View style={styles.payInfo}>
+              <Text style={styles.payMeta}>
+                {qualities.find((q) => q.quality === quality)?.label ?? 'Standard'} · {duration}s
+              </Text>
+              <Text style={styles.payPrice}>{price !== null ? `$${price.toFixed(2)}` : '–'}</Text>
+              <Text style={styles.payHint} numberOfLines={1}>
+                {canPay ? 'Paid in USDC from your wallet' : blocker}
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => setConfirming(true)}
+              disabled={!canPay}
+              style={[styles.payBtn, !canPay && styles.payBtnOff]}
+              accessibilityRole="button"
+              accessibilityLabel={`Create video${price !== null ? `, ${price.toFixed(2)} USDC` : ''}`}
+            >
+              <IconSpark size={18} color={colors.onAccent} />
+              <Text style={styles.payBtnText}>Create video</Text>
+            </Pressable>
+          </>
+        )}
+      </View>
+      )}
+      </View>
 
-function Player({ url, onClose }: { url: string; onClose: () => void }) {
-  const insets = useSafeAreaInsets();
-  const player = useVideoPlayer(url, (p) => {
-    p.loop = true;
-    p.play();
-  });
-  return (
-    <View style={{ flex: 1, backgroundColor: '#000' }}>
-      <VideoView player={player} nativeControls contentFit="contain" style={{ flex: 1 }} />
-      <Pressable
-        onPress={onClose}
-        style={{ position: 'absolute', top: insets.top + 12, right: 16, padding: 8 }}
-        accessibilityRole="button"
-        accessibilityLabel="Close"
-      >
-        <IconClose size={24} color="#fff" />
-      </Pressable>
-    </View>
+      {editing && creator ? (
+        <CreatorEditSheet
+          creator={creator}
+          voices={catalog?.voices ?? []}
+          onSave={async (patch) => {
+            setCreator(await updateCreator(creator.id, patch));
+          }}
+          onClose={() => setEditing(false)}
+        />
+      ) : null}
+      {viewingPhoto && creator?.image_url ? <PhotoViewer uri={creator.image_url} onClose={() => setViewingPhoto(false)} /> : null}
+
+      {/* A mesma tela de preview dos cortes do Clipper: play/pause, barra de tempo, Salvar e Compartilhar. */}
+      <VideoPlayerModal
+        video={playing?.video_url ? { title: creator?.name ?? 'Video', url: playing.video_url, durationS: playing.duration_s } : null}
+        onClose={() => setPlaying(null)}
+        onSave={playing && canSaveClips ? () => runVideoAction(playing, 'save') : undefined}
+        onShare={playing && canShareClips ? () => runVideoAction(playing, 'share') : undefined}
+        busy={action && action.id === playing?.id ? action.kind : null}
+        saved={playing ? savedIds.has(playing.id) : false}
+        actionsDisabled={action !== null}
+      />
+    </ScreenShell>
   );
 }

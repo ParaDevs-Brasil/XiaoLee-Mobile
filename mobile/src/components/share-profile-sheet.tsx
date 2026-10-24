@@ -36,7 +36,7 @@ import {
 } from '@/lib/share-profile';
 
 /**
- * Sheet do "compartilhar perfil" (XIAOLEEACE-21), aberto pelo `ProfileMenu`.
+ * Sheet do "compartilhar perfil" (XIAOLEEACE-21), aberto pela aba Share do Studio.
  *
  * Mostra o `ShareProfileCard` como preview, no formato que a pessoa escolher
  * (3:4, o padrão, ou 9:16), e manda imagem **e** legenda juntas, num só

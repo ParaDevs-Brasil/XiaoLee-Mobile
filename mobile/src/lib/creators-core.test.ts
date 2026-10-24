@@ -4,7 +4,7 @@
  */
 import assert from 'node:assert/strict';
 
-import { isVideoPending, maxWords, motionDurations, videoStatusLabel, wordCount } from './creators-core.ts';
+import { clampStart, isVideoPending, maxWords, motionDurations, videoStatusLabel, wordCount } from './creators-core.ts';
 
 function test(name: string, fn: () => void) {
   fn();
@@ -32,4 +32,11 @@ test('a motion video only allows durations it can cover (same 0.5 s slack as the
   assert.deepEqual(motionDurations([5, 10, 15], 4.6), [5]);
   assert.deepEqual(motionDurations([5, 10, 15], 3), []);
   assert.deepEqual(motionDurations([5, 10, 15], 0), []);
+});
+
+test('the picked part never runs past the end of the video', () => {
+  assert.equal(clampStart(10, 50, 5), 10);
+  assert.equal(clampStart(48, 50, 5), 45);
+  assert.equal(clampStart(-3, 50, 5), 0);
+  assert.equal(clampStart(10, 4, 5), 0);
 });

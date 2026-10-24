@@ -175,6 +175,35 @@ export const IconPlay = (p: IconProps) => (
   </Svg>
 );
 
+/** Microfone — a voz de um personagem. */
+export const IconMic = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Rect x="9" y="3" width="6" height="11" rx="3" />
+    <Path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+  </Svg>
+);
+
+export const IconSearch = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Circle cx="11" cy="11" r="7" />
+    <Path d="m20 20-3.5-3.5" />
+  </Svg>
+);
+
+export const IconShield = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Path d="M12 3 5 6v6c0 4.5 3 7.5 7 9 4-1.5 7-4.5 7-9V6l-7-3Z" />
+    <Path d="m9.5 12 2 2 3.5-4" />
+  </Svg>
+);
+
+export const IconPause = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Line x1="9" y1="5" x2="9" y2="19" />
+    <Line x1="15" y1="5" x2="15" y2="19" />
+  </Svg>
+);
+
 /** Corte — a entrada do Clipper. */
 export const IconScissors = (p: IconProps) => (
   <Svg {...base(p)}>
@@ -296,6 +325,13 @@ export const IconArrowsLeftRight = (p: IconProps) => (
     <Polyline points="16 4 20 8 16 12" />
     <Line x1="20" y1="16" x2="4" y2="16" />
     <Polyline points="8 12 4 16 8 20" />
+  </Svg>
+);
+
+export const IconArrowUp = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Line x1="12" y1="19" x2="12" y2="5" />
+    <Polyline points="5 12 12 5 19 12" />
   </Svg>
 );
 
@@ -558,5 +594,21 @@ export const IconVideo = (p: IconProps) => (
   <Svg {...base(p)}>
     <Path d="m22 8-6 4 6 4V8z" />
     <Rect x="2" y="6" width="14" height="12" rx="2" />
+  </Svg>
+);
+
+/** Coração — favoritar. `filled` pinta o miolo com a mesma cor do traço. */
+export const IconHeart = ({ filled, ...p }: IconProps & { filled?: boolean }) => (
+  <Svg {...base(p)} fill={filled ? (p.color ?? 'currentColor') : 'none'}>
+    <Path d="M12 20.5s-7.5-4.6-9.2-9.4C1.7 7.7 3.9 4.5 7.2 4.5c2 0 3.6 1.1 4.800 3 1.200-1.900 2.800-3 4.800-3 3.300 0 5.500 3.200 4.400 6.600-1.700 4.800-9.200 9.400-9.200 9.400Z" />
+  </Svg>
+);
+
+/** Controles deslizantes — abrir filtros. */
+export const IconSliders = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Path d="M4 7h9M17 7h3M4 17h3M11 17h9" />
+    <Circle cx="15" cy="7" r="2" />
+    <Circle cx="9" cy="17" r="2" />
   </Svg>
 );

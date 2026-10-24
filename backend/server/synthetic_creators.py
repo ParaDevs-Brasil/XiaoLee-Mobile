@@ -282,13 +282,13 @@ async def mux_audio(video: bytes, audio: bytes) -> bytes:
 
 
 async def _motion_and_sound(http: httpx.AsyncClient, motion: bytes, duration_s: int, audio: str, voice_id: str,
-                            script: str) -> tuple[bytes, bytes | None]:
+                            script: str, start_s: float = 0.0) -> tuple[bytes, bytes | None]:
     """(movimento cortado e SEM áudio para a fal, áudio a colar no resultado ou None)."""
     with tempfile.TemporaryDirectory() as tmp:
         src, dst, track = (os.path.join(tmp, n) for n in ("motion_in", "motion.mp4", "orig.m4a"))
         with open(src, "wb") as f:
             f.write(motion)
-        await clipper.run_ffmpeg(["-i", src, "-t", str(duration_s), "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+        await clipper.run_ffmpeg(["-ss", str(start_s), "-i", src, "-t", str(duration_s), "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p",
                                   "-preset", "veryfast", "-crf", "20", "-movflags", "+faststart", "-y", dst], src, 180)
         with open(dst, "rb") as f:
             cut = f.read()
@@ -297,7 +297,7 @@ async def _motion_and_sound(http: httpx.AsyncClient, motion: bytes, duration_s: 
         if audio == "original":
             # Referência sem faixa de áudio: o ffmpeg falha e o vídeo segue mudo, em vez de perder o pedido já pago.
             try:
-                await clipper.run_ffmpeg(["-i", src, "-t", str(duration_s), "-vn", "-c:a", "aac", "-y", track], src, 60)
+                await clipper.run_ffmpeg(["-ss", str(start_s), "-i", src, "-t", str(duration_s), "-vn", "-c:a", "aac", "-y", track], src, 60)
                 with open(track, "rb") as f:
                     return cut, f.read()
             except RuntimeError:
@@ -306,8 +306,8 @@ async def _motion_and_sound(http: httpx.AsyncClient, motion: bytes, duration_s: 
 
 
 async def render_mimic(*, quality: str, prompt: str, duration_s: int, ref_image_key: str, ref_content_type: str,
-                       motion_key: str, video_key: str, audio: str = "none", voice_id: str = "", script: str = "",
-                       on_step=None) -> None:
+                       motion_key: str, video_key: str, start_s: float = 0.0, audio: str = "none", voice_id: str = "",
+                       script: str = "", on_step=None) -> None:
     """Persona + vídeo de movimento → vídeo. A fal recebe o movimento cortado na duração paga e SEM áudio (`-an`):
     a música ou a voz do vídeo de referência só voltam se o usuário escolheu `audio="original"`, e voltam por aqui
     (ffmpeg), não pelo modelo. `audio="voice"` narra `script` com a voz da persona."""
@@ -316,7 +316,7 @@ async def render_mimic(*, quality: str, prompt: str, duration_s: int, ref_image_
     async with httpx.AsyncClient(timeout=120) as http:
         image = (await http.get(media_storage.presign_get(ref_image_key))).raise_for_status().content
         motion = (await http.get(media_storage.presign_get(motion_key))).raise_for_status().content
-        cut, sound = await _motion_and_sound(http, motion, duration_s, audio, voice_id, script)
+        cut, sound = await _motion_and_sound(http, motion, duration_s, audio, voice_id, script, start_s)
         image_url = await _fal_upload(http, image, ref_content_type, "ref" + _ext(ref_content_type))
         video_url = await _fal_upload(http, cut, "video/mp4", "motion.mp4")
         url = await _fal_video(http, QUALITIES[quality]["model"], mimic_input(image_url, video_url, prompt))
@@ -368,14 +368,14 @@ async def probe_size(url: str) -> tuple[int, int]:
         raise ValueError("could not read the reference video")
 
 
-async def compose_frame(*, motion_key: str, ref_image_key: str, ref_content_type: str) -> bytes:
+async def compose_frame(*, motion_key: str, start_s: float = 0.0, ref_image_key: str, ref_content_type: str) -> bytes:
     """PNG do primeiro quadro do vídeo com o personagem no lugar da pessoa. O ffmpeg lê o vídeo pela URL pré-assinada
     (só o começo; nada de baixar 100 MB)."""
     video_url = media_storage.presign_get(motion_key)
     width, height = await probe_size(video_url)
     with tempfile.TemporaryDirectory() as tmp:
         frame = os.path.join(tmp, "frame.png")
-        await clipper.run_ffmpeg(["-ss", "0.5", "-i", video_url, "-frames:v", "1", "-y", frame], video_url, 60)
+        await clipper.run_ffmpeg(["-ss", str(start_s + 0.5), "-i", video_url, "-frames:v", "1", "-y", frame], video_url, 60)
         with open(frame, "rb") as f:
             frame_png = f.read()
     image = await read_object(ref_image_key)
@@ -463,13 +463,13 @@ async def _angles(http: httpx.AsyncClient, char_url: str) -> list[str]:
     return urls or [char_url]
 
 
-async def _trim_with_audio(source: bytes, duration_s: int) -> bytes:
+async def _trim_with_audio(source: bytes, duration_s: int, start_s: float = 0.0) -> bytes:
     with tempfile.TemporaryDirectory() as tmp:
         src, dst = os.path.join(tmp, "in"), os.path.join(tmp, "cut.mp4")
         with open(src, "wb") as f:
             f.write(source)
-        await clipper.run_ffmpeg(["-i", src, "-t", str(duration_s), "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset",
-                                  "veryfast", "-crf", "18", "-c:a", "aac", "-movflags", "+faststart", "-y", dst], src, 240)
+        await clipper.run_ffmpeg(["-ss", str(start_s), "-i", src, "-t", str(duration_s), "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                                  "-preset", "veryfast", "-crf", "18", "-c:a", "aac", "-movflags", "+faststart", "-y", dst], src, 240)
         with open(dst, "rb") as f:
             return f.read()
 
@@ -495,13 +495,13 @@ async def _has_audio(video: bytes) -> bool:
         return bool((await asyncio.to_thread(_run, f.name)).stdout.strip())
 
 
-async def _source_audio(source: bytes, duration_s: int) -> bytes | None:
+async def _source_audio(source: bytes, duration_s: int, start_s: float = 0.0) -> bytes | None:
     with tempfile.TemporaryDirectory() as tmp:
         src, dst = os.path.join(tmp, "in"), os.path.join(tmp, "a.m4a")
         with open(src, "wb") as f:
             f.write(source)
         try:
-            await clipper.run_ffmpeg(["-i", src, "-t", str(duration_s), "-vn", "-c:a", "aac", "-y", dst], src, 60)
+            await clipper.run_ffmpeg(["-ss", str(start_s), "-i", src, "-t", str(duration_s), "-vn", "-c:a", "aac", "-y", dst], src, 60)
         except RuntimeError:
             return None
         with open(dst, "rb") as f:
@@ -509,7 +509,7 @@ async def _source_audio(source: bytes, duration_s: int) -> bytes | None:
 
 
 async def render_swap(*, quality: str, instructions: str, duration_s: int, ref_image_key: str, ref_content_type: str,
-                      frame_key: str, motion_key: str, video_key: str, audio: str = "original", voice_id: str = "",
+                      frame_key: str, motion_key: str, video_key: str, start_s: float = 0.0, audio: str = "original", voice_id: str = "",
                       script: str = "", on_step=None) -> None:
     """Edita o vídeo do usuário trocando a pessoa principal pelo personagem (Kling O3 Edit). O personagem vai como
     `element` (a imagem + ângulos extras gerados) e o quadro aprovado na prévia guia a aparência na cena. Som: `original`
@@ -519,7 +519,7 @@ async def render_swap(*, quality: str, instructions: str, duration_s: int, ref_i
     source = await read_object(motion_key)
     image = await read_object(ref_image_key)
     frame = await read_object(frame_key)
-    cut = await _trim_with_audio(source, duration_s)
+    cut = await _trim_with_audio(source, duration_s, start_s)
     async with httpx.AsyncClient(timeout=180) as http:
         video_url = await _fal_upload(http, cut, "video/mp4", "scene.mp4")
         char_url = await _fal_upload(http, image, ref_content_type, "char" + _ext(ref_content_type))
@@ -540,7 +540,7 @@ async def render_swap(*, quality: str, instructions: str, duration_s: int, ref_i
     elif voice:
         video = await mux_audio(video, voice)
     elif not await _has_audio(video):
-        original = await _source_audio(source, duration_s)
+        original = await _source_audio(source, duration_s, start_s)
         if original:
             video = await mux_audio(video, original)
 
