@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { cn } from "@/lib/utils";
 import { useLang } from "@/lib/lang";
 import { useLive, useSequence } from "@/lib/hooks";
-import { Bezel, MascotVideo, Reveal, SectionHead } from "@/components/kit";
+import { Bezel, MascotVideo, Reveal } from "@/components/kit";
 import { BorderBeam } from "@/components/ui/border-beam";
 import { Marquee } from "@/components/ui/marquee";
 import { NumberTicker } from "@/components/ui/number-ticker";
@@ -14,18 +14,59 @@ import {
 
 const EASE = [0.32, 0.72, 0, 1] as const;
 
+// three.js is ~500 KB: it loads only once the stage is near the viewport
+const HorizonScene = lazy(() => import("@/components/ui/horizon-scene").then((m) => ({ default: m.HorizonScene })));
+
+/** The section's opening: a night horizon that the camera flies toward as you scroll past it. */
+function HorizonHead() {
+  const { t } = useLang();
+  const stage = useRef<HTMLDivElement | null>(null);
+  const progress = useRef(0);
+  const [near, setNear] = useState(false);
+
+  useEffect(() => {
+    const el = stage.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([e]) => e.isIntersecting && setNear(true), { rootMargin: "400px" });
+    io.observe(el);
+    const onScroll = () => {
+      const r = el.getBoundingClientRect();
+      progress.current = Math.min(1, Math.max(0, (innerHeight - r.top) / (innerHeight + r.height)));
+    };
+    onScroll();
+    addEventListener("scroll", onScroll, { passive: true });
+    return () => { io.disconnect(); removeEventListener("scroll", onScroll); };
+  }, []);
+
+  return (
+    <Reveal y={36}>
+      <div ref={stage} className="relative isolate min-h-[520px] overflow-hidden rounded-[2.5rem] bg-[radial-gradient(ellipse_80%_60%_at_50%_100%,#4a1245_0%,#1a0b24_55%,#0a0610_100%)] shadow-[0_60px_120px_-50px_rgba(120,20,70,0.7)] ring-1 ring-white/10 sm:min-h-[640px] sm:rounded-[3.5rem] lg:min-h-[720px]">
+        {near && <Suspense fallback={null}><HorizonScene progress={progress} /></Suspense>}
+        <div aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_60%_50%_at_50%_38%,rgba(10,6,16,0.55),transparent_70%)]" />
+        <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-[#07040b] to-transparent" />
+        <div className="relative z-10 flex min-h-[inherit] flex-col items-center justify-center px-6 py-24 text-center sm:py-32">
+          <h2 className="display text-[clamp(44px,7.6vw,108px)] text-white [text-shadow:0_6px_60px_rgba(224,40,132,0.35)]">
+            {t.can.h2a} <span className="serif-em block text-[#ff7fbd]">{t.can.h2b}</span>
+          </h2>
+          <p className="mt-7 max-w-xl text-[clamp(16px,1.5vw,19px)] leading-relaxed text-white/70">{t.can.sub}</p>
+          <div aria-hidden className="mt-12 flex flex-col items-center gap-3 text-white/45">
+            <span className="h-14 w-px bg-gradient-to-b from-white/60 to-transparent" />
+          </div>
+        </div>
+      </div>
+    </Reveal>
+  );
+}
+
 /** `split`: on wide screens the copy sits beside the visual instead of above it (for a full-width tile). */
 function Tile({
-  tag, title, body, className, children, visualClass, split,
-}: { tag: string; title: string; body: string; className?: string; children: ReactNode; visualClass?: string; split?: boolean }) {
+  title, body, className, children, visualClass, split,
+}: { title: string; body: string; className?: string; children: ReactNode; visualClass?: string; split?: boolean }) {
   return (
     <Reveal className={cn("h-full", className)}>
       <Bezel glow radius={36} pad={7} className="group h-full" coreClassName={cn("flex h-full flex-col p-6 sm:p-7", split && "lg:flex-row lg:items-center lg:gap-10")}>
         <div className={cn(split && "lg:w-[34%] lg:shrink-0")}>
-          <div className="flex items-center gap-2">
-            <span className="rounded-full bg-accent-soft px-3 py-1 text-[10.5px] font-bold uppercase tracking-[0.18em] text-accent">{tag}</span>
-          </div>
-          <h3 className="mt-4 text-[clamp(22px,2.2vw,28px)] font-bold leading-tight tracking-tight text-ink">{title}</h3>
+          <h3 className="text-[clamp(22px,2.2vw,28px)] font-bold leading-tight tracking-tight text-ink">{title}</h3>
           <p className="mt-2 max-w-md text-[15px] leading-relaxed text-ink-2">{body}</p>
         </div>
         <div className={cn("relative mt-6 flex-1", split && "lg:mt-0 lg:min-w-0", visualClass)}>{children}</div>
@@ -505,16 +546,16 @@ export function Can() {
     <section id="can" className="relative py-28 sm:py-40">
       <div aria-hidden className="absolute inset-x-0 top-0 -z-10 h-full bg-[linear-gradient(180deg,transparent,var(--wash)_35%,var(--wash)_75%,transparent)]" />
       <div className="mx-auto max-w-[1280px] px-5 sm:px-8">
-        <SectionHead eyebrow={t.can.eyebrow} a={t.can.h2a} b={t.can.h2b} sub={t.can.sub} />
+        <HorizonHead />
 
-        <div className="mt-16 grid gap-4 lg:grid-cols-12">
-          <Tile className="lg:col-span-7 lg:row-span-2" tag={k.clipper.tag} title={k.clipper.title} body={k.clipper.body}><ClipperDemo /></Tile>
-          <Tile className="lg:col-span-5" tag={k.payout.tag} title={k.payout.title} body={k.payout.body}><PayoutDemo /></Tile>
-          <Tile className="lg:col-span-5" tag={k.campaign.tag} title={k.campaign.title} body={k.campaign.body}><CampaignDemo /></Tile>
-          <Tile className="lg:col-span-7" tag={k.chat.tag} title={k.chat.title} body={k.chat.body}><ChatDemo /></Tile>
-          <Tile className="lg:col-span-5" tag={k.doors.tag} title={k.doors.title} body={k.doors.body} visualClass="flex items-center justify-center"><DoorsDemo /></Tile>
-          <Tile className="lg:col-span-12" split tag={k.creators.tag} title={k.creators.title} body={k.creators.body}><CreatorsDemo /></Tile>
-          <Tile className="lg:col-span-12" split tag={k.chains.tag} title={k.chains.title} body={k.chains.body}><ChainsDemo /></Tile>
+        <div className="mt-6 grid gap-4 lg:grid-cols-12">
+          <Tile className="lg:col-span-7 lg:row-span-2" title={k.clipper.title} body={k.clipper.body}><ClipperDemo /></Tile>
+          <Tile className="lg:col-span-5" title={k.payout.title} body={k.payout.body}><PayoutDemo /></Tile>
+          <Tile className="lg:col-span-5" title={k.campaign.title} body={k.campaign.body}><CampaignDemo /></Tile>
+          <Tile className="lg:col-span-7" title={k.chat.title} body={k.chat.body}><ChatDemo /></Tile>
+          <Tile className="lg:col-span-5" title={k.doors.title} body={k.doors.body} visualClass="flex items-center justify-center"><DoorsDemo /></Tile>
+          <Tile className="lg:col-span-12" split title={k.creators.title} body={k.creators.body}><CreatorsDemo /></Tile>
+          <Tile className="lg:col-span-12" split title={k.chains.title} body={k.chains.body}><ChainsDemo /></Tile>
         </div>
       </div>
 
