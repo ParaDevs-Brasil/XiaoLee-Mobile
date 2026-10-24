@@ -1,4 +1,4 @@
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 
 import { fetchCampaignsAndParticipation } from '@/app/campaigns/index';
 import { CampaignCard } from '@/components/campaign-card';

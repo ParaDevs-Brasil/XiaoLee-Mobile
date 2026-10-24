@@ -100,7 +100,7 @@ export function RadarCard({
               See the post on X
             </Text>
           ) : null}
-          {t.verify ? <Text style={styles.verify}>Seen only in a small account's post. Check it before posting.</Text> : null}
+          {t.verify ? <Text style={styles.verify}>Seen only in a small account&apos;s post. Check it before posting.</Text> : null}
           {t.angles.map((a) => (
             <Pressable
               key={a.kind}
