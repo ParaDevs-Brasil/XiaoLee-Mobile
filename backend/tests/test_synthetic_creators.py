@@ -210,6 +210,40 @@ async def test_persona_needs_the_image_rights_term(db, monkeypatch):
     assert c.rights_confirmed_at is not None
 
 
+def test_presigned_put_does_not_sign_the_size(monkeypatch):
+    """O R2 real responde 403 se o corpo tiver outro tamanho que o assinado (o seletor recomprime a imagem)."""
+    seen = {}
+
+    class FakeS3:
+        def generate_presigned_url(self, op, Params, ExpiresIn):
+            seen.update(Params)
+            return "https://r2/put"
+
+    monkeypatch.setattr(routes.media_storage, "_client", lambda: FakeS3())
+    routes.media_storage.presign_put("creators/1/x/ref.png", "image/png", 1000)
+    assert seen["ContentType"] == "image/png" and "ContentLength" not in seen
+
+
+@pytest.mark.asyncio
+async def test_complete_rejects_and_deletes_an_image_over_the_limit(db, monkeypatch):
+    cid, h = await _persona(db)
+    c = await db.get(SyntheticCreator, cid)
+    c.status = "pending"
+    await db.commit()
+    gone = []
+
+    async def size(key):
+        return routes.MAX_IMAGE_BYTES + 1
+
+    async def delete(key):
+        gone.append(key)
+
+    monkeypatch.setattr(routes.media_storage, "object_size", size)
+    monkeypatch.setattr(routes.media_storage, "delete_object", delete)
+    r = client.post(f"/v1/creators/{cid}/complete", headers=h)
+    assert r.status_code == 413 and gone == [c.ref_image_key]
+
+
 def test_seedance_failure_points_to_the_models_that_accept_the_image():
     assert "Standard or Pro" in routes._failure_message("pro_seedance")
     assert "refunded" in routes._failure_message("standard")

@@ -261,6 +261,9 @@ async def complete_creator(creator_id: int, authorization: Optional[str] = Heade
         raise HTTPException(503, "Uploads are unavailable right now. Try again later.")
     if size is None:
         raise HTTPException(409, "The photo didn't finish uploading. Try again.")
+    if size > MAX_IMAGE_BYTES:  # o tamanho não é assinado no URL: o limite vale pelo que realmente subiu
+        await media_storage.delete_object(c.ref_image_key)
+        raise HTTPException(413, "That image is too large. The limit is 15 MB.")
     c.status = "ready"
     await db.commit()
     return _creator_out(c)
@@ -441,8 +444,12 @@ async def _check_motion_key(user_id: int, key: str | None, rights: bool) -> str:
     if not key.startswith(f"creators/{user_id}/motion/") or ".." in key:
         raise HTTPException(422, "We couldn't find that video. Choose it again.")
     try:
-        if await media_storage.object_size(key) is None:
+        size = await media_storage.object_size(key)
+        if size is None:
             raise HTTPException(409, "The video didn't finish uploading. Try again.")
+        if size > sc.MAX_MOTION_BYTES:  # o tamanho não é assinado no URL: o limite vale pelo que realmente subiu
+            await media_storage.delete_object(key)
+            raise HTTPException(413, f"That video is too large. The limit is {sc.MAX_MOTION_BYTES // 1024**2} MB.")
         return media_storage.presign_get(key)
     except media_storage.StorageNotConfigured:
         raise HTTPException(503, "Uploads are unavailable right now. Try again later.")
