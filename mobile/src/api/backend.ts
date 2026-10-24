@@ -1217,6 +1217,16 @@ export function completeCreator(id: number): Promise<SyntheticCreator> {
   return apiFetch<SyntheticCreator>(`/v1/creators/${id}/complete`, { method: 'POST' });
 }
 
+/**
+ * Rename a character and/or change its voice (only the fields sent change). The photo is not editable here.
+ *
+ * `PATCH /v1/creators/{id}` with `{ name?: string (1–60), voice_id?: string (from the catalog) }` → the updated
+ * `SyntheticCreator`. 404 if the character isn't the caller's, 422 for an unknown voice or a blank name.
+ */
+export function updateCreator(id: number, patch: { name?: string; voice_id?: string }): Promise<SyntheticCreator> {
+  return apiFetch<SyntheticCreator>(`/v1/creators/${id}`, { method: 'PATCH', json: patch });
+}
+
 export function deleteCreator(id: number): Promise<void> {
   return apiFetch<void>(`/v1/creators/${id}`, { method: 'DELETE' });
 }
@@ -1244,6 +1254,8 @@ export function createCreatorVideo(
     audio?: 'none' | 'original' | 'voice';
     /** Só no Swap: a prévia aprovada; o vídeo sai do quadro dela. */
     preview_id?: number;
+    /** Só no `mimic`/Swap: o trecho usado começa neste segundo do vídeo. */
+    motion_start_s?: number;
   },
 ): Promise<CreatorVideo> {
   return apiFetch<CreatorVideo>(`/v1/creators/${creatorId}/videos`, { method: 'POST', json: request });
@@ -1260,7 +1272,7 @@ export interface CreatorPreview {
 /** Swap: quadro de prévia (personagem no lugar da pessoa do vídeo). Grátis, com limite diário. */
 export function createSwapPreview(
   creatorId: number,
-  request: { motion_key: string; motion_rights_confirmed: boolean },
+  request: { motion_key: string; motion_rights_confirmed: boolean; motion_start_s?: number },
 ): Promise<CreatorPreview> {
   return apiFetch<CreatorPreview>(`/v1/creators/${creatorId}/previews`, { method: 'POST', json: request });
 }

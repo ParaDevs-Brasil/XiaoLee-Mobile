@@ -56,6 +56,8 @@ export interface PickedMotion {
   size: number;
   /** Segundos; o backend confere de novo com ffprobe. */
   seconds: number;
+  /** Segundo do vídeo onde o trecho usado começa (o corte); 0 = do início. */
+  startS: number;
 }
 
 /** Vídeo de movimento do mimic, da galeria. `null` se cancelar. */
@@ -69,6 +71,7 @@ export async function pickMotionVideo(): Promise<PickedMotion | null> {
     contentType: asset.mimeType ?? 'video/mp4',
     size: asset.fileSize ?? file.size ?? 0,
     seconds: (asset.duration ?? 0) / 1000,
+    startS: 0,
   };
 }
 

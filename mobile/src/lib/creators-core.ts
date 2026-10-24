@@ -33,3 +33,12 @@ export function isVideoPending(status: string): boolean {
 export function motionDurations(durations: number[], seconds: number): number[] {
   return durations.filter((d) => d <= seconds + 0.5);
 }
+
+/**
+ * Onde o trecho começa, mantido dentro do vídeo: o trecho de `windowS` segundos nunca passa do fim (o backend confere
+ * `duração - início >= janela - 0,5`). Trocar a duração para uma maior empurra o início para trás sozinho.
+ */
+export function clampStart(startS: number, totalS: number, windowS: number): number {
+  const max = Math.max(0, totalS - windowS);
+  return Math.min(Math.max(0, startS), max);
+}
