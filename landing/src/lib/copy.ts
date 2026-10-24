@@ -5,13 +5,13 @@ export type Lang = "en" | "pt";
 export type Status = "live" | "soon";
 
 const en = {
-  nav: { can: "What she does", how: "How it works", trust: "Trust", cta: "Join waitlist", main: "Main", menu: "Menu" },
+  nav: { can: "What she does", how: "How it works", trust: "Trust", cta: "Get the app", main: "Main", menu: "Menu" },
   hero: {
     h1a: "Get paid for",
     h1b: "your content.",
     sub: "Cut your long videos into clips, join paid campaigns from brands, and get USDC in your wallet as soon as your post is verified, not at the end of the month. No bank, no card. All by chatting.",
-    cta1: "Join the waitlist",
-    cta2: "See what she does",
+    cta1: "Download the app",
+    cta2: "Join the waitlist",
     trust: ["Your keys, your money", "Paid in USDC", "No bank or card needed"],
     prompts: [
       "make 3 clips from my podcast",
@@ -33,6 +33,7 @@ const en = {
       campaign: { tag: "For brands", title: "Brands launch by chatting", body: "A brand describes a campaign in one sentence and she builds it field by field. That's how paid campaigns reach you." },
       payout: { tag: "Payouts", title: "Do the task, get paid", body: "Join a campaign, do the tasks and tell her you're done. She checks them live and releases the USDC to you, with a receipt." },
       clipper: { tag: "Clipper", title: "One video, three clips", body: "Upload a podcast, live or talk. Xiaolee picks the 3 strongest moments and cuts them into vertical 9:16 clips with captions. Play, save, or share to TikTok, Reels and Shorts." },
+      creators: { tag: "AI Creators", title: "A character that talks for you", body: "Add a photo, pick a voice, write a script. Get a talking video of your character. You pay per video, in USDC." },
       chains: { tag: "Cross-chain", title: "Any chain → Arc", body: "We're building it so funds from Solana, EVM or Stellar land on Arc without a bridge screen or manual swaps." },
       doors: { tag: "Channels", title: "Four front doors", body: "The same agent in the mobile app, the web app, Telegram and X DMs. One brain." },
     },
@@ -50,6 +51,7 @@ const en = {
     campaign: { chips: ["R$500 pool", "3 days", "RT + follow", "500 spots"], askLine: "Budget, criteria and duration — got it. Publish?" },
     payout: { tasks: ["Follow @xiaolee_ai", "Repost the launch thread", "Comment your favorite feature"], claim: "Claim", unit: "USDC", via: "Settled on-chain" },
     clipper: { source: "podcast-ep12.mp4", len: "48:12", clips: ["The hook", "The story", "The punchline"], ready: "3 clips ready" },
+    creators: { photo: "Photo", voice: "Voice", video: "Video", voiceName: "Pri · Warm & natural", ready: "Ready" },
     chains: { arc: "Arc", note: "Native USDC" },
   },
   strip: {
@@ -114,12 +116,27 @@ const en = {
       { to: 2, suffix: "", label: "languages, detected automatically" },
     ],
   },
+  dl: {
+    title: "Download started",
+    sub: "Check your Downloads. Here's how to be paid in a few minutes.",
+    close: "Close",
+    stepsTitle: "Your next steps",
+    steps: [
+      { title: "Open the file", body: "Tap the download. Android may ask you to allow installs from your browser: allow it once, then tap Install." },
+      { title: "Create your account", body: "Open Xiaolee and sign in. A wallet is created for you, with no seed phrase." },
+      { title: "Connect your X account", body: "So she can post for you and track your numbers." },
+      { title: "Make your first clip", body: "Pick a long video. Xiaolee cuts it into three vertical clips." },
+      { title: "Join a paid campaign", body: "Do the tasks, she checks them and the USDC lands in your wallet." },
+    ],
+    again: "Didn't start? Download again",
+    note: "Android only for now.",
+  },
   cta: {
     eyebrow: "Ready when you are",
     h2a: "Make your",
     h2b: "content pay.",
-    sub: "Join the waitlist, say hi, and be among the first creators to get paid through Xiaolee. She never touches your keys.",
-    btn: "Join the waitlist",
+    sub: "Download the app, say hi, and get paid for the content you already make. She never touches your keys.",
+    btn: "Download the app",
   },
   footer: { tag: "The conversational agent for creator money — USDC on Arc.", backed: "Backed by ParaDevs", terms: "Terms", privacy: "Privacy" },
   wl: {
@@ -165,13 +182,13 @@ const en = {
 export type Copy = typeof en;
 
 const pt: Copy = {
-  nav: { can: "O que ela faz", how: "Como funciona", trust: "Confiança", cta: "Lista de espera", main: "Principal", menu: "Menu" },
+  nav: { can: "O que ela faz", how: "Como funciona", trust: "Confiança", cta: "Baixar o app", main: "Principal", menu: "Menu" },
   hero: {
     h1a: "Ganhe com o",
     h1b: "seu conteúdo.",
     sub: "Corte seus vídeos longos em clipes, entre em campanhas pagas de marcas e receba USDC na carteira assim que seu post for verificado, não no fim do mês. Sem banco, sem cartão. Tudo conversando.",
-    cta1: "Entrar na lista de espera",
-    cta2: "Veja o que ela faz",
+    cta1: "Baixar o app",
+    cta2: "Entrar na lista de espera",
     trust: ["Suas chaves, seu dinheiro", "Pago em USDC", "Sem banco nem cartão"],
     prompts: [
       "faz 3 cortes do meu podcast",
@@ -193,6 +210,7 @@ const pt: Copy = {
       campaign: { tag: "Para marcas", title: "Marcas criam conversando", body: "A marca descreve a campanha em uma frase e ela monta campo a campo. É assim que as campanhas pagas chegam até você." },
       payout: { tag: "Pagamentos", title: "Faça a tarefa, receba", body: "Entre numa campanha, faça as tarefas e avise que terminou. Ela confere ao vivo e libera o USDC pra você, com recibo." },
       clipper: { tag: "Clipper", title: "Um vídeo, três cortes", body: "Envie um podcast, live ou palestra. A Xiaolee escolhe os 3 melhores momentos e corta em clipes verticais 9:16 com legenda. Assista, salve ou compartilhe no TikTok, Reels e Shorts." },
+      creators: { tag: "AI Creators", title: "Um personagem que fala por você", body: "Adicione uma foto, escolha uma voz, escreva o roteiro. Receba um vídeo do seu personagem falando. Você paga por vídeo, em USDC." },
       chains: { tag: "Multi-chain", title: "Qualquer chain → Arc", body: "Estamos construindo para que fundos de Solana, EVM ou Stellar cheguem ao Arc sem tela de bridge nem swap manual." },
       doors: { tag: "Canais", title: "Quatro portas de entrada", body: "O mesmo agente no app mobile, no app web, no Telegram e nas DMs do X. Um cérebro só." },
     },
@@ -210,6 +228,7 @@ const pt: Copy = {
     campaign: { chips: ["Pool R$500", "3 dias", "RT + follow", "500 vagas"], askLine: "Orçamento, critérios e duração — anotado. Publicar?" },
     payout: { tasks: ["Seguir @xiaolee_ai", "Repostar o thread de lançamento", "Comentar sua função favorita"], claim: "Resgatar", unit: "USDC", via: "Liquidado on-chain" },
     clipper: { source: "podcast-ep12.mp4", len: "48:12", clips: ["O gancho", "A história", "A virada"], ready: "3 cortes prontos" },
+    creators: { photo: "Foto", voice: "Voz", video: "Vídeo", voiceName: "Pri · calorosa e natural", ready: "Pronto" },
     chains: { arc: "Arc", note: "USDC nativo" },
   },
   strip: {
@@ -274,12 +293,27 @@ const pt: Copy = {
       { to: 2, suffix: "", label: "idiomas, detectados sozinhos" },
     ],
   },
+  dl: {
+    title: "Download iniciado",
+    sub: "Veja seus Downloads. Assim você começa a receber em poucos minutos.",
+    close: "Fechar",
+    stepsTitle: "Seus próximos passos",
+    steps: [
+      { title: "Abra o arquivo", body: "Toque no download. O Android pode pedir para permitir instalações do seu navegador: permita uma vez e toque em Instalar." },
+      { title: "Crie sua conta", body: "Abra a Xiaolee e entre. Uma carteira é criada para você, sem frase secreta." },
+      { title: "Conecte sua conta do X", body: "Para ela postar por você e acompanhar seus números." },
+      { title: "Faça seu primeiro corte", body: "Escolha um vídeo longo. A Xiaolee corta em três clipes verticais." },
+      { title: "Entre numa campanha paga", body: "Faça as tarefas, ela confere e o USDC chega na sua carteira." },
+    ],
+    again: "Não começou? Baixar de novo",
+    note: "Só Android por enquanto.",
+  },
   cta: {
     eyebrow: "Quando você quiser",
     h2a: "Faça seu",
     h2b: "conteúdo render.",
-    sub: "Entre na lista de espera, diga oi e esteja entre os primeiros criadores a receber pela Xiaolee. Ela nunca toca nas suas chaves.",
-    btn: "Entrar na lista de espera",
+    sub: "Baixe o app, diga oi e receba pelo conteúdo que você já faz. Ela nunca toca nas suas chaves.",
+    btn: "Baixar o app",
   },
   footer: { tag: "O agente conversacional para o dinheiro de criadores — USDC no Arc.", backed: "Apoiado pela ParaDevs", terms: "Termos", privacy: "Privacidade" },
   wl: {
