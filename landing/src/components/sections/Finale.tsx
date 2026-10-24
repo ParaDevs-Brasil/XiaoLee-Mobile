@@ -59,7 +59,7 @@ export function Footer() {
           <p className="mt-4 max-w-sm text-[14.5px] leading-relaxed text-ink-2">{t.footer.tag}</p>
         </div>
         <p className="text-[13.5px] font-semibold text-ink-2">
-          {t.footer.backed} · <a className="bg-gradient-to-r from-accent to-accent bg-[length:0%_1.5px] bg-left-bottom bg-no-repeat pb-0.5 transition-[background-size,color] duration-500 ease-spring hover:bg-[length:100%_1.5px] hover:text-accent" href="/terms">{t.footer.terms}</a> · <a className="bg-gradient-to-r from-accent to-accent bg-[length:0%_1.5px] bg-left-bottom bg-no-repeat pb-0.5 transition-[background-size,color] duration-500 ease-spring hover:bg-[length:100%_1.5px] hover:text-accent" href="/privacy">{t.footer.privacy}</a>
+          <a className="bg-gradient-to-r from-accent to-accent bg-[length:0%_1.5px] bg-left-bottom bg-no-repeat pb-0.5 transition-[background-size,color] duration-500 ease-spring hover:bg-[length:100%_1.5px] hover:text-accent" href="https://paradevs.io" target="_blank" rel="noopener noreferrer">{t.footer.backed}</a> · <a className="bg-gradient-to-r from-accent to-accent bg-[length:0%_1.5px] bg-left-bottom bg-no-repeat pb-0.5 transition-[background-size,color] duration-500 ease-spring hover:bg-[length:100%_1.5px] hover:text-accent" href="/terms">{t.footer.terms}</a> · <a className="bg-gradient-to-r from-accent to-accent bg-[length:0%_1.5px] bg-left-bottom bg-no-repeat pb-0.5 transition-[background-size,color] duration-500 ease-spring hover:bg-[length:100%_1.5px] hover:text-accent" href="/privacy">{t.footer.privacy}</a>
         </p>
       </div>
       {/* the word itself, oversized and cropped by the page edge; it lights up under the cursor */}

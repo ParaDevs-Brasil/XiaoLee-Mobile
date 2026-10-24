@@ -56,6 +56,20 @@ const en = {
     row1: ["9:16 captioned clips", "Join campaign", "Live task verification", "Get paid in USDC", "On-chain receipts", "Share your profile", "Words-to-get-right glossary", "Create campaign by chat"],
     row2: ["Live balance", "Send by @handle", "Swap USDC", "Telegram", "X DMs", "Push notifications", "PT/EN auto-detect", "Embedded wallet"],
   },
+  studio: {
+    eyebrow: "Inside the app",
+    h2a: "Your whole creator studio,",
+    h2b: "in your pocket.",
+    sub: "Clip, create with AI, check your numbers and get paid. One app, one chat. Screens below use example data.",
+    items: [
+      { id: "clips", title: "Clips", body: "Drop in a podcast, live or talk, up to 2 GB. She transcribes it, finds the strongest moments and cuts three vertical clips with captions." },
+      { id: "creators", title: "AI Creators", body: "Add a photo, pick a voice, write a script. Get a talking video of your character. You pay per video, in USDC." },
+      { id: "voices", title: "Voices", body: "Browse curated voices, from Brazilian narrators to villains. Search, favorite and tap play to hear each one before you choose." },
+      { id: "reports", title: "Reports", body: "A clear recap of what you earned, what you made and what to do next. Your first one lands 30 days after you join." },
+      { id: "share", title: "Share", body: "A Xiaolee card to post anywhere, and drafts, previews and publishing to X straight from the chat." },
+      { id: "grow", title: "Grow", body: "Explore campaigns from brands, join the ones that fit you and track your rewards." },
+    ],
+  },
   how: {
     eyebrow: "How it works",
     h2a: "Four steps.",
@@ -201,6 +215,20 @@ const pt: Copy = {
   strip: {
     row1: ["Cortes 9:16 legendados", "Entrar em campanha", "Verificação ao vivo", "Receber em USDC", "Recibos on-chain", "Compartilhar seu perfil", "Glossário de termos", "Criar campanha no chat"],
     row2: ["Saldo ao vivo", "Envio por @handle", "Swap de USDC", "Telegram", "DMs do X", "Notificações push", "Detecção PT/EN", "Carteira embutida"],
+  },
+  studio: {
+    eyebrow: "Dentro do app",
+    h2a: "Seu estúdio de criador,",
+    h2b: "no bolso.",
+    sub: "Corte, crie com IA, acompanhe seus números e receba. Um app, um chat. As telas abaixo usam dados de exemplo.",
+    items: [
+      { id: "clips", title: "Cortes", body: "Envie um podcast, live ou palestra de até 2 GB. Ela transcreve, acha os melhores momentos e corta três clipes verticais com legenda." },
+      { id: "creators", title: "AI Creators", body: "Adicione uma foto, escolha uma voz, escreva o roteiro. Receba um vídeo do seu personagem falando. Você paga por vídeo, em USDC." },
+      { id: "voices", title: "Vozes", body: "Vozes selecionadas, de narradores brasileiros a vilões. Busque, favorite e toque em play para ouvir antes de escolher." },
+      { id: "reports", title: "Relatórios", body: "Um resumo claro do que você ganhou, do que fez e do que fazer agora. O primeiro chega 30 dias depois do cadastro." },
+      { id: "share", title: "Share", body: "Um cartão Xiaolee para postar onde quiser, e rascunhos, prévia e publicação no X direto do chat." },
+      { id: "grow", title: "Grow", body: "Explore campanhas de marcas, entre nas que combinam com você e acompanhe suas recompensas." },
+    ],
   },
   how: {
     eyebrow: "Como funciona",

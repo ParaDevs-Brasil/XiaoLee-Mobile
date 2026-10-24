@@ -325,3 +325,19 @@ body {
 @keyframes lang-wipe { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
 ::view-transition-old(root) { animation: none; mix-blend-mode: normal; }
 ::view-transition-new(root) { animation: lang-wipe 0.5s var(--ease-out-expo) both; mix-blend-mode: normal; }
+
+/* App mockups — the mobile app's own tokens (mobile/src/constants/theme.ts), scoped so the landing keeps its light theme. */
+.app-ui {
+  --a-bg: #141316; --a-card: #1f1c20; --a-border: #332f34; --a-ink: #f5f2f0; --a-ink2: #b7b2ac; --a-ink3: #8c8781;
+  --a-accent: #f0509a; --a-fill: #d81b78; --a-soft: #3a1428; --a-success: #34c98a; --a-success-soft: #0f2b20; --a-tray: #2b282d;
+  --a-hero: #3a1428;
+  font-family: var(--font-sans);
+  color: var(--a-ink);
+}
+.app-ui.light {
+  --a-bg: #f6f4f1; --a-card: #ffffff; --a-border: #ece9e4; --a-ink: #1a1917; --a-ink2: #6b6862; --a-ink3: #736f68;
+  --a-accent: #d81b78; --a-fill: #d81b78; --a-soft: #fdf0f6; --a-success: #187048; --a-success-soft: #e6f5ee; --a-tray: #ece9e4;
+  --a-hero: #fdf0f6;
+}
+.app-scroll { scrollbar-width: none; }
+.app-scroll::-webkit-scrollbar { display: none; }
