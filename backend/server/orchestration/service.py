@@ -15,7 +15,7 @@ from server.integrations.solana_client import SolanaClient
 from server.integrations.stellar_adapter import StellarAdapter
 from server.schemas import IntentResponse
 from server.settings import settings
-from server import radar_chat_tools, social_chat_tools
+from server import ask_chat_tools, radar_chat_tools, social_chat_tools
 
 logger = logging.getLogger(__name__)
 
@@ -701,6 +701,7 @@ class OrchestrationService:
             "compatível: MetaMask, Rabby, Phantom, Freighter). " + language_rule(language)
             + (f"\n\nPUBLICAR NAS REDES:\n{social_chat_tools.SOCIAL_PROMPT}" if self._social_on(stellar_wallet) else "")
             + (f"\n\nRADAR DE TENDÊNCIAS:\n{radar_chat_tools.RADAR_PROMPT}" if self._radar_on(stellar_wallet) else "")
+            + (f"\n\nPERGUNTAS NO CHAT:\n{ask_chat_tools.ASK_PROMPT}" if settings.ask_cards_enabled else "")
         )
 
     def _make_stellar_executor(
@@ -801,6 +802,13 @@ class OrchestrationService:
             # (ver `app.py::chat_compat`, `session_token or "web_anonymous"`),
             # então reconstruir `Bearer {user_id}` é exatamente o Authorization
             # que o endpoint REST receberia do app.
+            if tool_name in ask_chat_tools.ASK_TOOL_NAMES and settings.ask_cards_enabled:
+                result, execution = await ask_chat_tools.run(tool_name, tool_input)
+                captured["actions"].append(tool_name)
+                if execution:
+                    captured["execution"] = execution
+                return json.dumps(result)
+
             if tool_name in social_chat_tools.SOCIAL_TOOL_NAMES | radar_chat_tools.RADAR_TOOL_NAMES:
                 if user_id == "web_anonymous" or unverified_caller.get():
                     return json.dumps({
@@ -1096,6 +1104,7 @@ class OrchestrationService:
         """
         social = social_chat_tools.SOCIAL_TOOLS if cls._social_on(stellar_wallet) else []
         social = [*social, *(radar_chat_tools.RADAR_TOOLS if cls._radar_on(stellar_wallet) else [])]
+        social = [*social, *(ask_chat_tools.ASK_TOOLS if settings.ask_cards_enabled else [])]
         if not evm_wallet:
             return [*STELLAR_AGENT_TOOLS, *social]
         tools = [t for t in STELLAR_AGENT_TOOLS if stellar_wallet or t["function"]["name"] != "stellar_swap_quote"]

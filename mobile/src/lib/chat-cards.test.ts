@@ -7,7 +7,7 @@
  */
 import assert from 'node:assert/strict';
 
-import { draftFrom, insightsFrom, matchCards, optionsFrom, radarFrom, trendsFrom, type StoredWithCards } from './chat-cards.ts';
+import { askFrom, draftFrom, insightsFrom, matchCards, optionsFrom, radarFrom, trendsFrom, type StoredWithCards } from './chat-cards.ts';
 
 function test(name: string, fn: () => void) {
   fn();
@@ -138,4 +138,18 @@ test('radar: o resultado guardado volta junto da mensagem ao reabrir a conversa'
     [{ role: 'assistant', content: 'Fui vasculhar o X', at: '9', radar }],
   );
   assert.deepEqual(out[0]?.radar, radar);
+});
+
+test('askFrom: cartão de perguntas só com status ask_open e pelo menos uma pergunta', () => {
+  assert.equal(askFrom(undefined), undefined);
+  assert.equal(askFrom({ status: 'ask_open', ask: { questions: [] } }), undefined);
+  const ask = askFrom({
+    status: 'ask_open',
+    ask: { mode: 'form', title: 'Plan', questions: [{ id: 'q0', label: 'Goal?', short: 'Goal', options: ['A', ' B '], multi: true, other: true }] },
+  });
+  assert.deepEqual(ask, {
+    mode: 'form', title: 'Plan',
+    questions: [{ id: 'q0', label: 'Goal?', short: 'Goal', options: ['A', 'B'], multi: true, other: true }],
+  });
+  assert.equal(askFrom({ status: 'ask_open', ask: { questions: [{ label: 'x', options: [] }] } })?.mode, 'wizard');
 });

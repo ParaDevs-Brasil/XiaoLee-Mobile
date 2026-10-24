@@ -31,6 +31,7 @@ import {
 } from '@/lib/avatar-animation';
 import {
   draftFrom,
+  askFrom,
   insightsFrom,
   radarFrom,
   matchCards,
@@ -627,10 +628,11 @@ export default function ChatScreen() {
       const draft = draftFrom(result.execution);
       const options = optionsFrom(result.execution);
       const radar = radarFrom(result.execution);
+      const ask = askFrom(result.execution);
       const storedAt = new Date().toISOString();
       setMessages((current) => [
         ...current,
-        { id: `x${Date.now()}`, author: 'xiaolee', text: reply, time: now(), transfer, claim, swap, post, insights, draft, options, radar, storedAt },
+        { id: `x${Date.now()}`, author: 'xiaolee', text: reply, time: now(), transfer, claim, swap, post, insights, draft, options, radar, ask, storedAt },
       ]);
       // O texto gravado é o mesmo que foi para a bolha, fallback incluído —
       // o histórico não deve divergir do que a tela mostrou. Os cards vão junto:

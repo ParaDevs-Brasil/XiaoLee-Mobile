@@ -177,3 +177,22 @@ def test_daily_usd_cap_pauses_the_radar(fake, monkeypatch):
         out, ex = await radar.run("get_trend_radar", {"niche": "b"}, None, "tok")
         assert out["error"] == "radar_off" and ex is None and len(fake) == 1
     asyncio.run(go())
+
+
+def test_ask_questions_cleans_the_card_and_the_tool_needs_its_flag(monkeypatch):
+    ask_tools = importlib.import_module("server.ask_chat_tools")
+    result, ex = asyncio.run(ask_tools.run("ask_questions", {
+        "title": "Plan", "mode": "form",
+        "questions": [{"label": "Goal?", "short": "Goal", "options": ["A", "Outro valor", "B", "C", "D", "E", "F"], "multi": True},
+                      {"label": "Notes?", "short": "Notes", "options": []}, {"label": "  "}],
+    }))
+    assert result == {"asked": True} and ex["status"] == "ask_open"
+    qs = ex["ask"]["questions"]
+    assert ex["ask"]["mode"] == "form" and len(qs) == 2 and len(qs[0]["options"]) == 5 and qs[0]["multi"]
+    assert qs[1]["text"] and not qs[1]["other"]
+    assert asyncio.run(ask_tools.run("ask_questions", {"questions": []}))[0]["error"] == "bad_questions"
+
+    set_settings(monkeypatch, ask_cards_enabled=False)
+    assert "ask_questions" not in NAMES(Orch._tools_for(None, "0xabc"))
+    set_settings(monkeypatch, ask_cards_enabled=True)
+    assert "ask_questions" in NAMES(Orch._tools_for(None, "0xabc"))

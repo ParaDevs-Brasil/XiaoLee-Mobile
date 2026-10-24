@@ -75,6 +75,8 @@ class Settings:
     radar_tools_enabled: bool = os.getenv("RADAR_TOOLS_ENABLED", "false").lower() in ("true", "1", "yes")
     xai_api_key: str = os.getenv("XAI_API_KEY", "")
     xai_model: str = os.getenv("XAI_MODEL", "grok-4.7")
+    # Cartões de perguntas no chat (server/ask_chat_tools.py). Desligado = a Xiaolee pergunta em texto, como sempre.
+    ask_cards_enabled: bool = os.getenv("ASK_CARDS_ENABLED", "false").lower() in ("true", "1", "yes")
     radar_max_runs_per_day: int = int(os.getenv("RADAR_MAX_RUNS_PER_DAY", "7"))
     # Disjuntor da casa: gasto estimado do radar (Grok + Claude) por dia, somando todos os creators. 0 = sem teto.
     radar_daily_usd_cap: float = float(os.getenv("RADAR_DAILY_USD_CAP", "20"))

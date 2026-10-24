@@ -176,6 +176,25 @@ export function radarFrom(execution: Record<string, unknown> | undefined): CardR
   return { jobId: String(r.job_id), niche: String(r.niche ?? ''), status: 'pending', trends: [] };
 }
 
+/** `execution.ask` (tool `ask_questions`) -> cartão de perguntas, ou `undefined` se não for um ou vier sem perguntas. */
+export function askFrom(execution: Record<string, unknown> | undefined): CardAsk | undefined {
+  if (!execution || execution.status !== 'ask_open') return undefined;
+  const a = execution.ask as { mode?: string; title?: string; questions?: Record<string, unknown>[] } | undefined;
+  const questions = (Array.isArray(a?.questions) ? a.questions : [])
+    .filter((q) => q && typeof q.label === 'string' && q.label.trim())
+    .map((q, i): AskQuestion => ({
+      id: String(q.id ?? `q${i}`),
+      label: String(q.label).trim(),
+      short: String(q.short ?? q.label).trim(),
+      options: (Array.isArray(q.options) ? q.options : []).map((o) => String(o).trim()).filter(Boolean),
+      ...(q.multi === true ? { multi: true } : {}),
+      ...(q.other === true ? { other: true } : {}),
+      ...(q.text === true ? { text: true } : {}),
+    }));
+  if (!questions.length) return undefined;
+  return { mode: a?.mode === 'form' ? 'form' : 'wizard', title: String(a?.title ?? '').trim() || 'A few questions', questions };
+}
+
 /** Estado de card que acompanha uma mensagem da Xiaolee. */
 export interface ChatCards {
   transfer?: CardTransfer;
