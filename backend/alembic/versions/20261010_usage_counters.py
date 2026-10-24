@@ -3,7 +3,7 @@
 Contador diário de mensagens que chegam na LLM (cota do plano grátis + disjuntor global).
 
 Revision ID: 20261010_usage_counters
-Revises: 20261010_media_glossary
+Revises: 20261022_creator_motion
 Create Date: 2026-10-10
 """
 
@@ -13,7 +13,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = "20261010_usage_counters"
-down_revision = "20261010_media_glossary"
+down_revision = "20261022_creator_motion"
 branch_labels = None
 depends_on = None
 
