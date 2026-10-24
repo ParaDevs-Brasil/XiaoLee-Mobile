@@ -41,7 +41,7 @@ export function Studio() {
   return (
     <section id="app" className="relative px-5 py-24 sm:px-8 sm:py-32">
       <div className="mx-auto max-w-6xl">
-        <SectionHead eyebrow={s.eyebrow} a={s.h2a} b={s.h2b} sub={s.sub} />
+        <SectionHead a={s.h2a} b={s.h2b} sub={s.sub} />
         <div className="mt-14 grid items-center gap-12 lg:grid-cols-[1fr_auto] lg:gap-20">
           <Reveal delay={0.1} className="order-2 lg:order-1">
             <ul role="tablist" aria-label={s.eyebrow} className="space-y-2">

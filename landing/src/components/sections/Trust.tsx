@@ -84,7 +84,7 @@ export function Trust() {
         <div aria-hidden className="absolute inset-0 -z-10 opacity-[0.07] [background-image:linear-gradient(white_1px,transparent_1px),linear-gradient(90deg,white_1px,transparent_1px)] [background-size:64px_64px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_75%)]" />
 
         <div className="mx-auto max-w-[1280px] px-5 sm:px-8">
-          <SectionHead dark eyebrow={t.trust.eyebrow} a={t.trust.h2a} b={t.trust.h2b} sub={t.trust.sub} />
+          <SectionHead dark a={t.trust.h2a} b={t.trust.h2b} sub={t.trust.sub} />
 
           <div className="mt-16 grid gap-10 lg:grid-cols-[1fr_1fr] lg:gap-14">
             <Reveal><AgentLoop /></Reveal>

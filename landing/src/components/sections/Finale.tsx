@@ -1,5 +1,5 @@
 import { useLang } from "@/lib/lang";
-import { Bezel, CtaButton, Eyebrow, MascotVideo, Reveal, Wordmark } from "@/components/kit";
+import { Bezel, CtaButton, MascotVideo, Reveal, Wordmark } from "@/components/kit";
 import { useWaitlist } from "@/components/Waitlist";
 import { Meteors } from "@/components/ui/meteors";
 import { Tilt } from "@/components/ui/tilt";
@@ -25,8 +25,7 @@ export function Cta() {
 
           <div className="relative z-10 grid items-end gap-8 px-6 pt-16 sm:px-14 sm:pt-24 lg:grid-cols-[1.2fr_0.8fr]">
             <div className="pb-14 sm:pb-24">
-              <Eyebrow>{t.cta.eyebrow}</Eyebrow>
-              <h2 className="display mt-7 text-[clamp(48px,8vw,116px)] text-ink">
+              <h2 className="display text-[clamp(48px,8vw,116px)] text-ink">
                 {t.cta.h2a} <span className="serif-em text-accent">{t.cta.h2b}</span>
               </h2>
               <p className="mt-6 max-w-md text-[17px] leading-relaxed text-ink/65">{t.cta.sub}</p>

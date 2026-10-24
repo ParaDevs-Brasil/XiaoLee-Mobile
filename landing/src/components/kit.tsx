@@ -14,24 +14,6 @@ export function Reveal({ children, delay = 0, className, y = 22 }: { children: R
   );
 }
 
-export function Eyebrow({ children, dark = false, className }: { children: ReactNode; dark?: boolean; className?: string }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[10.5px] font-semibold uppercase tracking-[0.22em]",
-        dark ? "bg-white/6 text-white/70 ring-1 ring-white/10" : "bg-white/70 text-ink-2 ring-1 ring-ink/8",
-        className,
-      )}
-    >
-      <span className="relative flex size-1.5">
-        <span className="absolute inline-flex size-full animate-pulse-ring rounded-full bg-accent" />
-        <span className="relative inline-flex size-1.5 rounded-full bg-accent" />
-      </span>
-      {children}
-    </span>
-  );
-}
-
 /**
  * Double-bezel: an outer tray with hairline ring, an inner core with concentric radius.
  * `glow` lights the tray edge and tints the core under a mouse pointer (see .glow in index.css); the pointer only
@@ -139,13 +121,12 @@ export function MascotVideo({
 }
 
 export function SectionHead({
-  eyebrow, a, b, sub, dark = false, center = false,
-}: { eyebrow: string; a: string; b: string; sub?: string; dark?: boolean; center?: boolean }) {
+  a, b, sub, dark = false, center = false,
+}: { a: string; b: string; sub?: string; dark?: boolean; center?: boolean }) {
   return (
     <div className={cn("max-w-3xl", center && "mx-auto text-center")}>
-      <Reveal><Eyebrow dark={dark}>{eyebrow}</Eyebrow></Reveal>
-      <Reveal delay={0.08}>
-        <h2 className={cn("display mt-6 text-[clamp(40px,6.2vw,84px)]", dark ? "text-white" : "text-ink")}>
+      <Reveal>
+        <h2 className={cn("display text-[clamp(40px,6.2vw,84px)]", dark ? "text-white" : "text-ink")}>
           {a} <span className="serif-em block text-accent">{b}</span>
         </h2>
       </Reveal>
