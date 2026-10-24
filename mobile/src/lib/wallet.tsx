@@ -22,9 +22,13 @@ import {
   linkWallet,
   loginWithPrivy,
   relayUsdcAuthorization,
+  type RelayAuthorizationRequest,
 } from '@/api/backend';
 import { useSession } from '@/hooks/use-session';
 import { isRealSession } from '@/lib/auth-state';
+import { ARC_NETWORK } from '@/lib/arc-network';
+import { estimateArcSwap, executeArcSwap, type ArcSwapQuote, type ArcSwapReceipt } from '@/lib/arc-swap';
+import type { ArcSwapRequest } from '@/lib/arc-swap-request';
 import { shortHash } from '@/lib/format';
 import { clearSession, clearWallet, saveSession, saveWallet } from '@/lib/session';
 
@@ -41,28 +45,25 @@ import { clearSession, clearWallet, saveSession, saveWallet } from '@/lib/sessio
  */
 
 /**
- * Chain do Arc Testnet, espelho de `ARC_CHAIN_ID` no backend
- * (`server/settings.py:97`, exposto em `GET /v1/arc/chain-config`).
+ * Chain do Arc usada pelo app (mainnet ou testnet, ver `lib/arc-network.ts`),
+ * espelho de `ARC_CHAIN_ID` no backend (`server/settings.py`, exposto em
+ * `GET /v1/arc/chain-config`).
  *
- * Duplicado aqui de propósito, em vez de buscado: o `PrivyProvider` precisa
+ * Duplicada aqui de propósito, em vez de buscada: o `PrivyProvider` precisa
  * desta config no primeiro render, antes de qualquer chamada async poder
- * resolver. Se o id do testnet mudar, atualizar aqui e em
- * `components/arc-network-sheet.tsx`... — não, aquele arquivo saiu: a
- * carteira embutida nasce direto nesta chain, então o problema que ele
- * existia para resolver (nenhuma carteira externa aceita cadastrar o Arc)
- * não existe mais.
+ * resolver. A carteira embutida nasce direto nesta chain.
  */
-export const ARC_CHAIN_ID = 5042002;
+export const ARC_CHAIN_ID = ARC_NETWORK.chainId;
 
-export const arcTestnetChain = defineChain({
+export const arcChain = defineChain({
   id: ARC_CHAIN_ID,
-  name: 'Arc Testnet',
+  name: ARC_NETWORK.name,
   nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 6 },
   rpcUrls: {
-    default: { http: ['https://rpc.testnet.arc.network'] },
+    default: { http: [ARC_NETWORK.rpcUrl] },
   },
   blockExplorers: {
-    default: { name: 'Arcscan', url: 'https://testnet.arcscan.app' },
+    default: { name: ARC_NETWORK.explorerName, url: ARC_NETWORK.explorerUrl },
   },
 });
 
@@ -100,6 +101,8 @@ interface WalletContextValue {
    * hash da tx submetida pelo backend.
    */
   signAndRelay: (to: string, amountUsdc: number) => Promise<string>;
+  /** Só assina a autorização EIP-3009 (a rota que cobra faz o relay). */
+  signUsdcAuthorization: (to: string, amountUsdc: number) => Promise<RelayAuthorizationRequest>;
   /**
    * Assinatura EIP-191 (`personal_sign`) sobre uma mensagem UTF-8 qualquer —
    * devolve a assinatura hex de 65 bytes. É a prova de posse da carteira que
@@ -107,6 +110,10 @@ interface WalletContextValue {
    * resgates de campanha sem sessão custodial.
    */
   signMessage: (message: string) => Promise<string>;
+  /** Cotação de um swap na Arc (App Kit da Circle) — não executa nada. */
+  estimateSwap: (request: ArcSwapRequest) => Promise<ArcSwapQuote>;
+  /** Executa o swap na carteira do usuário; ele confirma no próprio app. */
+  swap: (request: ArcSwapRequest) => Promise<ArcSwapReceipt>;
 }
 
 /** O provider da carteira embutida fala JSON-RPC; só isto é usado daqui. */
@@ -162,6 +169,18 @@ async function signAndRelayAuthorization(
   to: string,
   amountUsdc: number,
 ): Promise<string> {
+  const relayed = await relayUsdcAuthorization(await signAuthorization(requester, from, to, amountUsdc));
+  console.log(`[3009] relay ok: tx=${relayed.tx_hash} confirmada=${relayed.confirmed}`);
+  return relayed.tx_hash;
+}
+
+/** Só a assinatura EIP-3009, sem relay — para rotas que cobram e fazem o relay elas mesmas. */
+async function signAuthorization(
+  requester: Requester,
+  from: string,
+  to: string,
+  amountUsdc: number,
+): Promise<RelayAuthorizationRequest> {
   const domain = await getUsdcAuthorizationDomain();
   const validBefore = Math.floor(Date.now() / 1000) + AUTHORIZATION_TTL_S;
   const nonce = randomNonce();
@@ -215,7 +234,7 @@ async function signAndRelayAuthorization(
   }
   console.log(`[3009] assinatura recebida (${signature?.length ?? 0} chars)`);
 
-  const relayed = await relayUsdcAuthorization({
+  return {
     from_address: from,
     to_address: to,
     value,
@@ -223,9 +242,7 @@ async function signAndRelayAuthorization(
     valid_before: validBefore,
     nonce,
     signature,
-  });
-  console.log(`[3009] relay ok: tx=${relayed.tx_hash} confirmada=${relayed.confirmed}`);
-  return relayed.tx_hash;
+  };
 }
 
 /**
@@ -429,9 +446,33 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     return signAndRelayAuthorization(await requester(), address, to, amountUsdc);
   }
 
+  async function signUsdcAuthorization(to: string, amountUsdc: number): Promise<RelayAuthorizationRequest> {
+    if (!address) throw new Error('Nenhuma carteira conectada.');
+    return signAuthorization(await requester(), address, to, amountUsdc);
+  }
+
   async function signMessage(message: string): Promise<string> {
     if (!address) throw new Error('Nenhuma carteira conectada.');
     return personalSign(await requester(), address, message);
+  }
+
+  /** Provider já conferido: a carteira precisa estar na Arc, como no envio de USDC. */
+  async function arcProvider() {
+    if (!address) throw new Error('Nenhuma carteira conectada.');
+    const r = await requester();
+    const chainId = await currentChainId(r);
+    if (chainId !== ARC_CHAIN_ID) {
+      throw new Error(`Sua carteira está na chain ${chainId ?? 'desconhecida'}, não no Arc (${ARC_CHAIN_ID}).`);
+    }
+    return r;
+  }
+
+  async function estimateSwap(request: ArcSwapRequest): Promise<ArcSwapQuote> {
+    return estimateArcSwap(await arcProvider(), request);
+  }
+
+  async function swap(request: ArcSwapRequest): Promise<ArcSwapReceipt> {
+    return executeArcSwap(await arcProvider(), request);
   }
 
   const value = useMemo(
@@ -444,7 +485,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       retrySession,
       signAndSend,
       signAndRelay,
+      signUsdcAuthorization,
       signMessage,
+      estimateSwap,
+      swap,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [user, address, sessionError],

@@ -33,7 +33,8 @@ import {
   type IconProps,
 } from '@/components/icons';
 import { BackgroundGlow, IconArrowRight, SparkleStar } from '@/components/login-decorations';
-import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useKeyboard } from '@/hooks/use-keyboard';
 
 /**
@@ -44,7 +45,7 @@ import { useKeyboard } from '@/hooks/use-keyboard';
  * preenchido.
  *
  * Mesmo padrão de formulário de `campaigns/new.tsx`, sem o "Cancel": este
- * passo não é dispensável no primeiro acesso (`index.tsx` redireciona para
+ * passo não é dispensável no primeiro acesso (a Home, `index.tsx`, redireciona para
  * aqui enquanto `onboarded` for `false`), então não há para onde voltar.
  *
  * Também serve como tela de edição — `/onboarding?edit=1` (link do
@@ -89,6 +90,8 @@ const INITIAL: FormState = {
 };
 
 export default function OnboardingScreen() {
+  const colors = useTheme();
+  const styles = useStyles();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const keyboard = useKeyboard();
@@ -177,7 +180,7 @@ export default function OnboardingScreen() {
         // `replace`, não `push`: o onboarding não deve ficar na pilha — o
         // voltar do Android não pode trazer o usuário de volta ao
         // questionário já respondido.
-        router.replace('/dashboard');
+        router.replace('/');
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));
@@ -193,7 +196,7 @@ export default function OnboardingScreen() {
       <BackgroundGlow />
       <SparkleStar
         size={14}
-        color={Colors.light.accent}
+        color={colors.accent}
         style={[styles.sparkle, { top: insets.top + 64 }]}
       />
 
@@ -214,7 +217,7 @@ export default function OnboardingScreen() {
               <Text style={styles.wordmark}>
                 Xiao<Text style={styles.wordmarkAccent}>lee</Text>
               </Text>
-              <SparkleStar size={14} color={Colors.light.accent} style={styles.wordmarkSpark} />
+              <SparkleStar size={14} color={colors.accent} style={styles.wordmarkSpark} />
             </View>
             <Text style={styles.title} accessibilityRole="header">
               {isEditing ? 'Edit your profile' : 'Welcome to Xiaolee'}
@@ -288,13 +291,13 @@ export default function OnboardingScreen() {
                     {Icon ? (
                       <Icon
                         size={16}
-                        color={active ? Colors.light.accent : Colors.light.ink3}
+                        color={active ? colors.accent : colors.ink3}
                       />
                     ) : null}
                     <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
                     {active ? (
                       <View style={styles.chipCheck}>
-                        <IconCheck size={11} sw={3.2} color={Colors.light.card} />
+                        <IconCheck size={11} sw={3.2} color={colors.onAccent} />
                       </View>
                     ) : null}
                   </Pressable>
@@ -361,11 +364,11 @@ export default function OnboardingScreen() {
             accessibilityState={{ disabled: !valid || submitting, busy: submitting }}
           >
             {submitting ? (
-              <ActivityIndicator color={Colors.light.card} />
+              <ActivityIndicator color={colors.onAccent} />
             ) : (
               <View style={styles.submitContent}>
                 <Text style={styles.submitText}>{isEditing ? 'Save changes' : 'Continue'}</Text>
-                <IconArrowRight size={18} color={Colors.light.card} />
+                <IconArrowRight size={18} color={colors.onAccent} />
               </View>
             )}
           </Pressable>
@@ -402,6 +405,8 @@ function Field({
   icon: (color: string) => ReactNode;
   disabled?: boolean;
 }) {
+  const colors = useTheme();
+  const styles = useStyles();
   const inputRef = useRef<TextInput>(null);
   const [focused, setFocused] = useState(false);
   const [touched, setTouched] = useState(false);
@@ -410,10 +415,10 @@ function Field({
   // nunca no primeiro render, para o formulário não nascer "vermelho".
   const invalid = !!required && touched && !focused && value.trim().length === 0;
   const iconColor = invalid
-    ? Colors.light.danger
+    ? colors.danger
     : focused || value.length > 0
-      ? Colors.light.accent
-      : Colors.light.ink3;
+      ? colors.accent
+      : colors.ink3;
 
   return (
     <View style={[styles.field, style]}>
@@ -448,9 +453,9 @@ function Field({
             setTouched(true);
           }}
           placeholder={placeholder}
-          placeholderTextColor={Colors.light.ink3}
-          selectionColor={Colors.light.accent}
-          cursorColor={Colors.light.accent}
+          placeholderTextColor={colors.ink3}
+          selectionColor={colors.accent}
+          cursorColor={colors.accent}
           style={[styles.input, multiline && styles.inputMultiline]}
           multiline={multiline}
           autoCapitalize={autoCapitalize}
@@ -465,8 +470,8 @@ function Field({
 
 const INPUT_HEIGHT = 52;
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Colors.light.bg },
+const useStyles = makeStyles((colors) => ({
+  screen: { flex: 1, backgroundColor: colors.bg },
   flex: { flex: 1, minWidth: 0 },
   sparkle: { position: 'absolute', right: 28 },
 
@@ -485,22 +490,22 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.brand,
     fontSize: 30,
     lineHeight: 36,
-    color: Colors.light.ink,
+    color: colors.ink,
   },
-  wordmarkAccent: { color: Colors.light.accent },
+  wordmarkAccent: { color: colors.accent },
   wordmarkSpark: { marginLeft: 2, marginTop: 2 },
   title: {
     fontFamily: Fonts.bold,
     fontSize: 30,
     lineHeight: 36,
     letterSpacing: -0.5,
-    color: Colors.light.ink,
+    color: colors.ink,
   },
   subtitle: {
     fontFamily: Fonts.medium,
     fontSize: 15,
     lineHeight: 22,
-    color: Colors.light.ink2,
+    color: colors.ink2,
   },
 
   // ── Campos ─────────────────────────────────────────────────────────────
@@ -508,8 +513,8 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: Spacing.three - 4 },
   // Telas muito estreitas: empilha em vez de espremer placeholder e ícone.
   stack: { flexDirection: 'column', gap: Spacing.three + 4 },
-  label: { fontFamily: Fonts.semibold, fontSize: 14, color: Colors.light.ink },
-  required: { color: Colors.light.accent },
+  label: { fontFamily: Fonts.semibold, fontSize: 14, color: colors.ink },
+  required: { color: colors.accent },
 
   inputBox: {
     minHeight: INPUT_HEIGHT,
@@ -518,16 +523,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three - 2,
     gap: Spacing.two + 2,
     borderRadius: Radius.lg,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: 1.5,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
   inputBoxMultiline: { minHeight: 120, alignItems: 'flex-start' },
   inputBoxFocused: {
-    borderColor: Colors.light.accent,
+    borderColor: colors.accent,
     ...Platform.select({
       ios: {
-        shadowColor: Colors.light.accent,
+        shadowColor: colors.accent,
         shadowOpacity: 0.16,
         shadowRadius: 8,
         shadowOffset: { width: 0, height: 2 },
@@ -535,8 +540,8 @@ const styles = StyleSheet.create({
       default: {},
     }),
   },
-  inputBoxInvalid: { borderColor: Colors.light.danger },
-  inputBoxDisabled: { backgroundColor: Colors.light.bg, opacity: 0.7 },
+  inputBoxInvalid: { borderColor: colors.danger },
+  inputBoxDisabled: { backgroundColor: colors.bg, opacity: 0.7 },
   inputIcon: { width: 20, alignItems: 'center', justifyContent: 'center' },
   inputIconMultiline: { height: INPUT_HEIGHT - 3, justifyContent: 'center' },
   input: {
@@ -546,7 +551,7 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
     fontFamily: Fonts.medium,
     fontSize: 15,
-    color: Colors.light.ink,
+    color: colors.ink,
   },
   inputMultiline: {
     minHeight: 96,
@@ -564,21 +569,21 @@ const styles = StyleSheet.create({
     gap: Spacing.two - 1,
     paddingHorizontal: Spacing.three - 2,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: 1.5,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
-  chipActive: { backgroundColor: Colors.light.accentSoft, borderColor: Colors.light.accent },
+  chipActive: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
   chipPressed: { opacity: 0.75 },
-  chipText: { fontFamily: Fonts.semibold, fontSize: 13, color: Colors.light.ink2 },
-  chipTextActive: { color: Colors.light.accentHover },
+  chipText: { fontFamily: Fonts.semibold, fontSize: 13, color: colors.ink2 },
+  chipTextActive: { color: colors.accentHover },
   chipCheck: {
     width: 18,
     height: 18,
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.light.accent,
+    backgroundColor: colors.accentFill,
   },
 
   // ── Rodapé / ação ────────────────────────────────────────────────────────
@@ -586,7 +591,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three + 4,
     paddingTop: Spacing.three - 4,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Colors.light.border,
+    borderTopColor: colors.border,
   },
   footerInner: { width: '100%', maxWidth: 480, alignSelf: 'center', gap: Spacing.three - 4 },
   submit: {
@@ -594,22 +599,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.accent,
+    backgroundColor: colors.accentFill,
   },
   submitEnabled: {
     ...Platform.select({
       ios: {
-        shadowColor: Colors.light.accent,
+        shadowColor: colors.accent,
         shadowOpacity: 0.3,
         shadowRadius: 14,
         shadowOffset: { width: 0, height: 6 },
       },
-      android: { elevation: 4, shadowColor: Colors.light.accent },
+      android: { elevation: 4, shadowColor: colors.accent },
       default: {},
     }),
   },
   submitIdle: { opacity: 0.4 },
-  submitPressed: { backgroundColor: Colors.light.accentHover, transform: [{ scale: 0.985 }] },
+  submitPressed: { backgroundColor: colors.accentHover, transform: [{ scale: 0.985 }] },
   submitContent: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
-  submitText: { fontFamily: Fonts.bold, fontSize: 16, color: Colors.light.card },
-});
+  submitText: { fontFamily: Fonts.bold, fontSize: 16, color: colors.onAccent },
+}));

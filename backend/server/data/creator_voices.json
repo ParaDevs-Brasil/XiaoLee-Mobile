@@ -1,0 +1,342 @@
+[
+ {
+  "id": "htZQqY7WtacRNV7s62Iy",
+  "name": "Daniel",
+  "description": "The Gruff Old British Wizard",
+  "gender": "male",
+  "category": "Wise",
+  "age": "old",
+  "accent": "british",
+  "language": "en"
+ },
+ {
+  "id": "e70vjI59gG5dZUD6cZTQ",
+  "name": "Charliee",
+  "description": "Calm Cinematic Narrator",
+  "gender": "male",
+  "category": "Narrators",
+  "age": "young",
+  "accent": "american",
+  "language": null
+ },
+ {
+  "id": "HJlUPggR4CCkl0gC427J",
+  "name": "Steve",
+  "description": "Calm and Grounding Narrator",
+  "gender": "male",
+  "category": "Narrators",
+  "age": "middle_aged",
+  "accent": "american",
+  "language": null
+ },
+ {
+  "id": "4Vl3K2x290GidNvuaLm7",
+  "name": "Matthew Schmitz",
+  "description": "Old Pirate Captain",
+  "gender": "male",
+  "category": "Adventurers",
+  "age": "old",
+  "accent": "british",
+  "language": null
+ },
+ {
+  "id": "PkXdd1CtcEwYvEaKpJSR",
+  "name": "David",
+  "description": "Space Adventurer Pirate",
+  "gender": "male",
+  "category": "Adventurers",
+  "age": "middle_aged",
+  "accent": "american",
+  "language": null
+ },
+ {
+  "id": "DKSYnVsGaIwlOF31S3sV",
+  "name": "Yash M",
+  "description": "Monster Villain Character",
+  "gender": "male",
+  "category": "Villains",
+  "age": "young",
+  "accent": "indian",
+  "language": null
+ },
+ {
+  "id": "Vs5CmVCVJwW4odQS2pVf",
+  "name": "Branok",
+  "description": "Evil & Villainous",
+  "gender": "male",
+  "category": "Villains",
+  "age": "middle_aged",
+  "accent": "american",
+  "language": null
+ },
+ {
+  "id": "H2vXdvYN3el8dp6tE6sc",
+  "name": "Aravinda",
+  "description": "Digital Bank Guide Voice",
+  "gender": "male",
+  "category": "Narrators",
+  "age": "middle_aged",
+  "accent": "indian",
+  "language": null
+ },
+ {
+  "id": "dAZqM8Pl37bzdPFxvgXm",
+  "name": "Christopher Collins",
+  "description": "Clear and Engaging",
+  "gender": "male",
+  "category": "Narrators",
+  "age": "middle_aged",
+  "accent": "american",
+  "language": null
+ },
+ {
+  "id": "Q0Co3mt4NHZCSmKqCMMo",
+  "name": "Sanchit K",
+  "description": "Raw, Young, Energetic",
+  "gender": "male",
+  "category": "Energetic",
+  "age": "young",
+  "accent": "indian",
+  "language": null
+ },
+ {
+  "id": "4aVyGTKPpO0U5aIzRn5Y",
+  "name": "Isaac",
+  "description": "Energetic, Warm, Confident",
+  "gender": "male",
+  "category": "Energetic",
+  "age": "young",
+  "accent": "american",
+  "language": null
+ },
+ {
+  "id": "LvmvHEBEmMJBJw9UuhwO",
+  "name": "Eldrin",
+  "description": "Wise Ancient Wizard Storyteller",
+  "gender": "male",
+  "category": "Wise",
+  "age": "old",
+  "accent": "british",
+  "language": null
+ },
+ {
+  "id": "0lp4RIz96WD1RUtvEu3Q",
+  "name": "Grandfather Joe",
+  "description": "Gentle, warm & wise",
+  "gender": "male",
+  "category": "Wise",
+  "age": "old",
+  "accent": "british",
+  "language": null
+ },
+ {
+  "id": "YXpFCvM1S3JbWEJhoskW",
+  "name": "Wyatt",
+  "description": "Wise rustic cowboy",
+  "gender": "male",
+  "category": "Wise",
+  "age": "old",
+  "accent": "american",
+  "language": null
+ },
+ {
+  "id": "hPZsPQkqWehjZarI2ncr",
+  "name": "Cristina B",
+  "description": "Calm, Soothing",
+  "gender": "female",
+  "category": "Calm",
+  "age": "young",
+  "accent": "italian",
+  "language": null
+ },
+ {
+  "id": "pIhyYpeIfZjcBDvduSln",
+  "name": "Veda",
+  "description": "Soft, Calm, Soothing",
+  "gender": "female",
+  "category": "Calm",
+  "age": "middle_aged",
+  "accent": "indian",
+  "language": null
+ },
+ {
+  "id": "z12gfZvqqjJ9oHFbB5i6",
+  "name": "Pixie",
+  "description": "Bright, magical, sparkly",
+  "gender": "female",
+  "category": "Playful",
+  "age": "young",
+  "accent": "american",
+  "language": null
+ },
+ {
+  "id": "Nggzl2QAXh3OijoXD116",
+  "name": "Candy",
+  "description": "Young and Sweet",
+  "gender": "female",
+  "category": "Playful",
+  "age": "young",
+  "accent": "american",
+  "language": null
+ },
+ {
+  "id": "tPzOTlbmuCEa6h67Xb6k",
+  "name": "Viktoria",
+  "description": "Rich, Strong and Confident",
+  "gender": "female",
+  "category": "Strong",
+  "age": "middle_aged",
+  "accent": "american",
+  "language": null
+ },
+ {
+  "id": "oWjuL7HSoaEJRMDMP3HD",
+  "name": "Lina",
+  "description": "Confident, Dynamic and Strong",
+  "gender": "female",
+  "category": "Strong",
+  "age": "middle_aged",
+  "accent": "american",
+  "language": null
+ },
+ {
+  "id": "CS07DI8x8kLXeSktyWLG",
+  "name": "Guilherme",
+  "description": "Brazilian Narrator",
+  "gender": "male",
+  "category": "Brazilian",
+  "age": "middle_aged",
+  "accent": "brazilian",
+  "language": "pt"
+ },
+ {
+  "id": "npTHTbBmWiNxOlMiBxaa",
+  "name": "Andre Ambrosio",
+  "description": "Brazilian & Northeast",
+  "gender": "male",
+  "category": "Brazilian",
+  "age": "middle_aged",
+  "accent": "brazilian",
+  "language": "pt"
+ },
+ {
+  "id": "3IwIPyXc0WRkgKBE8KXP",
+  "name": "Ed",
+  "description": "Sarcastic Funny Narrator",
+  "gender": "male",
+  "category": "Narrators",
+  "age": "middle_aged",
+  "accent": "american",
+  "language": "en"
+ },
+ {
+  "id": "DVP0tUPMxAGcT3nZxz0b",
+  "name": "Daisy Sweetwood",
+  "description": "Charming little kind",
+  "gender": "female",
+  "category": "Playful",
+  "age": "",
+  "accent": "german",
+  "language": "en"
+ },
+ {
+  "id": "BRruTxiLM2nszrcCIpz1",
+  "name": "Goofy",
+  "description": "Nasal, Fast-Paced and Energetic",
+  "gender": "male",
+  "category": "Characters",
+  "age": "young",
+  "accent": "canadian",
+  "language": "en"
+ },
+ {
+  "id": "zfWx5IjUaWGWTId9hv9t",
+  "name": "Atlas",
+  "description": "Deep cinematic announcer",
+  "gender": "male",
+  "category": "Narrators",
+  "age": "middle_aged",
+  "accent": "american",
+  "language": "en"
+ },
+ {
+  "id": "lzneF1PdZ5qTfp2KKdnF",
+  "name": "Stacey",
+  "description": "Bright, Energetic, Expressive",
+  "gender": "female",
+  "category": "Energetic",
+  "age": "young",
+  "accent": "american",
+  "language": "en"
+ },
+ {
+  "id": "8EY2gK6oUxZCDZAlvUpZ",
+  "name": "Pri",
+  "description": "Warm & Natural Brazilian Portuguese",
+  "gender": "female",
+  "category": "Brazilian",
+  "age": "middle_aged",
+  "accent": "brazilian",
+  "language": "pt"
+ },
+ {
+  "id": "PznTnBc8X6pvixs9UkQm",
+  "name": "Dani",
+  "description": "Warm Brazilian Social Media Voice",
+  "gender": "female",
+  "category": "Brazilian",
+  "age": "middle_aged",
+  "accent": "brazilian",
+  "language": "pt"
+ },
+ {
+  "id": "oxbYD1TO2CqZp6MJoeD0",
+  "name": "Serena",
+  "description": "Cute, Relaxed",
+  "gender": "female",
+  "category": "Brazilian",
+  "age": "young",
+  "accent": "brazilian",
+  "language": "pt"
+ },
+ {
+  "id": "BQzELs93jJsUOf5rCb9p",
+  "name": "Vanessa",
+  "description": "Confident",
+  "gender": "female",
+  "category": "Brazilian",
+  "age": "middle_aged",
+  "accent": "brazilian",
+  "language": "pt"
+ },
+ {
+  "id": "XBqltNZ5pAkMg6TB8lGM",
+  "name": "Sulamita",
+  "description": "Mature, Firm",
+  "gender": "female",
+  "category": "Brazilian",
+  "age": "middle_aged",
+  "accent": "brazilian",
+  "language": "pt"
+ },
+ {
+  "id": "MPDBOuBk4rkLBByX9RF4",
+  "name": "Keren",
+  "description": "Soft Brazilian Female",
+  "gender": "female",
+  "category": "Brazilian",
+  "age": "young",
+  "accent": "brazilian",
+  "language": "pt"
+ },
+ {
+  "id": "Fy0y2P2qP6NrsDcvbxmJ",
+  "name": "Thayane",
+  "description": "Northern Brazilian accent",
+  "gender": "female",
+  "category": "Brazilian",
+  "age": "middle_aged",
+  "accent": "brazilian",
+  "language": "pt"
+ }
+]

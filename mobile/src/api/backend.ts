@@ -186,6 +186,18 @@ export function sendChatMessage(request: ChatRequest): Promise<ChatResponse> {
   });
 }
 
+/** `GET /v1/radar/{id}` — `backend/server/radar_chat_tools.py`: a pesquisa de tendências roda no backend; o app consulta. */
+export interface RadarStatus {
+  status: 'pending' | 'ready' | 'error';
+  niche: string;
+  trends?: unknown[];
+  message?: string;
+}
+
+export function getRadar(jobId: string): Promise<RadarStatus> {
+  return apiFetch<RadarStatus>(`/v1/radar/${encodeURIComponent(jobId)}`);
+}
+
 /** `GET/POST /v1/chat/sessions`, `GET /v1/chat/sessions/{id}/messages` — `backend/server/routes/chat_sessions_routes.py` */
 export interface ChatSessionSummary {
   id: number;
@@ -398,6 +410,41 @@ export async function getGlossarySuggestions(): Promise<GlossarySuggestion[]> {
   return res.suggestions ?? [];
 }
 
+export type FormatPlatform = 'tiktok' | 'reels' | 'shorts' | 'x';
+
+/** Formato de conteúdo sugerido pela IA (XIAOLEEACE-32). */
+export interface FormatSuggestion {
+  /** Nome curto do formato, ex.: "Mito ou verdade". */
+  format: string;
+  /** Por que combina com este creator. */
+  why: string;
+  /** Exemplo de frase para os primeiros segundos. */
+  hook: string;
+  platform: FormatPlatform;
+  /** Duração ideal, em segundos (10-180). */
+  duration_s: number;
+}
+
+export interface FormatSuggestions {
+  suggestions: FormatSuggestion[];
+  /** Quantos vídeos do creator entraram no contexto; 0 = só o perfil do onboarding. */
+  based_on_videos: number;
+}
+
+/**
+ * 2-3 formatos para publicar, do perfil do onboarding + vídeos do creator —
+ * `GET /v1/media/format-suggestions` (`format_advisor.py`, mesmo worker de IA
+ * dos cortes). O backend guarda a resposta por contexto: pedir de novo sem
+ * vídeo novo nem perfil editado não chama o modelo. `lang` fica em `en`, como
+ * o resto do app, até o mobile ter i18n.
+ */
+export async function getFormatSuggestions(lang: 'en' | 'pt' = 'en'): Promise<FormatSuggestions> {
+  const res = await apiFetch<Partial<FormatSuggestions>>(`/v1/media/format-suggestions?lang=${lang}`, {
+    timeoutMs: 60_000,
+  });
+  return { suggestions: res.suggestions ?? [], based_on_videos: res.based_on_videos ?? 0 };
+}
+
 /** `POST /auth/wallet` — `backend/server/campaigns_routes.py::link_wallet` */
 export interface WalletLinkResponse {
   address: string;
@@ -519,6 +566,51 @@ export async function listNotifications(): Promise<NotificationItem[]> {
 /** `POST /v1/notifications/{id}/ack` — marca como `delivered`. */
 export function ackNotification(id: number): Promise<AckResponse> {
   return apiFetch<AckResponse>(`/v1/notifications/${id}/ack`, { method: 'POST' });
+}
+
+/**
+ * Números de um período do relatório de 30 dias — `backend/server/creator_report.py::collect_metrics`.
+ * Só atividade na Xiaolee: views e seguidores das redes ainda não existem no backend.
+ */
+export interface CreatorReportMetrics {
+  videos: number;
+  video_minutes: number;
+  clips: number;
+  campaigns_joined: number;
+  usdc_received: number;
+}
+
+export interface CreatorReportSuggestion {
+  title: string;
+  /** O passo concreto para os próximos 30 dias. */
+  action: string;
+  /** O número ou vídeo em que a IA se baseou. */
+  why: string;
+}
+
+/** Item de `GET /v1/reports/me` — `backend/server/creator_report_routes.py::ReportSummary`. */
+export interface CreatorReportSummary {
+  id: number;
+  period_start: string;
+  period_end: string;
+  summary: string;
+}
+
+export interface CreatorReport extends CreatorReportSummary {
+  metrics: Partial<CreatorReportMetrics>;
+  /** Os 30 dias antes do período, para comparar. */
+  previous: Partial<CreatorReportMetrics>;
+  suggestions: CreatorReportSuggestion[];
+}
+
+/** `GET /v1/reports/me` — relatórios de 30 dias do usuário da sessão, mais novo primeiro. Exige sessão. */
+export function listCreatorReports(): Promise<CreatorReportSummary[]> {
+  return apiFetch<CreatorReportSummary[]>('/v1/reports/me');
+}
+
+/** `GET /v1/reports/me/{id}` — relatório completo; de outro usuário responde 404. */
+export function getCreatorReport(id: number): Promise<CreatorReport> {
+  return apiFetch<CreatorReport>(`/v1/reports/me/${id}`);
 }
 
 /**
@@ -769,6 +861,26 @@ export async function joinCampaign(campaignId: number): Promise<string> {
   return actionText(result, 'Joined');
 }
 
+/** Quem entrou numa campanha — só o criador vê (`GET /campaigns/{id}/participants`). */
+export interface CampaignParticipant {
+  user_id: number;
+  handle: string | null;
+  /** enrolled | tasks_verified | paid */
+  status: string;
+}
+
+export async function listCampaignParticipants(campaignId: number): Promise<CampaignParticipant[]> {
+  const result = await apiFetch<{ participants: CampaignParticipant[] }>(
+    `/campaigns/${campaignId}/participants`,
+  );
+  return result.participants;
+}
+
+/** O criador confirma que o participante cumpriu as tarefas; libera o resgate. */
+export async function approveCampaignParticipant(campaignId: number, userId: number): Promise<void> {
+  await apiFetch(`/campaigns/${campaignId}/participants/${userId}/approve`, { method: 'POST' });
+}
+
 export interface VerifyResult {
   message: string;
   allTasksCompleted: boolean;
@@ -849,4 +961,408 @@ export async function claimCampaignReward(
     rewardToken: result.reward_token ?? null,
     paidOnchain: result.paid_onchain ?? false,
   };
+}
+
+// ── Marketplace (x402) ─────────────────────────────────────────────────────
+// `backend/server/app.py::marketplace_*`. A compra é em dois tempos: sem
+// `confirm_id` o backend só cota (nada é pago); o usuário aprova em
+// `/marketplace/confirm` e a compra repetida com o `confirm_id` paga.
+
+export interface MarketplaceItem {
+  resource: string;
+  method: 'GET' | 'POST';
+  price_usdc: number;
+  provider: string;
+  description: string;
+}
+
+export interface MarketplaceQuote {
+  resource: string;
+  method: string;
+  price_usdc: number;
+  pay_to: string;
+  expires_in_s: number;
+}
+
+/** Cotação (`error: 'confirmation_required'`) ou compra feita (`paid_usdc`). */
+export interface MarketplaceBuyResult {
+  error?: string;
+  message?: string;
+  confirm_id?: string;
+  quote?: MarketplaceQuote;
+  status?: number;
+  paid_usdc?: number;
+  payment_tx?: string;
+  data?: unknown;
+}
+
+export async function searchMarketplace(query: string): Promise<MarketplaceItem[]> {
+  // O primeiro varrimento do Discovery da Circle pode levar dezenas de segundos.
+  const out = await apiFetch<{ items?: MarketplaceItem[]; error?: string }>(
+    `/marketplace/search?q=${encodeURIComponent(query.trim())}`,
+    { timeoutMs: 60_000 },
+  );
+  if (out.error) throw new ApiError('Marketplace is unavailable right now. Try again soon.', null, false);
+  return out.items ?? [];
+}
+
+export function buyMarketplaceService(request: {
+  resource: string;
+  method: string;
+  body?: unknown;
+  maxUsdc: number;
+  confirmId?: string;
+}): Promise<MarketplaceBuyResult> {
+  return apiFetch<MarketplaceBuyResult>('/marketplace/buy', {
+    method: 'POST',
+    timeoutMs: 90_000,
+    json: {
+      resource: request.resource,
+      method: request.method,
+      body: request.body,
+      max_usdc: request.maxUsdc,
+      confirm_id: request.confirmId,
+    },
+  });
+}
+
+export async function confirmMarketplaceSpend(confirmId: string): Promise<void> {
+  await apiFetch('/marketplace/confirm', { method: 'POST', json: { confirm_id: confirmId } });
+}
+
+/** Post feito pela Xiaolee numa rede do creator — `POST /v1/social/publish` (`social_routes.py`). */
+export interface SocialPublication {
+  id: number;
+  platform: string;
+  status: 'pending' | 'published' | 'failed';
+  error: string | null;
+  url: string | null;
+}
+
+/**
+ * Publica o post que o chat preparou (`prepare_social_post`). O backend registra a tentativa
+ * antes de chamar a rede; falha da rede volta como `status: "failed"` com o motivo, não como erro HTTP.
+ */
+export async function publishSocialPost(
+  platform: string,
+  text: string,
+  clipId?: number,
+  /** Até 4 fotos (base64 + mime); não vai junto com `clipId`. */
+  images?: { mime: string; base64: string }[],
+): Promise<SocialPublication> {
+  return apiFetch<SocialPublication>('/v1/social/publish', {
+    method: 'POST',
+    json: {
+      platform,
+      text,
+      ...(clipId != null && { clip_id: clipId }),
+      ...(images?.length && { images: images.map((i) => ({ mime: i.mime, data: i.base64 })) }),
+    },
+    timeoutMs: 120_000,
+  });
+}
+
+
+/** Conta de rede social conectada — `GET /v1/social/accounts` (`social_routes.py`). Sem credenciais. */
+export interface SocialAccount {
+  platform: string;
+  handle: string;
+  status: string;
+  connected_at: string;
+}
+
+export interface SocialAccounts {
+  accounts: SocialAccount[];
+  /** Redes que o backend sabe publicar hoje. */
+  available: string[];
+  /** Nome do bot da Xiaolee, que o creator adiciona como admin do canal do Telegram. */
+  hints: { telegram_bot: string };
+}
+
+/** Com `SOCIAL_TOOLS_ENABLED` desligado o backend responde 404 (`ApiError.status === 404`). */
+export async function listSocialAccounts(): Promise<SocialAccounts> {
+  const res = await apiFetch<Partial<SocialAccounts>>('/v1/social/accounts');
+  return {
+    accounts: res.accounts ?? [],
+    available: res.available ?? [],
+    hints: { telegram_bot: res.hints?.telegram_bot ?? '' },
+  };
+}
+
+/** Conecta e valida na própria rede (canal com o bot admin, app password do Bluesky); erro vem com o motivo. */
+export async function connectSocialAccount(
+  platform: string,
+  credentials: Record<string, string>,
+): Promise<SocialAccount> {
+  return apiFetch<SocialAccount>(`/v1/social/accounts/${platform}`, {
+    method: 'POST',
+    json: { credentials },
+    timeoutMs: 30_000,
+  });
+}
+
+/** Menções e hashtags reais (da conta do creator e do nicho cripto) para inserir no post. */
+export interface SocialSuggestions {
+  mentions: { handle: string; name: string; why: string }[];
+  hashtags: { tag: string; why: string }[];
+}
+
+export async function getSocialSuggestions(platform: string): Promise<SocialSuggestions> {
+  const res = await apiFetch<Partial<SocialSuggestions>>(`/v1/social/suggestions/${platform}`, { timeoutMs: 60_000 });
+  return { mentions: res.mentions ?? [], hashtags: res.hashtags ?? [] };
+}
+
+/** Redirect do login do X; o mesmo valor está cadastrado no app do X e em `X_OAUTH_REDIRECT` no backend. */
+export const X_REDIRECT = 'xiaolee://social/x';
+
+/** Começa o login do X (PKCE fica no backend) e devolve a URL que o app abre. */
+export async function startXLogin(): Promise<string> {
+  const res = await apiFetch<{ authorize_url: string }>('/v1/social/x/start', { method: 'POST' });
+  return res.authorize_url;
+}
+
+/** Entrega o `code`/`state` que o X devolveu no redirect; o backend troca por tokens e conecta a conta. */
+export async function finishXLogin(code: string, state: string): Promise<SocialAccount> {
+  return apiFetch<SocialAccount>('/v1/social/x/callback', {
+    method: 'POST',
+    json: { code, state },
+    timeoutMs: 30_000,
+  });
+}
+
+/** Desconecta e apaga a credencial guardada. */
+export async function disconnectSocialAccount(platform: string): Promise<void> {
+  await apiFetch<{ ok: boolean }>(`/v1/social/accounts/${platform}`, { method: 'DELETE' });
+}
+
+// ── Criadores sintéticos (`server/synthetic_creator_routes.py`) ─────────────
+
+export interface CreatorVoice {
+  id: string;
+  name: string;
+  gender: 'female' | 'male';
+  /** Uma frase sobre o jeito da voz. */
+  description: string;
+  /** Grupo da voz (Narrators, Villains, Brazilian…), na ordem em que o backend as manda. */
+  category: string;
+  /** Caminho (no backend) do áudio de amostra; o app junta com `API_URL`. */
+  sample_path: string;
+}
+
+export interface CreatorQuality {
+  quality: 'standard' | 'pro' | 'pro_seedance' | 'mimic' | 'mimic_v3' | 'mimic_v3_pro' | 'swap' | 'swap_pro';
+  label: string;
+  /** Uma linha curta que ajuda a escolher entre as faixas. */
+  hint: string;
+  /** `speech`: a persona fala um roteiro. `mimic`: a persona repete o movimento de um vídeo de referência. */
+  kind: 'speech' | 'mimic' | 'swap';
+  /** duração em segundos (string) → preço em USDC */
+  prices: Record<string, number>;
+}
+
+export interface CreatorCatalog {
+  enabled: boolean;
+  voices: CreatorVoice[];
+  qualities: CreatorQuality[];
+  durations_s: number[];
+  words_per_s: number;
+  pay_to: string | null;
+}
+
+export interface SyntheticCreator {
+  id: number;
+  name: string;
+  voice_id: string;
+  status: string;
+  image_url: string | null;
+  created_at: string | null;
+}
+
+export interface CreatorVideo {
+  id: number;
+  creator_id: number;
+  quality: CreatorQuality['quality'];
+  duration_s: number;
+  script: string;
+  price_usdc: number;
+  /** paying → queued → voice → video → done | failed */
+  status: string;
+  error: string | null;
+  refund_due: boolean;
+  payment_tx: string | null;
+  audio: 'none' | 'original' | 'voice';
+  video_url: string | null;
+  created_at: string | null;
+}
+
+export function getCreatorCatalog(): Promise<CreatorCatalog> {
+  return apiFetch<CreatorCatalog>('/v1/creators/catalog');
+}
+
+export function listCreators(): Promise<SyntheticCreator[]> {
+  return apiFetch<SyntheticCreator[]>('/v1/creators');
+}
+
+export function createCreator(request: {
+  name: string;
+  voice_id: string;
+  content_type: string;
+  size_bytes: number;
+  rights_confirmed: boolean;
+}): Promise<{ creator: SyntheticCreator; upload_url: string; upload_headers: Record<string, string> }> {
+  return apiFetch('/v1/creators', { method: 'POST', json: request });
+}
+
+export function completeCreator(id: number): Promise<SyntheticCreator> {
+  return apiFetch<SyntheticCreator>(`/v1/creators/${id}/complete`, { method: 'POST' });
+}
+
+/**
+ * Rename a character and/or change its voice (only the fields sent change). The photo is not editable here.
+ *
+ * `PATCH /v1/creators/{id}` with `{ name?: string (1–60), voice_id?: string (from the catalog) }` → the updated
+ * `SyntheticCreator`. 404 if the character isn't the caller's, 422 for an unknown voice or a blank name.
+ */
+export function updateCreator(id: number, patch: { name?: string; voice_id?: string }): Promise<SyntheticCreator> {
+  return apiFetch<SyntheticCreator>(`/v1/creators/${id}`, { method: 'PATCH', json: patch });
+}
+
+export function deleteCreator(id: number): Promise<void> {
+  return apiFetch<void>(`/v1/creators/${id}`, { method: 'DELETE' });
+}
+
+export function writeCreatorScript(request: {
+  creator_id: number;
+  topic: string;
+  duration_s: number;
+}): Promise<{ script: string; max_words: number }> {
+  return apiFetch('/v1/creators/script', { method: 'POST', json: request });
+}
+
+export function createCreatorVideo(
+  creatorId: number,
+  request: {
+    quality: CreatorQuality['quality'];
+    duration_s: number;
+    /** `speech`: o roteiro falado. `mimic`: descrição opcional da cena. */
+    script?: string;
+    payment: RelayAuthorizationRequest;
+    /** Só no `mimic`: o vídeo de `createMotionUpload` e o termo de direito de uso. */
+    motion_key?: string;
+    motion_rights_confirmed?: boolean;
+    /** Só no `mimic`: sem som, o som do vídeo de referência, ou a narração do `script` com a voz da persona. */
+    audio?: 'none' | 'original' | 'voice';
+    /** Só no Swap: a prévia aprovada; o vídeo sai do quadro dela. */
+    preview_id?: number;
+    /** Só no `mimic`/Swap: o trecho usado começa neste segundo do vídeo. */
+    motion_start_s?: number;
+  },
+): Promise<CreatorVideo> {
+  return apiFetch<CreatorVideo>(`/v1/creators/${creatorId}/videos`, { method: 'POST', json: request });
+}
+
+export interface CreatorPreview {
+  id: number;
+  /** working → ready | failed */
+  status: 'working' | 'ready' | 'failed';
+  frame_url: string | null;
+  error: string | null;
+}
+
+/** Swap: quadro de prévia (personagem no lugar da pessoa do vídeo). Grátis, com limite diário. */
+export function createSwapPreview(
+  creatorId: number,
+  request: { motion_key: string; motion_rights_confirmed: boolean; motion_start_s?: number },
+): Promise<CreatorPreview> {
+  return apiFetch<CreatorPreview>(`/v1/creators/${creatorId}/previews`, { method: 'POST', json: request });
+}
+
+export function getSwapPreview(previewId: number): Promise<CreatorPreview> {
+  return apiFetch<CreatorPreview>(`/v1/creators/previews/${previewId}`);
+}
+
+export function createMotionUpload(request: {
+  content_type: string;
+  size_bytes: number;
+}): Promise<{ motion_key: string; upload_url: string; upload_headers: Record<string, string> }> {
+  return apiFetch('/v1/creators/motion', { method: 'POST', json: request });
+}
+
+export function listCreatorVideos(creatorId?: number): Promise<CreatorVideo[]> {
+  return apiFetch<CreatorVideo[]>(`/v1/creators/videos${creatorId ? `?creator_id=${creatorId}` : ''}`);
+}
+
+/**
+ * On/off-ramp — `server/onoff_routes.py`. O saque entre redes é assinado pela carteira do usuário
+ * (`lib/onoff-burn.ts`); o backend cota a taxa, confere o burn na Circle e acompanha até o mint.
+ *
+ *   GET  /v1/onoff/config
+ *   POST /v1/onoff/withdraw                 (method=chain)
+ *   POST /v1/onoff/intents/{id}/burn        (202 enquanto a Circle ainda não viu a tx)
+ *   GET  /v1/onoff/intents/{id}
+ */
+export interface OnoffConfig {
+  enabled: boolean;
+  deposit_enabled: boolean;
+  withdraw_enabled: boolean;
+  limits_usdc: { per_tx: number; per_day: number; per_month: number };
+  chain_networks: string[];
+  providers: { name: string; methods: string[]; directions: string[] }[];
+}
+
+export type OnoffStatus =
+  | 'created' | 'pending_provider' | 'funds_received' | 'sent_to_provider'
+  | 'settled' | 'paid_out' | 'rejected' | 'expired' | 'failed' | 'refunded' | 'review';
+
+export interface OnoffIntent {
+  intent_id: string;
+  direction: 'deposit' | 'withdraw';
+  method: string;
+  amount_usdc: number;
+  status: OnoffStatus;
+  dest_network: string | null;
+  onchain_tx: string | null;
+  forward_tx: string | null;
+  max_fee_usdc: number | null;
+  url: string | null;
+  burn: import('@/lib/onoff-burn').BurnParams | null;
+  created_at: string | null;
+}
+
+export function startDeposit(amountUsdc: number, method: string, fiatCurrency: string): Promise<OnoffIntent> {
+  return apiFetch<OnoffIntent>('/v1/onoff/deposit', {
+    method: 'POST',
+    json: { amount_usdc: amountUsdc, method, fiat_currency: fiatCurrency },
+  });
+}
+
+export function getOnoffConfig(): Promise<OnoffConfig> {
+  return apiFetch<OnoffConfig>('/v1/onoff/config');
+}
+
+export function startChainWithdraw(amountUsdc: number, network: string, address: string): Promise<OnoffIntent> {
+  return apiFetch<OnoffIntent>('/v1/onoff/withdraw', {
+    method: 'POST',
+    json: { amount_usdc: amountUsdc, method: 'chain', dest_network: network, dest_address: address },
+  });
+}
+
+/**
+ * Resolve `null` quando a Circle ainda não indexou a tx: o backend responde 202 com `detail` no lugar do
+ * intent (2xx não vira `ApiError`), e quem chama tenta de novo.
+ */
+export async function registerBurn(intentId: string, txHash: string): Promise<OnoffIntent | null> {
+  const res = await apiFetch<OnoffIntent | { detail: unknown }>(`/v1/onoff/intents/${intentId}/burn`, {
+    method: 'POST',
+    json: { tx_hash: txHash },
+  });
+  return 'intent_id' in res ? res : null;
+}
+
+export function listOnoffIntents(): Promise<OnoffIntent[]> {
+  return apiFetch<OnoffIntent[]>('/v1/onoff/intents');
+}
+
+export function getOnoffIntent(intentId: string): Promise<OnoffIntent> {
+  return apiFetch<OnoffIntent>(`/v1/onoff/intents/${intentId}`);
 }

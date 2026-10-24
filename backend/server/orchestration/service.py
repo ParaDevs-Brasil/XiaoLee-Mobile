@@ -5,11 +5,17 @@ import logging
 import re
 from typing import Any, Dict, Optional
 
+from server.arc_swap import ARC_SWAP_TOKENS, validate_arc_swap
+from server.caller_trust import unverified_caller
+from server.campaign_match import rank_for_interests
+from server.chat_language import conversation_language, language_rule
+from server.integrations import marketplace_client
 from server.integrations.gemini_client import GeminiClient
 from server.integrations.solana_client import SolanaClient
 from server.integrations.stellar_adapter import StellarAdapter
 from server.schemas import IntentResponse
 from server.settings import settings
+from server import ask_chat_tools, radar_chat_tools, social_chat_tools
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +62,9 @@ STELLAR_AGENT_TOOLS = [
             "Lista as campanhas de creators ativas (nome, descrição, tipo, reward por participante, "
             "token de recompensa, participantes já pagos). Use quando o usuário perguntar quais "
             "campanhas existem, rewards disponíveis ou quiser saber o que pode participar — não peça "
-            "para ele ir no dashboard, responda direto com os dados desta tool."
+            "para ele ir no dashboard, responda direto com os dados desta tool. Se vier `your_interests`, "
+            "as campanhas com `matches_your_interests` já vêm primeiro: recomende essas e diga numa frase "
+            "por que combinam com o interesse dele; as demais ficam depois."
         ),
         "parameters": {"type": "object", "properties": {}},
     }},
@@ -246,6 +254,22 @@ _PLATFORM_CONTEXT = (
     "Never execute transactions without explicit user confirmation."
 )
 
+# Mapa do app para guiar o usuário. Só fatos de navegação; tom e formato seguem _PLATFORM_CONTEXT.
+_APP_MAP = (
+    "ONDE FICA CADA COISA NO APP (use isto para guiar o usuário até a tela certa; dê o caminho curto, "
+    "sem listar tudo, e fale no seu jeito de sempre):\n"
+    "- Barra de baixo: Home, Studio, Xiaolee (este chat), Grow e Wallet.\n"
+    "- Studio tem 4 abas no topo: Clips (subir um vídeo longo e gerar cortes verticais), AI Creators "
+    "(personagens e vídeos com IA: Talk, Mimic e Replace), Reports (relatórios) e Share (cartão do "
+    "perfil, contas conectadas como X e Telegram, e escrever post).\n"
+    "- Clips NÃO fica na barra de baixo: é Studio > Clips.\n"
+    "- Grow: Campaigns (ver, entrar e criar), Marketplace e Insights.\n"
+    "- Wallet: saldo, enviar, receber, atividade, Add money e Withdraw.\n"
+    "- Menu do avatar (canto de cima, à direita): Edit profile, Wallet, History, Dashboard, Traction, "
+    "Connect Wallet, Appearance (Light, Dark ou System) e Sign out.\n"
+    "- Se não tiver certeza de onde algo fica, diga isso em vez de inventar um caminho."
+)
+
 _STELLAR_CONTEXT = (
     "Chain ativa: Stellar Testnet. "
     "Carteira: Freighter (não-custodial, autenticada via SEP-10). "
@@ -255,6 +279,42 @@ _STELLAR_CONTEXT = (
     "Apresente sempre o quote antes de executar qualquer swap. "
     "Responda em PT-BR."
 )
+
+
+# Swap na Arc: o agente só PREPARA (valida e devolve `execution.swap`); quem assina é o
+# usuário, no app, pelo App Kit da Circle. Oferecida quando há wallet EVM (ver `_tools_for`).
+ARC_SWAP_TOOL = {"type": "function", "function": {
+    "name": "arc_swap_prepare",
+    "description": (
+        "Prepara um swap na Arc (EVM) para o usuário assinar na própria wallet — você NÃO executa. "
+        "Na Arc só dá para trocar " + ", ".join(ARC_SWAP_TOKENS) + ". Use quando o usuário pedir "
+        "trocar/swap entre esses tokens (ex: USDC→EURC). Depois de chamar, diga o par e o valor e que "
+        "ele confirma no botão que aparece; não prometa o valor recebido — a cotação aparece no botão."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "token_in": {"type": "string", "description": "Token de origem: " + ", ".join(ARC_SWAP_TOKENS)},
+            "token_out": {"type": "string", "description": "Token de destino: " + ", ".join(ARC_SWAP_TOKENS)},
+            "amount": {"type": "number", "description": "Quantidade do token de origem a trocar"},
+        },
+        "required": ["token_in", "token_out", "amount"],
+    },
+}}
+
+
+async def _user_interests(db, user_id: str) -> list[str]:
+    """Interesses do onboarding (`User.interest_profile`, JSON em texto), ou [] se não há/está inválido."""
+    from sqlalchemy import select
+
+    from database.models import User
+
+    raw = (await db.execute(select(User.interest_profile).where(User.twitter_user_id == user_id))).scalar()
+    try:
+        data = json.loads(raw) if raw else []
+    except ValueError:
+        return []
+    return [i for i in data if isinstance(i, str)] if isinstance(data, list) else []
 
 
 _AUTO_DETECT_CLAUDE_ENGINE = object()  # sentinel: distingue "não passado" de "explicitamente None"
@@ -335,7 +395,8 @@ class OrchestrationService:
                 f"WALLETS CONECTADAS: EVM {evm_wallet} (trilho principal — Arc) e "
                 f"Stellar {stellar_wallet} (Freighter/SEP-10). Contexto padrão da conversa: Arc/EVM "
                 "(USDC nativo, campanhas, agente autônomo, x402, transferências no chat). Use o trilho "
-                "Stellar apenas quando o usuário pedir swap XLM/USDC, anchor SEP-24 ou algo da Stellar."
+                "Stellar apenas quando o usuário pedir swap XLM/USDC, anchor SEP-24 ou algo da Stellar; "
+                "swap entre USDC/EURC/cirBTC é do Arc (arc_swap_prepare)."
             )
         if evm_wallet:
             return (
@@ -343,7 +404,8 @@ class OrchestrationService:
                 "NÃO há wallet Stellar conectada: não assuma Freighter nem ofereça saldo XLM/swap DEX como "
                 "padrão — se o usuário pedir algo da Stellar, avise que precisaria conectar a Freighter. "
                 "Foque no que a wallet dele já faz: transferir USDC no Arc pelo chat (você prepara e ele "
-                "assina), campanhas com payout do agente, x402, receber USDC."
+                "assina), trocar USDC/EURC/cirBTC no Arc (arc_swap_prepare; ele confirma no botão), "
+                "campanhas com payout do agente, x402, receber USDC."
             )
         if stellar_wallet:
             return (
@@ -605,7 +667,8 @@ class OrchestrationService:
     # ------------------------------------------------------------------
 
     def _build_agentic_system_prompt(
-        self, stellar_wallet: str | None, platform: str, evm_wallet: str | None = None
+        self, stellar_wallet: str | None, platform: str, evm_wallet: str | None = None,
+        language: str | None = None,
     ) -> str:
         # Contexto ancorado na wallet conectada: EVM → Arc-first; só Stellar → Stellar;
         # nenhuma → perguntar a chain (nunca assumir Freighter).
@@ -651,7 +714,11 @@ class OrchestrationService:
             "Para saudações, dúvidas sobre campanhas, SEP-24, x402 ou crypto em geral, responda "
             "direto com sua personalidade, sem ferramentas. Se uma operação Stellar exigir carteira e ela "
             "não estiver conectada, peça para conectar via 'Connect Wallet' na navbar (qualquer wallet "
-            "compatível: MetaMask, Rabby, Phantom, Freighter). Responda SEMPRE no idioma do usuário."
+            "compatível: MetaMask, Rabby, Phantom, Freighter). " + language_rule(language)
+            + (f"\n\nPUBLICAR NAS REDES:\n{social_chat_tools.SOCIAL_PROMPT}" if self._social_on(stellar_wallet) else "")
+            + (f"\n\nRADAR DE TENDÊNCIAS:\n{radar_chat_tools.RADAR_PROMPT}" if self._radar_on(stellar_wallet) else "")
+            + (f"\n\nPERGUNTAS NO CHAT:\n{ask_chat_tools.ASK_PROMPT}" if settings.ask_cards_enabled else "")
+            + f"\n\n{_APP_MAP}"
         )
 
     def _make_stellar_executor(
@@ -689,6 +756,27 @@ class OrchestrationService:
                 captured["animation_name"] = name
                 return json.dumps({"status": "animation_played", "animation": name})
 
+            if tool_name in ("search_marketplace", "buy_marketplace_service"):
+                if user_id == "web_anonymous":  # gasto exige usuário logado
+                    return json.dumps({"error": "no_session", "message": "Peça para o usuário entrar antes de comprar serviços."})
+                # identidade do gasto = a mesma que a rota de confirmação resolve (sessão -> twitter_user_id);
+                # sem sessão válida (telegram/x, ou /chat que já resolveu) o próprio user_id vale.
+                mp_user = user_id
+                try:
+                    from database.database import SessionLocal as _SL
+                    from server.campaigns_routes import resolve_twitter_identity
+                    async with _SL() as _db:
+                        mp_user = (await resolve_twitter_identity(_db, f"Bearer {user_id}", strict=True))[0]
+                except Exception:
+                    pass
+                try:
+                    out = await marketplace_client.call(tool_name, tool_input, mp_user)
+                except Exception as exc:
+                    logger.warning("[chat-tool] %s failed", tool_name, exc_info=True)
+                    return json.dumps({"error": "marketplace_failed", "message": str(exc)[:200]})
+                captured["actions"].append(tool_name)
+                return json.dumps(out)
+
             if tool_name == "arc_get_usdc_balance":
                 if not evm_wallet:
                     return json.dumps({"error": "no_evm_wallet",
@@ -709,10 +797,25 @@ class OrchestrationService:
                     from server.campaigns_routes import list_campaigns as _list_campaigns_route
                     async with _campaigns_db() as db:
                         resp = await _list_campaigns_route(db)
+                        # Perfil só de chamador verificado: o `user_id` do corpo não prova quem é, e os
+                        # interesses de outra pessoa não devem sair pelo chat.
+                        interests = (
+                            []
+                            if user_id == "web_anonymous" or unverified_caller.get()
+                            else await _user_interests(db, user_id)
+                        )
                 except Exception as exc:
                     return json.dumps({"error": "campaigns_read_failed", "message": str(exc)})
                 captured["actions"].append("list_campaigns")
-                return json.dumps({"campaigns": [c.model_dump() for c in resp.campaigns]})
+                campaigns = [c.model_dump() for c in resp.campaigns]
+                if interests:
+                    campaigns = rank_for_interests(campaigns, interests)
+                # O app mostra os cartões dessas campanhas (os 5 primeiros) logo abaixo da resposta.
+                if campaigns:
+                    captured["execution"] = {"status": "campaigns_listed", "campaign_ids": [c["id"] for c in campaigns[:5]]}
+                if not interests:
+                    return json.dumps({"campaigns": campaigns})
+                return json.dumps({"your_interests": interests, "campaigns": campaigns})
 
             # As quatro tools abaixo escrevem no mesmo caminho que a UI usa
             # (POST /campaigns/*) — importam e chamam a função de rota direto,
@@ -721,10 +824,37 @@ class OrchestrationService:
             # (ver `app.py::chat_compat`, `session_token or "web_anonymous"`),
             # então reconstruir `Bearer {user_id}` é exatamente o Authorization
             # que o endpoint REST receberia do app.
+            if tool_name in ask_chat_tools.ASK_TOOL_NAMES and settings.ask_cards_enabled:
+                result, execution = await ask_chat_tools.run(tool_name, tool_input)
+                captured["actions"].append(tool_name)
+                if execution:
+                    captured["execution"] = execution
+                return json.dumps(result)
+
+            if tool_name in social_chat_tools.SOCIAL_TOOL_NAMES | radar_chat_tools.RADAR_TOOL_NAMES:
+                if user_id == "web_anonymous" or unverified_caller.get():
+                    return json.dumps({
+                        "error": "no_session",
+                        "message": "Usuário precisa estar logado para isso — peça para conectar/entrar antes.",
+                    })
+                tools_mod = radar_chat_tools if tool_name in radar_chat_tools.RADAR_TOOL_NAMES else social_chat_tools
+                try:
+                    async with _campaigns_db() as db:
+                        result, execution = await tools_mod.run(tool_name, tool_input, db, user_id)
+                except Exception as exc:
+                    logger.warning("[chat-tool] %s failed input=%r", tool_name, tool_input, exc_info=True)
+                    return json.dumps({"error": "social_tool_failed", "message": str(exc)})
+                captured["actions"].append(tool_name)
+                if execution:
+                    captured["execution"] = execution
+                return json.dumps(result)
+
             if tool_name in {
                 "create_campaign", "join_campaign", "verify_campaign_tasks", "prepare_campaign_claim",
             }:
-                if user_id == "web_anonymous":
+                # `unverified_caller`: entrou pelo HTTP aberto sem um token que o
+                # backend emitiu — o `user_id` veio do corpo e não prova quem é.
+                if user_id == "web_anonymous" or unverified_caller.get():
                     return json.dumps({
                         "error": "no_session",
                         "message": "Usuário precisa estar logado para isso — peça para conectar/entrar antes.",
@@ -734,7 +864,9 @@ class OrchestrationService:
             if tool_name == "create_campaign":
                 try:
                     from server.campaigns_routes import (
-                        create_campaign as _create_campaign_route,
+                        create_campaign_for_user,
+                        _resolve_user,
+                        _seed_default_campaigns,
                         CreateCampaignRequest,
                     )
                     payload = CreateCampaignRequest(
@@ -748,10 +880,15 @@ class OrchestrationService:
                         tweet_id_to_engage=tool_input.get("tweet_id_to_engage"),
                     )
                     async with _campaigns_db() as db:
-                        resp = await _create_campaign_route(payload, db, authorization=authorization)
+                        # Mesma validação/guardas da rota HTTP (`create_campaign_for_user`);
+                        # a identidade já foi verificada pelo gate acima.
+                        await _seed_default_campaigns(db)
+                        creator = await _resolve_user(db, authorization)
+                        resp = await create_campaign_for_user(db, creator, payload)
                 except Exception as exc:
                     logger.warning("[chat-tool] create_campaign failed input=%r", tool_input, exc_info=True)
-                    return json.dumps({"error": "create_campaign_failed", "message": str(exc)})
+                    # HTTPException traz a frase pronta para o usuário em `detail`.
+                    return json.dumps({"error": "create_campaign_failed", "message": getattr(exc, "detail", None) or str(exc)})
                 captured["actions"].append("create_campaign")
                 return json.dumps(resp)
 
@@ -833,7 +970,7 @@ class OrchestrationService:
                         amount = float(campaign.reward_per_participant)
                         token = campaign.reward_token
                         proof_message = (
-                            f"XiaoLee Devnet claim|campaign:{campaign_id}|"
+                            f"XiaoLee claim|campaign:{campaign_id}|"
                             f"session:{user_id}|wallet:{wallet_address}"
                         )
                 except Exception as exc:
@@ -905,6 +1042,32 @@ class OrchestrationService:
                     "fee_xlm": quote.fee_xlm, "ready_to_sign": bool(swap_xdr),
                 })
 
+            if tool_name == "arc_swap_prepare":
+                if not evm_wallet:
+                    return json.dumps({"error": "no_evm_wallet", "message": "Conecte uma carteira Arc para trocar."})
+                swap, error = validate_arc_swap(
+                    tool_input.get("token_in"), tool_input.get("token_out"), tool_input.get("amount")
+                )
+                if error or not swap:
+                    return json.dumps({"error": "invalid_swap", "message": error})
+                # Aviso antecipado (antes do botão): só dá para conferir o USDC; os outros tokens o SDK confere.
+                # Se não der para ler o saldo, não bloqueia — o app recusa de qualquer forma sem saldo.
+                if swap["tokenIn"] == "USDC":
+                    try:
+                        from server.routes.arc_routes import read_arc_usdc_balance
+                        balance = await read_arc_usdc_balance(evm_wallet)
+                    except Exception:
+                        logger.warning("[chat-tool] arc_swap_prepare: balance read failed", exc_info=True)
+                    else:
+                        if balance < float(swap["amountIn"]):
+                            return json.dumps({
+                                "error": "insufficient_balance",
+                                "message": f"Saldo insuficiente: você tem {balance:g} USDC e o swap pede {swap['amountIn']}.",
+                            })
+                captured["actions"].append("arc_swap")
+                captured["execution"] = {"status": "swap_ready", "chain": "arc", "wallet": evm_wallet, "swap": swap}
+                return json.dumps({"ready_to_sign": True, **swap})
+
             return json.dumps({"error": "unknown_tool", "tool": tool_name})
 
         return executor
@@ -912,6 +1075,8 @@ class OrchestrationService:
     def _synthesize_intent(self, captured: Dict[str, Any], stellar_wallet: str | None) -> IntentResponse:
         """Reconstruct an IntentResponse from the tools Claude actually called."""
         actions = captured.get("actions", [])
+        if "arc_swap" in actions:
+            return IntentResponse(action="arc_swap", confidence=0.9, entities={})
         if "stellar_swap" in actions:
             return IntentResponse(action="stellar_swap", confidence=0.9,
                                   entities=captured.get("last_swap_args", {}))
@@ -943,6 +1108,30 @@ class OrchestrationService:
             messages.append({"role": role, "content": content})
         return messages
 
+    @staticmethod
+    def _social_on(stellar_wallet: str | None) -> bool:
+        # Flag desligada (padrão) ou conversa Stellar: o chat fica exatamente como era.
+        return settings.social_tools_enabled and not stellar_wallet
+
+    @staticmethod
+    def _radar_on(stellar_wallet: str | None) -> bool:
+        return settings.radar_tools_enabled and bool(settings.xai_api_key) and not stellar_wallet
+
+    @classmethod
+    def _tools_for(cls, stellar_wallet: str | None, evm_wallet: str | None) -> list:
+        """Tools do chat conforme a(s) carteira(s) conectada(s).
+
+        Só Arc (EVM): o swap é o da Arc e o do Stellar DEX sai — senão a Xiaolee mandava
+        "conectar a Freighter". Stellar (ou nenhuma wallet): como sempre foi.
+        """
+        social = social_chat_tools.SOCIAL_TOOLS if cls._social_on(stellar_wallet) else []
+        social = [*social, *(radar_chat_tools.RADAR_TOOLS if cls._radar_on(stellar_wallet) else [])]
+        social = [*social, *(ask_chat_tools.ASK_TOOLS if settings.ask_cards_enabled else [])]
+        if not evm_wallet:
+            return [*STELLAR_AGENT_TOOLS, *social]
+        tools = [t for t in STELLAR_AGENT_TOOLS if stellar_wallet or t["function"]["name"] != "stellar_swap_quote"]
+        return [*tools, ARC_SWAP_TOOL, *social]
+
     async def _execute_agentic(self, text: str, user_id: str, history: list = None,
                                platform: str = "web") -> Dict[str, Any]:
         stellar_wallet = self._extract_stellar_wallet_from_note(text)
@@ -950,7 +1139,10 @@ class OrchestrationService:
         clean_text = self._clean_text(text)
         captured: Dict[str, Any] = {"actions": [], "execution": None, "last_swap_args": {}, "animation_name": None}
 
-        system_prompt = self._build_agentic_system_prompt(stellar_wallet, platform, evm_wallet=evm_wallet)
+        system_prompt = self._build_agentic_system_prompt(
+            stellar_wallet, platform, evm_wallet=evm_wallet,
+            language=conversation_language(history, clean_text),
+        )
         executor = self._make_stellar_executor(
             stellar_wallet, captured, evm_wallet=evm_wallet, user_id=user_id,
         )
@@ -958,7 +1150,7 @@ class OrchestrationService:
         result = await self.claude_engine.run(
             system_prompt=system_prompt,
             message=clean_text,
-            tools=STELLAR_AGENT_TOOLS,
+            tools=[*self._tools_for(stellar_wallet, evm_wallet), *marketplace_client.tools()],
             tool_executor=executor,
             history=self._history_to_anthropic(history),
         )
@@ -1232,6 +1424,42 @@ class OrchestrationService:
                     "reply_text": "A transferência USDC no Arc está indisponível agora (ARC_USDC_ADDRESS não configurado). 😔",
                     "execution": {"status": "evm_transfer_unconfigured", "animation": "Ouch"},
                 }
+
+            # Aviso antes do botão: sem saldo, a falha só viria na assinatura. É um aviso — se o saldo
+            # não puder ser lido, segue (a rede recusa de qualquer forma); sem carteira, nada a conferir.
+            if evm_wallet:
+                try:
+                    from server.routes.arc_routes import read_arc_usdc_balance
+                    balance = await read_arc_usdc_balance(evm_wallet)
+                except Exception:
+                    logger.warning("transfer pre-check: Arc balance read failed", exc_info=True)
+                else:
+                    if amount > balance:
+                        instruction = (
+                            f"{_PLATFORM_CONTEXT} "
+                            f"O usuário pediu para enviar {amount:g} USDC no Arc, mas a wallet dele tem só "
+                            f"{balance:g} USDC. Diga isso de forma gentil (os dois valores) e pergunte se ele "
+                            "quer enviar um valor menor. Não prepare nem prometa a transação. Máximo 2 frases."
+                        )
+                        try:
+                            reply = await self.gemini.generate_reply(
+                                instruction=instruction, user_text=clean_text, history=history
+                            )
+                        except Exception:
+                            reply = (
+                                f"Saldo insuficiente 😔 você tem {balance:g} USDC e o envio pede {amount:g}. "
+                                "Quer tentar um valor menor?"
+                            )
+                        return {
+                            "intent": intent,
+                            "reply_text": reply,
+                            "execution": {
+                                "status": "evm_transfer_insufficient_balance",
+                                "chain": "arc",
+                                "balance_usdc": balance,
+                                "animation": "Ouch",
+                            },
+                        }
 
             # calldata ERC-20 transfer(address,uint256) — USDC tem 6 decimais
             amount_units = int(round(amount * 1_000_000))

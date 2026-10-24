@@ -29,7 +29,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from database.database import get_db_session
 from server import token_auth
 import logging
-from database.models import AuthToken, Campaign as CampaignModel, CampaignParticipant, NotificationEvent, User, Wallet, WebSession
+from database.models import AuthToken, Campaign as CampaignModel, CampaignParticipant, NotificationEvent, SocialAccount, User, Wallet, WebSession
 from server.integrations.arc_client import ArcClient
 from server.settings import settings
 
@@ -248,8 +248,12 @@ def _verify_claim_proof(payload: CampaignActionRequest, campaign_id: int, sessio
     if not is_custodial and not signature:
         raise HTTPException(status_code=400, detail="Wallet signature proof is required to claim campaign rewards")
 
-    expected_prefix = f"XiaoLee Devnet claim|campaign:{campaign_id}|session:{session_token}|wallet:{public_key}"
-    if not message.startswith(expected_prefix):
+    # "XiaoLee Devnet claim" é o texto legado (web e apps já instalados); aceito junto do novo.
+    expected_prefixes = tuple(
+        f"{label}|campaign:{campaign_id}|session:{session_token}|wallet:{public_key}"
+        for label in ("XiaoLee claim", "XiaoLee Devnet claim")
+    )
+    if not message.startswith(expected_prefixes):
         raise HTTPException(status_code=400, detail="Claim proof does not match the current campaign session")
 
     if proof_encoding not in {"base64", "none", "eip191"}:
@@ -356,6 +360,23 @@ async def resolve_optional_identity(db: AsyncSession, authorization: Optional[st
     return (await resolve_twitter_identity(db, authorization))[0]
 
 
+async def resolve_verified_identity(db: AsyncSession, authorization: Optional[str]) -> Optional[str]:
+    """``twitter_user_id`` só se o Bearer é um token que o backend emitiu; senão None.
+
+    Diferente de `resolve_optional_identity`, o modo legado (o próprio id/endereço
+    usado como token) NÃO conta: esse valor é público, então não prova quem
+    chama. Token expirado continua dando 401.
+    """
+    if not authorization or not authorization.removeprefix("Bearer ").strip():
+        return None
+    try:
+        return (await resolve_twitter_identity(db, authorization, strict=True))[0]
+    except HTTPException as exc:
+        if exc.detail == "Invalid session":
+            return None
+        raise
+
+
 async def _resolve_user(db: AsyncSession, authorization: Optional[str], *, strict: bool = False) -> User:
     twitter_user_id, twitter_handle = await resolve_twitter_identity(db, authorization, strict=strict)
 
@@ -374,6 +395,8 @@ async def _resolve_user(db: AsyncSession, authorization: Optional[str], *, stric
 
 
 async def _seed_default_campaigns(db: AsyncSession) -> None:
+    if not settings.arc_sandbox:
+        return  # mainnet: sem campanhas de demonstração com dinheiro real
     count_res = await db.execute(select(func.count()).select_from(CampaignModel))
     existing_count = count_res.scalar() or 0
     if existing_count > 0:
@@ -1022,14 +1045,71 @@ async def get_user_campaigns(
     return await _list_user_campaigns(db, authorization)
 
 
-@router.post("/campaigns/create")
-async def create_campaign(
-    payload: CreateCampaignRequest,
-    db: AsyncSession = Depends(get_db_session),
-    authorization: Optional[str] = Header(default=None),
-):
-    await _seed_default_campaigns(db)
-    user = await _resolve_user(db, authorization)
+def _validate_campaign_limits(payload: CreateCampaignRequest) -> float:
+    """Valida valores e tetos; devolve o pool. Levanta 400 com mensagem legível (o chat repassa)."""
+    import math
+
+    reward, people = payload.reward_per_participant, payload.max_participants
+    if not (isinstance(reward, (int, float)) and math.isfinite(reward) and reward > 0):
+        raise HTTPException(status_code=400, detail="A recompensa por participante precisa ser maior que zero.")
+    if people < 1:
+        raise HTTPException(status_code=400, detail="O máximo de participantes precisa ser pelo menos 1.")
+    allowed = {t.strip().upper() for t in settings.campaign_allowed_tokens.split(",") if t.strip()}
+    if payload.reward_token.strip().upper() not in allowed:
+        raise HTTPException(
+            status_code=400, detail=f"Token de recompensa não suportado. Use: {', '.join(sorted(allowed))}."
+        )
+    if reward > settings.campaign_max_reward_usdc:
+        raise HTTPException(
+            status_code=400, detail=f"A recompensa por participante pode ser no máximo {settings.campaign_max_reward_usdc:g} USDC."
+        )
+    if people > settings.campaign_max_participants:
+        raise HTTPException(
+            status_code=400, detail=f"O máximo de participantes pode ser {settings.campaign_max_participants}."
+        )
+    pool = reward * people
+    if pool > settings.campaign_max_pool_usdc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"O pool total ({pool:g} USDC) passa do limite de {settings.campaign_max_pool_usdc:g} USDC por campanha.",
+        )
+    return pool
+
+
+async def _require_creator_funds(db: AsyncSession, user: User, pool: float) -> None:
+    """O criador precisa ter o pool na carteira (Arc) vinculada à sessão dele.
+
+    Usa a carteira gravada no servidor (`/auth/wallet`), não um endereço enviado
+    pelo cliente — esse seria trivial de trocar pelo de uma carteira cheia.
+    Falha fechada: se não dá para ler o saldo, não cria.
+    """
+    wallet = (await db.execute(select(Wallet).where(Wallet.user_id == user.id))).scalars().first()
+    if not wallet:
+        raise HTTPException(status_code=400, detail="Conecte uma carteira Arc para criar uma campanha.")
+    from server.routes.arc_routes import read_arc_usdc_balance
+
+    try:
+        balance = await read_arc_usdc_balance(wallet.address)
+    except Exception:
+        logger.warning("campaign funds check: Arc balance read failed", exc_info=True)
+        raise HTTPException(status_code=503, detail="Não consegui verificar seu saldo agora. Tente de novo em instantes.")
+    if balance < pool:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Saldo insuficiente: o pool é {pool:g} USDC e sua carteira tem {balance:g} USDC.",
+        )
+
+
+async def create_campaign_for_user(db: AsyncSession, user: User, payload: CreateCampaignRequest) -> dict:
+    """Cria a campanha para um usuário já resolvido — caminho único do HTTP e do chat."""
+    allowlist = {h.strip().lower().lstrip("@") for h in settings.campaign_creator_allowlist.split(",") if h.strip()}
+    if not settings.arc_sandbox and allowlist:
+        who = {str(user.twitter_user_id).lower(), str(user.twitter_handle or "").lower().lstrip("@")}
+        if not who & allowlist:
+            raise HTTPException(status_code=403, detail="Campaign creation is limited to approved creators for now.")
+    pool = _validate_campaign_limits(payload)
+    if settings.campaign_require_funds:
+        await _require_creator_funds(db, user, pool)
 
     new_campaign = CampaignModel(
         creator_twitter_user_id=user.twitter_user_id,
@@ -1039,7 +1119,7 @@ async def create_campaign(
         reward_token=payload.reward_token,
         reward_per_participant=payload.reward_per_participant,
         max_participants=payload.max_participants,
-        reward_pool=payload.reward_per_participant * payload.max_participants,
+        reward_pool=pool,
         status="active",
         profile_to_follow=payload.profile_to_follow,
         tweet_id_to_engage=payload.tweet_id_to_engage,
@@ -1055,6 +1135,20 @@ async def create_campaign(
     await db.refresh(new_campaign)
 
     return {"success": True, "message": "Campaign created successfully!", "campaign": _campaign_to_dict(new_campaign)}
+
+
+@router.post("/campaigns/create")
+async def create_campaign(
+    payload: CreateCampaignRequest,
+    db: AsyncSession = Depends(get_db_session),
+    authorization: Optional[str] = Header(default=None),
+):
+    # strict: criar campanha mexe em dinheiro, então só vale token emitido pelo
+    # backend — o id/endereço público usado como token (legado) não prova quem é.
+    # Autentica antes de semear: chamada sem login não escreve nada no banco.
+    user = await _resolve_user(db, authorization, strict=True)
+    await _seed_default_campaigns(db)
+    return await create_campaign_for_user(db, user, payload)
 
 
 @router.post("/campaigns/join")
@@ -1104,6 +1198,40 @@ async def join_campaign(
     }
 
 
+async def _verify_social_tasks(db: AsyncSession, user: User, campaign: CampaignModel, strict: bool) -> tuple[bool, str]:
+    """Tarefas sociais. Com o X conectado em Accounts, confere com o token da própria pessoa — é o caminho de quem
+    entra por carteira/Privy, cujo `twitter_user_id` não é um id do X. Sem conta conectada, cai no Bearer do app."""
+    from server.integrations.campaign_verifier import verify_social, verify_social_with_x_account
+    from server.social_adapters import ADAPTERS
+    from server.social_routes import _crypto  # lazy: social_routes importa este módulo
+
+    if not campaign.profile_to_follow and not campaign.tweet_id_to_engage:
+        return True, "No social tasks to check"
+    acc = (
+        await db.execute(select(SocialAccount).where(SocialAccount.user_id == user.id, SocialAccount.platform == "x"))
+    ).scalars().first()
+    if acc:
+        creds = json.loads(_crypto.decrypt(acc.credentials_enc))
+        before = dict(creds)
+        ok, reason = await verify_social_with_x_account(
+            ADAPTERS["x"], creds, acc.external_id, campaign.profile_to_follow, campaign.tweet_id_to_engage
+        )
+        if creds != before:  # o adaptador renovou o token
+            acc.credentials_enc = _crypto.encrypt(json.dumps(creds))
+            await db.commit()
+        return ok, reason
+    ok, reason = await verify_social(
+        twitter_user_id=user.twitter_user_id,
+        profile_to_follow=campaign.profile_to_follow,
+        tweet_id_to_engage=campaign.tweet_id_to_engage,
+        bearer_token=settings.x_bearer_token,
+        strict=strict,
+    )
+    if not ok and strict:
+        reason = "Connect your X account in Accounts so Xiaolee can verify your tasks."
+    return ok, reason
+
+
 @router.post("/campaigns/verify")
 async def verify_tasks(
     payload: CampaignActionRequest,
@@ -1128,32 +1256,32 @@ async def verify_tasks(
         return {"success": True, "message": "Tasks already verified! You can now claim your reward.", "all_tasks_completed": True}
 
     # SEC-006: real task verification per campaign type
-    from server.integrations.campaign_verifier import verify_social, verify_trading, verify_referral
-    from server.settings import settings
+    from server.integrations.campaign_verifier import verify_trading, verify_referral
 
     campaign_type = campaign.campaign_type
+    strict = not settings.arc_sandbox  # dinheiro real: nada de "aceito de boa fé"
 
     if campaign_type == "social":
-        ok, reason = await verify_social(
-            twitter_user_id=user.twitter_user_id,
-            profile_to_follow=campaign.profile_to_follow,
-            tweet_id_to_engage=campaign.tweet_id_to_engage,
-            bearer_token=settings.x_bearer_token,
-        )
+        ok, reason = await _verify_social_tasks(db, user, campaign, strict)
     elif campaign_type == "trading":
         wallet_res = await db.execute(select(Wallet).where(Wallet.user_id == user.id))
         wallet = wallet_res.scalars().first()
         ok, reason = await verify_trading(
             wallet_address=wallet.address if wallet else None,
             helius_api_key=settings.helius_api_key,
+            strict=strict,
         )
     elif campaign_type == "referral":
         ok, reason = await verify_referral(user.id, db, campaign_id)
+    elif strict:
+        ok, reason = False, "This campaign type cannot be verified automatically."
     else:
         logger.warning("[campaigns/verify] Unknown campaign type %r for campaign %d — accepting", campaign_type, campaign_id)
         ok, reason = True, f"Campaign type accepted"
 
     if not ok:
+        if strict:
+            reason += " The campaign creator can also approve your participation."
         return {"success": False, "message": reason, "all_tasks_completed": False}
 
     participant.status = "tasks_verified"
@@ -1167,6 +1295,94 @@ async def verify_tasks(
     }
 
 
+async def _payout_guard(
+    db: AsyncSession, campaign: CampaignModel, user_id: int, wallet: str, amount: float
+) -> Optional[str]:
+    """Travas de dinheiro real; devolve a mensagem de recusa ou None. Roda antes de qualquer transferência."""
+    if not settings.payouts_enabled:
+        return "Payouts are paused right now. Your claim is safe — try again later."
+    # Uma carteira só recebe uma vez por campanha, mesmo que contas diferentes a usem (sybil).
+    dup = await db.execute(
+        select(func.count()).select_from(CampaignParticipant).where(
+            CampaignParticipant.campaign_id == campaign.id,
+            CampaignParticipant.paid_wallet == wallet.lower(),
+            CampaignParticipant.user_id != user_id,
+        )
+    )
+    if (dup.scalar() or 0) > 0:
+        return "This wallet already received a reward in this campaign."
+    # Teto diário global (últimas 24h). ponytail: leitura+soma sem lock, duas claims simultâneas
+    # no limite podem passar por 1 recompensa; lock/linha de contador se o volume crescer.
+    spent = await db.execute(
+        select(func.coalesce(func.sum(CampaignModel.reward_per_participant), 0))
+        .select_from(CampaignParticipant)
+        .join(CampaignModel, CampaignModel.id == CampaignParticipant.campaign_id)
+        .where(CampaignParticipant.paid_at >= datetime.now(timezone.utc) - timedelta(hours=24))
+    )
+    if float(spent.scalar() or 0) + amount > settings.payout_daily_budget_usdc:
+        return "The daily payout budget was reached. Try claiming again tomorrow."
+    return None
+
+
+async def _creator_campaign(db: AsyncSession, authorization: Optional[str], campaign_id: int):
+    """Campanha + usuário autenticado, só se ele for o criador (aprovação mexe em dinheiro: token emitido pelo backend)."""
+    user = await _resolve_user(db, authorization, strict=True)
+    campaign = await _get_campaign_or_404(db, campaign_id)
+    if campaign.creator_twitter_user_id != user.twitter_user_id:
+        raise HTTPException(status_code=403, detail="Only the campaign creator can do this.")
+    return user, campaign
+
+
+@router.get("/campaigns/{campaign_id}/participants")
+async def list_campaign_participants(
+    campaign_id: int,
+    db: AsyncSession = Depends(get_db_session),
+    authorization: Optional[str] = Header(default=None),
+):
+    """Quem entrou na campanha e em que estado está — só o criador vê."""
+    await _creator_campaign(db, authorization, campaign_id)
+    rows = (
+        await db.execute(
+            select(CampaignParticipant, User)
+            .join(User, User.id == CampaignParticipant.user_id)
+            .where(CampaignParticipant.campaign_id == campaign_id)
+            .order_by(CampaignParticipant.id)
+        )
+    ).all()
+    return {
+        "success": True,
+        "participants": [
+            {"user_id": u.id, "handle": u.twitter_handle, "status": part.status} for part, u in rows
+        ],
+    }
+
+
+@router.post("/campaigns/{campaign_id}/participants/{user_id}/approve")
+async def approve_campaign_participant(
+    campaign_id: int,
+    user_id: int,
+    db: AsyncSession = Depends(get_db_session),
+    authorization: Optional[str] = Header(default=None),
+):
+    """O criador confirma que o participante cumpriu as tarefas; libera o resgate (a carteira só é conhecida no claim)."""
+    await _creator_campaign(db, authorization, campaign_id)
+    participant = (
+        await db.execute(
+            select(CampaignParticipant).where(
+                CampaignParticipant.campaign_id == campaign_id, CampaignParticipant.user_id == user_id
+            )
+        )
+    ).scalars().first()
+    if not participant:
+        raise HTTPException(status_code=404, detail="Participant not found in this campaign.")
+    if participant.status == "enrolled":
+        participant.status = "tasks_verified"
+        participant.tasks_verified_at = datetime.now(timezone.utc)
+        await db.commit()
+        record_campaign_event("verify")
+    return {"success": True, "status": participant.status}
+
+
 @router.post("/campaigns/claim")
 async def claim_reward(
     payload: CampaignActionRequest,
@@ -1174,7 +1390,9 @@ async def claim_reward(
     authorization: Optional[str] = Header(default=None),
 ):
     await _seed_default_campaigns(db)
-    user = await _resolve_user(db, authorization)
+    # strict: claim paga dinheiro, e o prefixo custodial dispensa a assinatura da carteira —
+    # então o Bearer tem que ser um token que o backend emitiu, não o id público do usuário.
+    user = await _resolve_user(db, authorization, strict=True)
     campaign_id = int(payload.campaign_identifier)
     campaign = await _get_campaign_or_404(db, campaign_id)
 
@@ -1206,6 +1424,10 @@ async def claim_reward(
     # resgate — pagar "USDC" para um endereço que não existe nessa rede seria
     # pior que não pagar.
     if wallet_address.startswith("0x") and campaign.reward_token.upper() == "USDC":
+        if not settings.arc_sandbox:
+            blocked = await _payout_guard(db, campaign, user.id, wallet_address, reward_amount)
+            if blocked:
+                return {"success": False, "error": blocked}
         # Determinístico por (campanha, usuário) — não por chamada: um retry de
         # rede antes do `commit` abaixo não deve virar um segundo pagamento.
         idempotency_key = str(
@@ -1244,6 +1466,9 @@ async def claim_reward(
 
     participant.status = "paid"
     participant.claim_receipt_id = receipt_id
+    if paid_onchain:
+        participant.paid_at = datetime.now(timezone.utc)
+        participant.paid_wallet = wallet_address.lower()
     db.add(
         NotificationEvent(
             user_id=user.id,

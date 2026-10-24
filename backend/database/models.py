@@ -8,7 +8,7 @@ All models inherit from Base which provides id, created_at, updated_at automatic
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import BigInteger, String, ForeignKey, Numeric, Text, Boolean, DateTime, UniqueConstraint, func
+from sqlalchemy import BigInteger, Float, String, Integer, ForeignKey, Numeric, Text, Boolean, DateTime, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.orm import DeclarativeBase
 
@@ -174,6 +174,9 @@ class CampaignParticipant(Base):
     has_quoted: Mapped[bool] = mapped_column(Boolean, default=False, server_default='false')
     tasks_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     claim_receipt_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Preenchidos quando o payout on-chain é aceito: base do teto diário e do "1 pagamento por carteira".
+    paid_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    paid_wallet: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     # ADR-006: suporte multi-chain
     chain: Mapped[str] = mapped_column(String(16), default='stellar', server_default='stellar')
     stellar_wallet: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
@@ -202,6 +205,16 @@ class UsedPayment(Base):
     amount_xlm: Mapped[Optional[float]] = mapped_column(Numeric(20, 8), nullable=True)
     network: Mapped[str] = mapped_column(String(16), default='testnet')
     verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class UsageCounter(Base):
+    """Contador diário (UTC) de mensagens que chegam na LLM, por identidade e global (key='global')."""
+    __tablename__ = 'usage_counters'
+    __table_args__ = (UniqueConstraint('key', 'day', name='uq_usage_counters_key_day'),)
+
+    key: Mapped[str] = mapped_column(String(255), index=True)
+    day: Mapped[str] = mapped_column(String(10))  # YYYY-MM-DD
+    count: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class PaymentIntent(Base):
@@ -357,3 +370,170 @@ class MediaClip(Base):
     size_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     # JPEG de um quadro do corte já renderizado (com a legenda queimada).
     thumb_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # crop | fit com que o corte foi renderizado (a escolha do `auto` fica registrada); None = cortes antigos.
+    layout: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)
+    # JSON {palavra errada: certa}: correções de legenda do creator, aplicadas ao re-renderizar (None = nenhuma).
+    caption_fixes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class CreatorReport(Base):
+    """Relatório de 30 dias do creator (server/creator_report.py): métricas do período + sugestões da IA.
+
+    Um por (usuário, início do período) — o job pode rodar de novo sem duplicar. `metrics_json` guarda o
+    período e o anterior ({"current": {...}, "previous": {...}}); `suggestions_json` é [{title, action, why}].
+    """
+    __tablename__ = 'creator_reports'
+    __table_args__ = (UniqueConstraint('user_id', 'period_start', name='uq_creator_report_period'),)
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    period_start: Mapped[datetime] = mapped_column(DateTime)
+    period_end: Mapped[datetime] = mapped_column(DateTime)
+    metrics_json: Mapped[str] = mapped_column(Text)
+    summary: Mapped[str] = mapped_column(Text)
+    suggestions_json: Mapped[str] = mapped_column(Text)
+    lang: Mapped[str] = mapped_column(String(8), default='en')
+
+
+class SocialAccount(Base):
+    """Conta de rede social do creator conectada à Xiaolee (uma por plataforma por usuário).
+
+    `credentials_enc` é JSON cifrado (EncryptionService) com o que a rede exige para postar; nunca sai da API
+    nem vai a log. Desconectar apaga a linha (e o token junto). status: active | error.
+    """
+    __tablename__ = 'social_accounts'
+    __table_args__ = (UniqueConstraint('user_id', 'platform', name='uq_social_account_platform'),)
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    platform: Mapped[str] = mapped_column(String(20))  # telegram | bluesky | x | tiktok
+    external_id: Mapped[str] = mapped_column(String(128))
+    handle: Mapped[str] = mapped_column(String(128))
+    credentials_enc: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default='active')
+
+
+class PostPublication(Base):
+    """Um post feito (ou tentado) pela Xiaolee em nome do creator. Gravado `pending` ANTES de chamar a rede
+    (intent log) e base das métricas. status: pending → published | failed."""
+    __tablename__ = 'post_publications'
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    clip_id: Mapped[Optional[int]] = mapped_column(ForeignKey("media_clips.id"), nullable=True)
+    platform: Mapped[str] = mapped_column(String(20), index=True)
+    caption: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default='pending', index=True)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    external_post_id: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    metrics_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    metrics_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class SyntheticCreator(Base):
+    """Persona sintética do creator: foto de referência (R2) + voz pronta do ElevenLabs. Pode ser o próprio rosto,
+    um personagem ou meme (o creator aceita o termo de direitos). status: pending (URL de upload emitida) → ready."""
+    __tablename__ = 'synthetic_creators'
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(60))
+    voice_id: Mapped[str] = mapped_column(String(64))
+    ref_image_key: Mapped[str] = mapped_column(Text, unique=True)
+    ref_content_type: Mapped[str] = mapped_column(String(50))
+    status: Mapped[str] = mapped_column(String(20), default='pending')
+    # Quando o creator aceitou o termo de direitos de imagem (dono, paródia ou fan content; não enganar/assediar).
+    rights_confirmed_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class CreatorVideo(Base):
+    """Vídeo falado de uma persona. Gravado ANTES do relay do pagamento (intent log; `payment_nonce` único
+    = anti-replay). status: paying → queued → voice → video → done | failed (`refund_due` se já pago)."""
+    __tablename__ = 'creator_videos'
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    creator_id: Mapped[int] = mapped_column(ForeignKey("synthetic_creators.id"), index=True)
+    quality: Mapped[str] = mapped_column(String(20))
+    model: Mapped[str] = mapped_column(String(100))
+    duration_s: Mapped[int] = mapped_column()
+    script: Mapped[str] = mapped_column(Text)
+    price_usdc: Mapped[float] = mapped_column(Numeric(12, 6))
+    payment_from: Mapped[str] = mapped_column(String(64))
+    payment_nonce: Mapped[str] = mapped_column(String(80), unique=True)
+    payment_tx: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default='paying', index=True)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    refund_due: Mapped[bool] = mapped_column(Boolean, default=False)
+    video_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Mimic: vídeo de movimento no R2 e quando o usuário declarou ter o direito de usá-lo (prova numa denúncia).
+    motion_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    motion_rights_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # Mimic: none | original (som do vídeo de referência) | voice (narração com a voz da persona).
+    audio: Mapped[str] = mapped_column(String(10), default='none', server_default='none')
+    # Swap: a prévia aprovada (`creator_previews.id`) cujo quadro vira a imagem do vídeo.
+    preview_id: Mapped[Optional[int]] = mapped_column(nullable=True, index=True)
+    # Mimic/Swap: segundo do vídeo de referência onde o trecho de `duration_s` começa (0 = do início).
+    motion_start_s: Mapped[float] = mapped_column(Float, default=0.0, server_default='0')
+
+
+class CreatorPreview(Base):
+    """Prévia do Swap: o primeiro quadro do vídeo de referência com o personagem no lugar da pessoa. Grátis para o
+    usuário (limite diário); o vídeo só é cobrado e gerado depois de aprovada. status: working → ready | failed."""
+    __tablename__ = 'creator_previews'
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    creator_id: Mapped[int] = mapped_column(ForeignKey("synthetic_creators.id"), index=True)
+    motion_key: Mapped[str] = mapped_column(Text)
+    motion_start_s: Mapped[float] = mapped_column(Float, default=0.0, server_default='0')
+    frame_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default='working')
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class OnoffIntent(Base):
+    """Depósito ou saque de fiat/cripto (server/onoff.py). Gravado ANTES de qualquer chamada ao provedor
+    (intent log durável). Só avança pela máquina de estados de `onoff.advance`; cada passo vira um `OnoffEvent`.
+    A XiaoLee não guarda dados bancários nem documentos: quem paga/cobra o fiat é o provedor licenciado."""
+    __tablename__ = 'onoff_intents'
+
+    intent_id: Mapped[str] = mapped_column(String(36), unique=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    direction: Mapped[str] = mapped_column(String(10))            # 'deposit' | 'withdraw'
+    method: Mapped[str] = mapped_column(String(24))               # card | apple_pay | google_pay | pix | bank | chain
+    provider: Mapped[str] = mapped_column(String(32))
+    amount_usdc: Mapped[float] = mapped_column(Numeric(20, 8))
+    fiat_currency: Mapped[Optional[str]] = mapped_column(String(3), nullable=True)
+    status: Mapped[str] = mapped_column(String(24), default='created', index=True)
+    provider_ref: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, index=True)
+    dest_network: Mapped[Optional[str]] = mapped_column(String(24), nullable=True)
+    dest_address: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    onchain_tx: Mapped[Optional[str]] = mapped_column(Text, nullable=True)       # saque entre redes: burn assinado pelo usuário
+    forward_tx: Mapped[Optional[str]] = mapped_column(Text, nullable=True)       # saque entre redes: mint feito pelo Forwarding Service
+    max_fee_usdc: Mapped[Optional[float]] = mapped_column(Numeric(20, 8), nullable=True)  # teto de taxa cotado (burn = valor + teto)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class OnoffEvent(Base):
+    """Trilha de auditoria append-only das mudanças de estado de um `OnoffIntent`. Nunca se atualiza nem apaga.
+    `event_id` (id do evento no provedor) é único: é o anti-replay dos webhooks."""
+    __tablename__ = 'onoff_events'
+
+    intent_id: Mapped[int] = mapped_column(ForeignKey("onoff_intents.id"), index=True)
+    from_status: Mapped[Optional[str]] = mapped_column(String(24), nullable=True)
+    to_status: Mapped[str] = mapped_column(String(24))
+    actor: Mapped[str] = mapped_column(String(16))                # system | user | webhook
+    event_id: Mapped[Optional[str]] = mapped_column(String(128), unique=True, nullable=True)
+    payload_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+
+
+class OnoffKyc(Base):
+    """Resultado do KYC/KYB feito pelo provedor. Só o veredito: nenhum documento é guardado aqui."""
+    __tablename__ = 'onoff_kyc'
+    __table_args__ = (UniqueConstraint('user_id', 'provider', name='uq_onoff_kyc_user_provider'),)
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    provider: Mapped[str] = mapped_column(String(32))
+    level: Mapped[int] = mapped_column(default=0)                 # 0 nenhum, 1 básico, 2 completo
+    status: Mapped[str] = mapped_column(String(16), default='none')   # none | pending | approved | rejected
+    subject: Mapped[str] = mapped_column(String(8), default='person') # person | business
+    customer_ref: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

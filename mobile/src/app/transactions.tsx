@@ -20,9 +20,10 @@ import {
   IconUser,
   type IconProps,
 } from '@/components/icons';
-import { PageHeading, ScreenShell } from '@/components/screen-shell';
+import { FAB_CLEARANCE, PageHeading, ScreenShell } from '@/components/screen-shell';
 import { SectionCard } from '@/components/section-card';
-import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useBackendData } from '@/hooks/use-backend-data';
 import { useSession } from '@/hooks/use-session';
 import { isOnChainTx, txExplorerUrl } from '@/lib/explorer';
@@ -191,6 +192,8 @@ function toMovements({ claims, notifications, arcTransfers }: TransactionsData):
 }
 
 export default function TransactionsScreen() {
+  const colors = useTheme();
+  const styles = useStyles();
   // Barra de gestos do Android come o fim da lista sem este inset.
   const insets = useSafeAreaInsets();
   const { hasSession } = useSession();
@@ -212,14 +215,14 @@ export default function TransactionsScreen() {
   return (
     <ScreenShell>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: Spacing.four + insets.bottom }]}
+        contentContainerStyle={[styles.content, { paddingBottom: FAB_CLEARANCE + insets.bottom }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={reload}
-            tintColor={Colors.light.accent}
-            colors={[Colors.light.accent]}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
           />
         }
       >
@@ -273,6 +276,7 @@ function TabBar({
   counts: Record<Tab, number>;
   onChange: (next: Tab) => void;
 }) {
+  const styles = useStyles();
   // "On-chain" e não "Transfers": o webhook registra o `event_type` que vier
   // (`helius_routes.py:161`), então nem todo evento é transferência. O rótulo
   // precisa cobrir o que a aba realmente contém.
@@ -316,6 +320,8 @@ function openTx(tx: string) {
 }
 
 function MovementRow({ movement }: { movement: Movement }) {
+  const colors = useTheme();
+  const styles = useStyles();
   const reward = movement.kind === 'reward';
   // Recibo de resgate e assinatura Solana do Helius não são hash de transação
   // EVM — só um `tx_hash` do relay do Arc bate no formato e vira link.
@@ -329,7 +335,7 @@ function MovementRow({ movement }: { movement: Movement }) {
           {movement.reference}
         </Text>
       </View>
-      {linkable ? <IconChevronRight size={12} color={Colors.light.ink3} /> : null}
+      {linkable ? <IconChevronRight size={12} color={colors.ink3} /> : null}
     </View>
   ) : null;
 
@@ -337,9 +343,9 @@ function MovementRow({ movement }: { movement: Movement }) {
     <View style={styles.row}>
       <View style={[styles.rowIcon, reward ? styles.rowIconReward : styles.rowIconTransfer]}>
         {reward ? (
-          <IconGift size={16} color={Colors.light.accent} />
+          <IconGift size={16} color={colors.accent} />
         ) : (
-          <IconSwap size={16} color={Colors.light.ink2} />
+          <IconSwap size={16} color={colors.ink2} />
         )}
       </View>
 
@@ -411,11 +417,13 @@ function emptyText(tab: Tab): string {
  * mandar para uma tela onde o botão de conectar também não está à vista.
  */
 function GuestState() {
+  const colors = useTheme();
+  const styles = useStyles();
   return (
     <SectionCard title="Your activity" subtitle="Tied to your connected wallet">
       <View style={styles.guest}>
         <View style={styles.guestIcon}>
-          <IconUser size={22} color={Colors.light.ink3} />
+          <IconUser size={22} color={colors.ink3} />
         </View>
         <Text style={styles.guestTitle}>No wallet connected</Text>
         <Text style={styles.guestText}>
@@ -433,6 +441,7 @@ function GuestState() {
  * pula do mesmo jeito.
  */
 function TransactionsSkeleton() {
+  const styles = useStyles();
   return (
     <View style={styles.skeleton} accessible accessibilityLabel="Loading transactions">
       {/* Barra de abas, depois o cartão da lista — a silhueta exata da tela
@@ -443,7 +452,7 @@ function TransactionsSkeleton() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   flex: { flex: 1 },
   content: {
     paddingHorizontal: Spacing.three - 4,
@@ -461,9 +470,9 @@ const styles = StyleSheet.create({
     gap: Spacing.one,
     padding: Spacing.one + 2,
     borderRadius: Radius.lg,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
   tab: {
     flex: 1,
@@ -474,19 +483,19 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
     borderRadius: Radius.md,
   },
-  tabActive: { backgroundColor: Colors.light.accent },
-  tabText: { fontFamily: Fonts.bold, fontSize: 13, color: Colors.light.ink3 },
-  tabTextActive: { color: Colors.light.card },
+  tabActive: { backgroundColor: colors.accentFill },
+  tabText: { fontFamily: Fonts.bold, fontSize: 13, color: colors.ink3 },
+  tabTextActive: { color: colors.onAccent },
   tabBadge: {
     paddingHorizontal: Spacing.two - 3,
     paddingVertical: 1,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.accentSoft,
+    backgroundColor: colors.accentSoft,
   },
   // Translúcido sobre o acento, como o `bg-white/25` do web.
   tabBadgeActive: { backgroundColor: 'rgba(255,255,255,0.28)' },
-  tabBadgeText: { fontFamily: Fonts.bold, fontSize: 10, color: Colors.light.accent },
-  tabBadgeTextActive: { color: Colors.light.card },
+  tabBadgeText: { fontFamily: Fonts.bold, fontSize: 10, color: colors.accent },
+  tabBadgeTextActive: { color: colors.onAccent },
 
   // ── Linha de movimento ─────────────────────────────────────────────────
   row: {
@@ -495,7 +504,7 @@ const styles = StyleSheet.create({
     gap: Spacing.two + 2,
     padding: Spacing.two + 2,
     borderRadius: Radius.md,
-    backgroundColor: Colors.light.bg,
+    backgroundColor: colors.bg,
   },
   rowIcon: {
     width: 34,
@@ -504,12 +513,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
-  rowIconReward: { backgroundColor: Colors.light.accentSoft },
-  rowIconTransfer: { backgroundColor: Colors.light.card },
-  rowTitle: { fontFamily: Fonts.semibold, fontSize: 13, color: Colors.light.ink },
-  rowDetail: { fontFamily: Fonts.sans, fontSize: 12, lineHeight: 18, color: Colors.light.ink2, marginTop: 1 },
+  rowIconReward: { backgroundColor: colors.accentSoft },
+  rowIconTransfer: { backgroundColor: colors.card },
+  rowTitle: { fontFamily: Fonts.semibold, fontSize: 13, color: colors.ink },
+  rowDetail: { fontFamily: Fonts.sans, fontSize: 12, lineHeight: 18, color: colors.ink2, marginTop: 1 },
 
   reference: {
     flexDirection: 'row',
@@ -518,7 +527,7 @@ const styles = StyleSheet.create({
     marginTop: Spacing.two - 2,
     padding: Spacing.two - 2,
     borderRadius: Radius.sm,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
   },
   referenceText: { flex: 1, gap: 1 },
   referenceLabel: {
@@ -526,18 +535,18 @@ const styles = StyleSheet.create({
     fontSize: 8,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
-    color: Colors.light.ink3,
+    color: colors.ink3,
   },
-  referenceValue: { fontFamily: Fonts.mono, fontSize: 10, color: Colors.light.ink2 },
+  referenceValue: { fontFamily: Fonts.mono, fontSize: 10, color: colors.ink2 },
 
   amountBox: { alignItems: 'flex-end' },
-  amount: { fontFamily: Fonts.bold, fontSize: 14, color: Colors.light.success },
-  amountOut: { color: Colors.light.ink },
+  amount: { fontFamily: Fonts.bold, fontSize: 14, color: colors.success },
+  amountOut: { color: colors.ink },
   amountToken: {
     fontFamily: Fonts.bold,
     fontSize: 9,
     letterSpacing: 0.5,
-    color: Colors.light.ink3,
+    color: colors.ink3,
     marginTop: 1,
   },
 
@@ -550,14 +559,14 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.light.bg,
+    backgroundColor: colors.bg,
   },
-  guestTitle: { fontFamily: Fonts.semibold, fontSize: 14, color: Colors.light.ink },
+  guestTitle: { fontFamily: Fonts.semibold, fontSize: 14, color: colors.ink },
   guestText: {
     fontFamily: Fonts.sans,
     fontSize: 13,
     lineHeight: 20,
-    color: Colors.light.ink2,
+    color: colors.ink2,
     textAlign: 'center',
   },
-});
+}));

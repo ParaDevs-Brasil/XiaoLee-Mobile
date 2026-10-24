@@ -38,16 +38,7 @@ export const IconBell = (p: IconProps) => (
   </Svg>
 );
 
-/** Hambúrguer limpo — o `material-symbols:menu-rounded` do Figma. */
-export const IconMenu = (p: IconProps) => (
-  <Svg {...base(p)}>
-    <Line x1="3" y1="6" x2="21" y2="6" />
-    <Line x1="3" y1="12" x2="21" y2="12" />
-    <Line x1="3" y1="18" x2="21" y2="18" />
-  </Svg>
-);
-
-/** Lista com marcadores — não confundir com `IconMenu`. */
+/** Lista com marcadores — não confundir com o hambúrguer (`MenuToggleIcon`). */
 export const IconList = (p: IconProps) => (
   <Svg {...base(p)}>
     <Line x1="8" y1="6" x2="21" y2="6" />
@@ -184,6 +175,35 @@ export const IconPlay = (p: IconProps) => (
   </Svg>
 );
 
+/** Microfone — a voz de um personagem. */
+export const IconMic = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Rect x="9" y="3" width="6" height="11" rx="3" />
+    <Path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+  </Svg>
+);
+
+export const IconSearch = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Circle cx="11" cy="11" r="7" />
+    <Path d="m20 20-3.5-3.5" />
+  </Svg>
+);
+
+export const IconShield = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Path d="M12 3 5 6v6c0 4.5 3 7.5 7 9 4-1.5 7-4.5 7-9V6l-7-3Z" />
+    <Path d="m9.5 12 2 2 3.5-4" />
+  </Svg>
+);
+
+export const IconPause = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Line x1="9" y1="5" x2="9" y2="19" />
+    <Line x1="15" y1="5" x2="15" y2="19" />
+  </Svg>
+);
+
 /** Corte — a entrada do Clipper. */
 export const IconScissors = (p: IconProps) => (
   <Svg {...base(p)}>
@@ -288,6 +308,57 @@ export const IconSpark = ({ size = 24, color = 'currentColor' }: IconProps) => (
   </Svg>
 );
 
+/** Balão de fala com três pontos — o "Talk" do desenho do Josh. */
+export const IconMessageDots = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Path d="M21 15a2 2 0 0 1-2 2H8l-5 4V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    <Circle cx="8.5" cy="10.5" r="0.6" />
+    <Circle cx="12" cy="10.5" r="0.6" />
+    <Circle cx="15.5" cy="10.5" r="0.6" />
+  </Svg>
+);
+
+/** Duas setas opostas (⇄) — o "Swap" do desenho do Josh. */
+export const IconArrowsLeftRight = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Line x1="4" y1="8" x2="20" y2="8" />
+    <Polyline points="16 4 20 8 16 12" />
+    <Line x1="20" y1="16" x2="4" y2="16" />
+    <Polyline points="8 12 4 16 8 20" />
+  </Svg>
+);
+
+export const IconArrowUp = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Line x1="12" y1="19" x2="12" y2="5" />
+    <Polyline points="5 12 12 5 19 12" />
+  </Svg>
+);
+
+export const IconFileText = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <Polyline points="14 2 14 8 20 8" />
+    <Line x1="16" y1="13" x2="8" y2="13" />
+    <Line x1="16" y1="17" x2="8" y2="17" />
+  </Svg>
+);
+
+export const IconLightbulb = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Path d="M9 18h6" />
+    <Path d="M10 22h4" />
+    <Path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14" />
+  </Svg>
+);
+
+export const IconArrowRight = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Line x1="5" y1="12" x2="19" y2="12" />
+    <Polyline points="12 5 19 12 12 19" />
+  </Svg>
+);
+
 export const IconLogOut = (p: IconProps) => (
   <Svg {...base(p)}>
     <Path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -324,6 +395,26 @@ export const IconCards = (p: IconProps) => (
     <Rect x="8" y="3" width="12" height="16" rx="2" />
     <Path d="M8 6.5 4.6 7.6a2 2 0 0 0-1.3 2.5l3.4 10.5a2 2 0 0 0 2.5 1.3l4.3-1.4" />
     <Path d="m14 8 1.2 2.4 2.3.4-1.7 1.6.4 2.3L14 13.6l-2.2 1.1.4-2.3-1.7-1.6 2.3-.4z" />
+  </Svg>
+);
+
+/** Verde do Pix — cor da marca do arranjo, não do tema: é o que o usuário reconhece no banco dele. */
+export const PIX_COLOR = '#32BCAD';
+
+/** Marca do Pix (Banco Central): preenchida, não de traço — `color` é o preenchimento. Path do Simple Icons (CC0). */
+export const IconPix = ({ size = 24, color = PIX_COLOR }: IconProps) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+    <Path d="M5.283 18.36a3.505 3.505 0 0 0 2.493-1.032l3.6-3.6a.684.684 0 0 1 .946 0l3.613 3.613a3.504 3.504 0 0 0 2.493 1.032h.71l-4.56 4.56a3.647 3.647 0 0 1-5.156 0L4.85 18.36ZM18.428 5.627a3.505 3.505 0 0 0-2.493 1.032l-3.613 3.614a.67.67 0 0 1-.946 0l-3.6-3.6A3.505 3.505 0 0 0 5.283 5.64h-.434l4.573-4.572a3.646 3.646 0 0 1 5.156 0l4.559 4.559ZM1.068 9.422 3.79 6.699h1.492a2.483 2.483 0 0 1 1.744.722l3.6 3.6a1.73 1.73 0 0 0 2.443 0l3.614-3.613a2.482 2.482 0 0 1 1.744-.723h1.767l2.737 2.737a3.646 3.646 0 0 1 0 5.156l-2.736 2.736h-1.768a2.482 2.482 0 0 1-1.744-.722l-3.613-3.613a1.77 1.77 0 0 0-2.444 0l-3.6 3.6a2.483 2.483 0 0 1-1.744.722H3.791l-2.723-2.723a3.646 3.646 0 0 1 0-5.156" />
+  </Svg>
+);
+
+/** Cartão de pagamento: tarja, chip e número — não confundir com `IconCards` (baralho). */
+export const IconCreditCard = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Rect x="2" y="5" width="20" height="14" rx="3" />
+    <Path d="M2 9.5h20" />
+    <Rect x="5" y="12.5" width="4" height="3" rx="0.8" />
+    <Path d="M12 14h1M15 14h1M18 14h1" />
   </Svg>
 );
 
@@ -388,6 +479,13 @@ export const IconTrendingUp = (p: IconProps) => (
   </Svg>
 );
 
+export const IconTrendingDown = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Polyline points="22 17 13.5 8.5 8.5 13.5 2 7" />
+    <Polyline points="16 17 22 17 22 11" />
+  </Svg>
+);
+
 export const IconSmile = (p: IconProps) => (
   <Svg {...base(p)}>
     <Circle cx="12" cy="12" r="10" />
@@ -409,5 +507,108 @@ export const IconInstagram = (p: IconProps) => (
     <Rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
     <Path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
     <Line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
+  </Svg>
+);
+
+// ── Carteira do creator ─────────────────────────────────────────────────────
+
+export const IconCopy = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Rect x="9" y="9" width="12" height="12" rx="2" />
+    <Path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" />
+  </Svg>
+);
+
+/** QR estilizado — três marcadores de canto e um ponto de dado. */
+export const IconQr = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Rect x="3" y="3" width="7" height="7" rx="1" />
+    <Rect x="14" y="3" width="7" height="7" rx="1" />
+    <Rect x="3" y="14" width="7" height="7" rx="1" />
+    <Path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3" />
+  </Svg>
+);
+
+/** Abre fora do app (explorer). */
+export const IconExternal = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Path d="M14 4h6v6" />
+    <Path d="M20 4l-9 9" />
+    <Path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4" />
+  </Svg>
+);
+
+/** Dinheiro que entrou. */
+export const IconArrowDownLeft = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Path d="M17 7 7 17" />
+    <Path d="M17 17H7V7" />
+  </Svg>
+);
+
+/** Compra de conteúdo (x402). */
+export const IconBag = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Path d="M5 8h14l-1 12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1L5 8z" />
+    <Path d="M9 8V6a3 3 0 0 1 6 0v2" />
+  </Svg>
+);
+
+/** Tema claro, no seletor de aparência do perfil. */
+export const IconSun = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Circle cx="12" cy="12" r="4.5" />
+    <Line x1="12" y1="2" x2="12" y2="4" />
+    <Line x1="12" y1="20" x2="12" y2="22" />
+    <Line x1="4.93" y1="4.93" x2="6.34" y2="6.34" />
+    <Line x1="17.66" y1="17.66" x2="19.07" y2="19.07" />
+    <Line x1="2" y1="12" x2="4" y2="12" />
+    <Line x1="20" y1="12" x2="22" y2="12" />
+    <Line x1="4.93" y1="19.07" x2="6.34" y2="17.66" />
+    <Line x1="17.66" y1="6.34" x2="19.07" y2="4.93" />
+  </Svg>
+);
+
+/** Tema escuro. */
+export const IconMoon = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+  </Svg>
+);
+
+/** Tema do aparelho ("System"). */
+export const IconPhone = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Rect x="6" y="2" width="12" height="20" rx="2.5" />
+    <Line x1="11" y1="18" x2="13" y2="18" />
+  </Svg>
+);
+
+export const IconHome = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" />
+  </Svg>
+);
+
+export const IconVideo = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Path d="m22 8-6 4 6 4V8z" />
+    <Rect x="2" y="6" width="14" height="12" rx="2" />
+  </Svg>
+);
+
+/** Coração — favoritar. `filled` pinta o miolo com a mesma cor do traço. */
+export const IconHeart = ({ filled, ...p }: IconProps & { filled?: boolean }) => (
+  <Svg {...base(p)} fill={filled ? (p.color ?? 'currentColor') : 'none'}>
+    <Path d="M12 20.5s-7.5-4.6-9.2-9.4C1.7 7.7 3.9 4.5 7.2 4.5c2 0 3.6 1.1 4.800 3 1.200-1.900 2.800-3 4.800-3 3.300 0 5.500 3.200 4.400 6.600-1.700 4.800-9.200 9.400-9.200 9.400Z" />
+  </Svg>
+);
+
+/** Controles deslizantes — abrir filtros. */
+export const IconSliders = (p: IconProps) => (
+  <Svg {...base(p)}>
+    <Path d="M4 7h9M17 7h3M4 17h3M11 17h9" />
+    <Circle cx="15" cy="7" r="2" />
+    <Circle cx="9" cy="17" r="2" />
   </Svg>
 );

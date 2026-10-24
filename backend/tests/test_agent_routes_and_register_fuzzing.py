@@ -74,9 +74,9 @@ class TestRunCampaignValidation:
         resp = self._client.post("/v1/agent/run-campaign", json={"campaign_id": campaign_id, "budget_usdc": 10.0})
         assert resp.status_code != 500
 
-    def test_unknown_run_id_status_returns_404(self):
+    def test_status_requires_a_backend_issued_token(self):
         resp = self._client.get("/v1/agent/run-campaign/does-not-exist/status")
-        assert resp.status_code == 404
+        assert resp.status_code == 401
 
     @given(run_id=st.text(max_size=100))
     @settings(max_examples=60, suppress_health_check=[HealthCheck.too_slow, HealthCheck.function_scoped_fixture])

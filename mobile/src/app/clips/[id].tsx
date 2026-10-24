@@ -34,8 +34,9 @@ import { IconChevronLeft, IconMore, IconRefresh, IconScissors, IconZap } from '@
 import { ItemMenu } from '@/components/item-menu';
 import { PipelineSteps } from '@/components/pipeline-steps';
 import { RenameSheet } from '@/components/rename-sheet';
-import { ScreenShell } from '@/components/screen-shell';
-import { CardShadow, Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { FAB_CLEARANCE, ScreenShell } from '@/components/screen-shell';
+import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useBackendData } from '@/hooks/use-backend-data';
 import {
   canSaveClips,
@@ -63,6 +64,8 @@ import {
  * mesmo lugar.
  */
 export default function ClipsDetailScreen() {
+  const colors = useTheme();
+  const styles = useStyles();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string }>();
@@ -229,8 +232,8 @@ export default function ClipsDetailScreen() {
           <RefreshControl
             refreshing={media.refreshing || clips.refreshing}
             onRefresh={reloadAll}
-            tintColor={Colors.light.accent}
-            colors={[Colors.light.accent]}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
           />
         }
       >
@@ -241,7 +244,7 @@ export default function ClipsDetailScreen() {
             accessibilityRole="button"
             accessibilityLabel="Back to your videos"
           >
-            <IconChevronLeft size={20} sw={2.2} color={Colors.light.ink} />
+            <IconChevronLeft size={20} sw={2.2} color={colors.ink} />
           </Pressable>
           <View style={styles.flex}>
             <Text style={styles.headerTitle} numberOfLines={1}>
@@ -256,7 +259,7 @@ export default function ClipsDetailScreen() {
               accessibilityRole="button"
               accessibilityLabel={`More options for ${media.data.title}`}
             >
-              <IconMore size={22} color={Colors.light.ink2} />
+              <IconMore size={22} color={colors.ink2} />
             </Pressable>
           ) : null}
         </View>
@@ -363,6 +366,7 @@ function FlowBody({
   onRegenerate: () => void;
   onRetry: () => void;
 }) {
+  const styles = useStyles();
   switch (flow.step) {
     case 'upload-incomplete':
       return (
@@ -497,6 +501,8 @@ function GeneratePanel({
   label: string;
   onPress: () => void;
 }) {
+  const colors = useTheme();
+  const styles = useStyles();
   return (
     <View style={styles.generateBox}>
       <Text style={styles.sectionTitle}>{title}</Text>
@@ -510,9 +516,9 @@ function GeneratePanel({
         accessibilityState={{ busy, disabled: busy }}
       >
         {busy ? (
-          <ActivityIndicator size="small" color={Colors.light.card} />
+          <ActivityIndicator size="small" color={colors.onAccent} />
         ) : (
-          <IconZap size={16} sw={2.2} color={Colors.light.card} />
+          <IconZap size={16} sw={2.2} color={colors.onAccent} />
         )}
         <Text style={styles.generateText}>{busy ? 'Picking the best moments…' : label}</Text>
       </Pressable>
@@ -560,6 +566,8 @@ function ActionButton({
   /** Sem contorno nem rosa: para o que não deve competir com a ação principal da tela. */
   quiet?: boolean;
 }) {
+  const colors = useTheme();
+  const styles = useStyles();
   return (
     <Pressable
       onPress={onPress}
@@ -569,9 +577,9 @@ function ActionButton({
       accessibilityState={{ busy, disabled: busy }}
     >
       {busy ? (
-        <ActivityIndicator size="small" color={quiet ? Colors.light.ink2 : Colors.light.accent} />
+        <ActivityIndicator size="small" color={quiet ? colors.ink2 : colors.accent} />
       ) : (
-        <IconRefresh size={15} sw={2.2} color={quiet ? Colors.light.ink2 : Colors.light.accent} />
+        <IconRefresh size={15} sw={2.2} color={quiet ? colors.ink2 : colors.accent} />
       )}
       <Text style={quiet ? styles.actionQuietText : styles.actionText}>{label}</Text>
     </Pressable>
@@ -605,6 +613,7 @@ function LayoutPicker({
   onChange: (next: ClipLayout) => void;
   disabled: boolean;
 }) {
+  const styles = useStyles();
   return (
     <View style={styles.layouts} accessibilityRole="radiogroup">
       {LAYOUTS.map((option) => {
@@ -644,11 +653,13 @@ function StatusCard({
   /** Passo do `PipelineSteps` em andamento; sem ele o card não mostra o caminho. */
   step?: number;
 }) {
+  const colors = useTheme();
+  const styles = useStyles();
   return (
     <View style={styles.status}>
       <View style={styles.statusTop}>
         {/* Com o passo a passo, o anel pulsante do passo atual já diz que está trabalhando. */}
-        {busy && step === undefined ? <ActivityIndicator color={Colors.light.accent} /> : null}
+        {busy && step === undefined ? <ActivityIndicator color={colors.accent} /> : null}
         <View style={styles.flex}>
           <Text style={styles.statusTitle}>{title}</Text>
           <Text style={styles.statusText}>{text}</Text>
@@ -660,6 +671,7 @@ function StatusCard({
 }
 
 function DetailSkeleton() {
+  const styles = useStyles();
   return (
     <View style={styles.skeleton} accessible accessibilityLabel="Loading video">
       <Skeleton height={76} radius={Radius.lg} />
@@ -669,9 +681,8 @@ function DetailSkeleton() {
 }
 
 /** Altura do atalho "Chat" flutuante (44) + a margem dele (16) + respiro: o último card não pode ficar debaixo dele. */
-const FAB_CLEARANCE = 44 + Spacing.three + Spacing.four;
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   flex: { flex: 1 },
   content: { paddingHorizontal: Spacing.three - 4, paddingTop: Spacing.three, gap: Spacing.three - 4 },
   header: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
@@ -682,9 +693,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerTitle: { fontFamily: Fonts.bold, fontSize: 18, lineHeight: 24, color: Colors.light.ink },
+  headerTitle: { fontFamily: Fonts.bold, fontSize: 18, lineHeight: 24, color: colors.ink },
   headerEdit: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  headerMeta: { fontFamily: Fonts.medium, fontSize: 13, color: Colors.light.ink3 },
+  headerMeta: { fontFamily: Fonts.medium, fontSize: 13, color: colors.ink3 },
   pressed: { opacity: 0.7 },
   skeleton: { gap: Spacing.three - 4 },
   block: { gap: Spacing.three - 4 },
@@ -697,9 +708,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     borderRadius: Radius.pill,
     borderWidth: 1,
-    borderColor: Colors.light.accent,
+    borderColor: colors.accent,
   },
-  actionText: { fontFamily: Fonts.bold, fontSize: 13, color: Colors.light.accent },
+  actionText: { fontFamily: Fonts.bold, fontSize: 13, color: colors.accent },
   actionQuiet: {
     alignSelf: 'flex-start',
     flexDirection: 'row',
@@ -708,31 +719,31 @@ const styles = StyleSheet.create({
     minHeight: 36,
     paddingHorizontal: Spacing.one,
   },
-  actionQuietText: { fontFamily: Fonts.semibold, fontSize: 13, color: Colors.light.ink2 },
+  actionQuietText: { fontFamily: Fonts.semibold, fontSize: 13, color: colors.ink2 },
 
   status: {
     gap: Spacing.three,
     padding: Spacing.three,
     borderRadius: Radius.lg,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
     ...CardShadow,
   },
   statusTop: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three - 4 },
-  statusTitle: { fontFamily: Fonts.bold, fontSize: 14, color: Colors.light.ink },
-  statusText: { fontFamily: Fonts.sans, fontSize: 13, lineHeight: 19, color: Colors.light.ink2, marginTop: 2 },
+  statusTitle: { fontFamily: Fonts.bold, fontSize: 14, color: colors.ink },
+  statusText: { fontFamily: Fonts.sans, fontSize: 13, lineHeight: 19, color: colors.ink2, marginTop: 2 },
 
   generateBox: {
     gap: Spacing.three - 4,
     padding: Spacing.three,
     borderRadius: Radius.lg,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
     ...CardShadow,
   },
-  sectionTitle: { fontFamily: Fonts.bold, fontSize: 15, color: Colors.light.ink },
+  sectionTitle: { fontFamily: Fonts.bold, fontSize: 15, color: colors.ink },
   layouts: { gap: Spacing.two },
   layout: {
     flexDirection: 'row',
@@ -741,24 +752,24 @@ const styles = StyleSheet.create({
     padding: Spacing.three - 4,
     borderRadius: Radius.md,
     borderWidth: 1,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
-  layoutSelected: { borderColor: Colors.light.accent, backgroundColor: Colors.light.accentSoft },
+  layoutSelected: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
   radio: {
     width: 18,
     height: 18,
     marginTop: 1,
     borderRadius: Radius.pill,
     borderWidth: 1.5,
-    borderColor: Colors.light.ink3,
+    borderColor: colors.ink3,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  radioSelected: { borderColor: Colors.light.accent },
-  radioDot: { width: 8, height: 8, borderRadius: Radius.pill, backgroundColor: Colors.light.accent },
-  layoutTitle: { fontFamily: Fonts.bold, fontSize: 14, color: Colors.light.ink },
-  layoutText: { fontFamily: Fonts.sans, fontSize: 12, lineHeight: 17, color: Colors.light.ink2, marginTop: 2 },
-  actionError: { fontFamily: Fonts.semibold, fontSize: 13, lineHeight: 19, color: Colors.light.danger },
+  radioSelected: { borderColor: colors.accent },
+  radioDot: { width: 8, height: 8, borderRadius: Radius.pill, backgroundColor: colors.accentFill },
+  layoutTitle: { fontFamily: Fonts.bold, fontSize: 14, color: colors.ink },
+  layoutText: { fontFamily: Fonts.sans, fontSize: 12, lineHeight: 17, color: colors.ink2, marginTop: 2 },
+  actionError: { fontFamily: Fonts.semibold, fontSize: 13, lineHeight: 19, color: colors.danger },
   generate: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -766,10 +777,10 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     paddingVertical: Spacing.three - 4,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.accent,
+    backgroundColor: colors.accentFill,
   },
   generateBusy: { opacity: 0.8 },
-  generateText: { fontFamily: Fonts.bold, fontSize: 14, color: Colors.light.card },
+  generateText: { fontFamily: Fonts.bold, fontSize: 14, color: colors.onAccent },
 
-  summary: { fontFamily: Fonts.bold, fontSize: 18, color: Colors.light.ink, paddingHorizontal: Spacing.one },
-});
+  summary: { fontFamily: Fonts.bold, fontSize: 18, color: colors.ink, paddingHorizontal: Spacing.one },
+}));

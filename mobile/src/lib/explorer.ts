@@ -6,17 +6,10 @@
  * este módulo existir: a linha do feed vira um link verificável.
  */
 
-/**
- * Copiado de `backend/server/routes/arc_routes.py` (`blockExplorerUrls`), que
- * hoje só devolve a testnet — o sprint inteiro roda com `ARC_SANDBOX=true`.
- *
- * Atenção: quando existir ambiente de mainnet, isto **não** pode continuar
- * sendo constante de bundle. O app apontaria para a testnet enquanto o backend
- * liquida na mainnet, e cada link do feed cairia num "transação não
- * encontrada". A URL precisa passar a vir do backend junto do resto da config
- * de chain.
- */
-const ARC_EXPLORER_URL = 'https://testnet.arcscan.app';
+import { ARC_NETWORK } from '@/lib/arc-network';
+
+/** Explorer da rede escolhida no build (`EXPO_PUBLIC_ARC_NETWORK`). */
+const ARC_EXPLORER_URL = ARC_NETWORK.explorerUrl;
 
 /**
  * Nem todo pagamento do feed tem transação na chain: com a chain fora do ar o

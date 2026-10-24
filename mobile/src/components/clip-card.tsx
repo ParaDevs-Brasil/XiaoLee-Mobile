@@ -1,10 +1,12 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { PressableScale } from '@/components/touch-motion';
 
 import type { MediaClip } from '@/api/backend';
 import type { IconProps } from '@/components/icons';
 import { IconAlert, IconCheck, IconDownload, IconMore, IconPlay, IconSend } from '@/components/icons';
 import { ThumbImage } from '@/components/thumb-image';
-import { CardShadow, Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { formatClipSpan } from '@/lib/clips';
 
 /**
@@ -43,6 +45,8 @@ export function ClipCard({
   /** Outro corte está sendo baixado: um download por vez. */
   actionsDisabled?: boolean;
 }) {
+  const colors = useTheme();
+  const styles = useStyles();
   const ready = clip.status === 'ready';
   return (
     <View style={styles.card}>
@@ -60,7 +64,7 @@ export function ClipCard({
                 accessibilityRole="button"
                 accessibilityLabel={`More options for clip ${clip.rank}: ${clip.title}`}
               >
-                <IconMore size={20} color={Colors.light.ink2} />
+                <IconMore size={20} color={colors.ink2} />
               </Pressable>
             ) : null}
           </View>
@@ -99,6 +103,8 @@ export function ClipCard({
  * creator vai receber, e o #rank diz qual é o melhor momento.
  */
 function Poster({ clip, onPlay }: { clip: MediaClip; onPlay?: () => void }) {
+  const colors = useTheme();
+  const styles = useStyles();
   const content = (
     <>
       <ThumbImage uri={clip.thumbnail_url} cacheKey={`clip-thumb-${clip.id}`} />
@@ -108,12 +114,12 @@ function Poster({ clip, onPlay }: { clip: MediaClip; onPlay?: () => void }) {
       </View>
       {clip.status === 'ready' ? (
         <View style={styles.playDisc}>
-          <IconPlay size={16} sw={2} color={Colors.light.ink} />
+          <IconPlay size={16} sw={2} color={colors.ink} />
         </View>
       ) : clip.status === 'failed' ? (
-        <IconAlert size={22} color={Colors.light.card} />
+        <IconAlert size={22} color={colors.onMedia} />
       ) : (
-        <ActivityIndicator size="small" color={Colors.light.card} />
+        <ActivityIndicator size="small" color={colors.onMedia} />
       )}
     </>
   );
@@ -126,14 +132,15 @@ function Poster({ clip, onPlay }: { clip: MediaClip; onPlay?: () => void }) {
     );
   }
   return (
-    <Pressable
+    <PressableScale
       onPress={onPlay}
-      style={({ pressed }) => [styles.poster, pressed && styles.pressed]}
+      scaleTo={0.96}
+      style={styles.poster}
       accessibilityRole="button"
       accessibilityLabel={`Play clip ${clip.rank}: ${clip.title}`}
     >
       {content}
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -154,6 +161,8 @@ function ClipStatusRow({
   saved: boolean;
   actionsDisabled: boolean;
 }) {
+  const colors = useTheme();
+  const styles = useStyles();
   switch (clip.status) {
     case 'pending':
       return <Text style={styles.statusText}>Waiting to render…</Text>;
@@ -174,7 +183,7 @@ function ClipStatusRow({
             accessibilityRole="button"
             accessibilityLabel={`Play clip ${clip.rank}: ${clip.title}`}
           >
-            <IconPlay size={14} sw={2.2} color={Colors.light.card} />
+            <IconPlay size={14} sw={2.2} color={colors.onAccent} />
             <Text style={styles.playText}>Play</Text>
           </Pressable>
           {onSave ? (
@@ -223,36 +232,34 @@ function IconAction({
   disabled: boolean;
   onPress: () => void;
 }) {
-  const color = done ? Colors.light.success : Colors.light.ink;
+  const colors = useTheme();
+  const styles = useStyles();
+  const color = done ? colors.success : colors.ink;
   return (
-    <Pressable
+    <PressableScale
       onPress={onPress}
       disabled={disabled}
-      style={({ pressed }) => [
-        styles.iconAction,
-        done && styles.iconActionDone,
-        disabled && !busy && !done && styles.disabled,
-        pressed && styles.pressed,
-      ]}
+      scaleTo={0.88}
+      style={[styles.iconAction, done && styles.iconActionDone, disabled && !busy && !done && styles.disabled]}
       accessibilityRole="button"
       accessibilityLabel={a11yLabel}
       accessibilityState={{ busy, disabled }}
     >
-      {busy ? <ActivityIndicator size="small" color={Colors.light.accent} /> : <Icon size={18} sw={2} color={color} />}
-    </Pressable>
+      {busy ? <ActivityIndicator size="small" color={colors.accent} /> : <Icon size={18} sw={2} color={color} />}
+    </PressableScale>
   );
 }
 
 const POSTER_W = 72;
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   card: {
     gap: Spacing.three - 4,
     padding: Spacing.three - 4,
     borderRadius: Radius.lg,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
     ...CardShadow,
   },
   summary: { flexDirection: 'row', gap: Spacing.three - 4 },
@@ -260,7 +267,7 @@ const styles = StyleSheet.create({
     width: POSTER_W,
     aspectRatio: 9 / 16,
     borderRadius: Radius.lg,
-    backgroundColor: Colors.light.ink,
+    backgroundColor: colors.media,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -273,14 +280,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.two - 2,
     paddingVertical: 1,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
   },
-  rankText: { fontFamily: Fonts.bold, fontSize: 10, color: Colors.light.ink },
+  rankText: { fontFamily: Fonts.bold, fontSize: 10, color: colors.ink },
   playDisc: {
     width: 36,
     height: 36,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
     // O triângulo é simétrico à esquerda: empurra 1 px para parecer centrado.
@@ -288,20 +295,20 @@ const styles = StyleSheet.create({
   },
   text: { flex: 1, gap: Spacing.one + 1 },
   spanRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 28 },
-  span: { fontFamily: Fonts.semibold, fontSize: 12, color: Colors.light.ink3 },
+  span: { fontFamily: Fonts.semibold, fontSize: 12, color: colors.ink3 },
   // Os pontos alinham à borda direita do card; a área de toque (32 + hitSlop) chega a 48.
   menu: { width: 32, height: 28, marginRight: -Spacing.one, alignItems: 'center', justifyContent: 'center' },
-  title: { fontFamily: Fonts.bold, fontSize: 15, lineHeight: 21, color: Colors.light.ink },
+  title: { fontFamily: Fonts.bold, fontSize: 15, lineHeight: 21, color: colors.ink },
   excerpt: {
     fontFamily: Fonts.sans,
     fontSize: 13,
     lineHeight: 19,
     fontStyle: 'italic',
-    color: Colors.light.ink2,
+    color: colors.ink2,
   },
-  reason: { fontFamily: Fonts.sans, fontSize: 12, lineHeight: 17, color: Colors.light.ink3, marginTop: Spacing.one },
-  statusText: { fontFamily: Fonts.semibold, fontSize: 12, color: Colors.light.ink2 },
-  failed: { color: Colors.light.danger },
+  reason: { fontFamily: Fonts.sans, fontSize: 12, lineHeight: 17, color: colors.ink3, marginTop: Spacing.one },
+  statusText: { fontFamily: Fonts.semibold, fontSize: 12, color: colors.ink2 },
+  failed: { color: colors.danger },
   actions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   play: {
     flex: 1,
@@ -311,9 +318,9 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     minHeight: 44,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.accent,
+    backgroundColor: colors.accentFill,
   },
-  playText: { fontFamily: Fonts.bold, fontSize: 14, color: Colors.light.card },
+  playText: { fontFamily: Fonts.bold, fontSize: 14, color: colors.onAccent },
   iconAction: {
     width: 44,
     height: 44,
@@ -321,10 +328,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: Colors.light.border,
-    backgroundColor: Colors.light.card,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
   },
-  iconActionDone: { backgroundColor: Colors.light.successSoft, borderColor: Colors.light.successBorder },
+  iconActionDone: { backgroundColor: colors.successSoft, borderColor: colors.successBorder },
   pressed: { opacity: 0.7 },
   disabled: { opacity: 0.45 },
-});
+}));

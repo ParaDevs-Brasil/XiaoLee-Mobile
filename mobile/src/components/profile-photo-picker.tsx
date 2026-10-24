@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { IconEdit, IconUser } from '@/components/icons';
-import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useProfilePhoto } from '@/hooks/use-profile-photo';
 
 /**
@@ -12,6 +13,8 @@ import { useProfilePhoto } from '@/hooks/use-profile-photo';
  * perfil (`useProfilePhoto`) — escolher uma vez vale para os três.
  */
 export function ProfilePhotoPicker() {
+  const colors = useTheme();
+  const styles = useStyles();
   const { photo, busy, pick, canPick } = useProfilePhoto();
   const [error, setError] = useState(false);
 
@@ -38,16 +41,16 @@ export function ProfilePhotoPicker() {
         {photo ? (
           <Image source={{ uri: photo }} style={StyleSheet.absoluteFill} />
         ) : (
-          <IconUser size={36} sw={2} color={Colors.light.card} />
+          <IconUser size={36} sw={2} color={colors.onAccent} />
         )}
         {busy ? (
           <View style={styles.loading}>
-            <ActivityIndicator color={Colors.light.card} />
+            <ActivityIndicator color={colors.onMedia} />
           </View>
         ) : null}
       </Pressable>
       <View style={styles.badge} pointerEvents="none">
-        <IconEdit size={13} sw={2} color={Colors.light.card} />
+        <IconEdit size={13} sw={2} color={colors.card} />
       </View>
       <Text style={styles.label}>
         {error ? "Couldn't load that photo" : photo ? 'Change photo' : 'Add a profile photo'}
@@ -58,7 +61,7 @@ export function ProfilePhotoPicker() {
 
 const SIZE = 88;
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   wrap: { alignItems: 'center', gap: Spacing.two },
   avatar: {
     width: SIZE,
@@ -67,9 +70,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.light.accent,
+    backgroundColor: colors.accentFill,
     borderWidth: 3,
-    borderColor: Colors.light.accentSoft,
+    borderColor: colors.accentSoft,
   },
   loading: {
     ...StyleSheet.absoluteFill,
@@ -88,10 +91,10 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.light.ink,
+    backgroundColor: colors.ink,
     borderWidth: 2,
-    borderColor: Colors.light.card,
+    borderColor: colors.card,
   },
-  label: { fontFamily: Fonts.bold, fontSize: 12, color: Colors.light.accent },
+  label: { fontFamily: Fonts.bold, fontSize: 12, color: colors.accent },
   pressed: { opacity: 0.7 },
-});
+}));

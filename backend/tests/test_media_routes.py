@@ -289,7 +289,7 @@ LONG_SEGS = [{"start": i * 10.0, "end": i * 10.0 + 10.0, "text": f"frase numero 
 
 
 def _pick(*windows):
-    async def _p(segments, language=None):
+    async def _p(segments, language=None, **kw):
         return [clipper.Highlight(a, b, f"Clip {i}", "porque sim") for i, (a, b) in enumerate(windows, 1)]
 
     return _p
@@ -366,7 +366,7 @@ async def test_clips_preconditions(clips_env, db):
 async def test_clips_selection_failures_store_nothing(clips_env, monkeypatch):
     e = clips_env
     for exc, status in ((clipper.ProviderNotConfigured("ANTHROPIC_API_KEY não configurada"), 503), (ValueError("boom"), 502)):
-        async def _bad(segments, language=None, exc=exc):
+        async def _bad(segments, language=None, exc=exc, **kw):
             raise exc
 
         monkeypatch.setattr(clipper, "pick_highlights", _bad)
@@ -1107,7 +1107,7 @@ async def test_rename_does_not_reset_the_stalled_clock(db, monkeypatch):
 async def test_provider_without_credit_is_503_generic_and_stores_nothing(clips_env, monkeypatch):
     e = clips_env
 
-    async def _no_credit(segments, language=None):
+    async def _no_credit(segments, language=None, **kw):
         raise clipper.ProviderUnavailable("anthropic: BadRequestError: Your credit balance is too low")
 
     monkeypatch.setattr(clipper, "pick_highlights", _no_credit)
@@ -1116,3 +1116,267 @@ async def test_provider_without_credit_is_503_generic_and_stores_nothing(clips_e
     assert "credit" not in r.text and "anthropic" not in r.text.lower()
     assert (await e.db.execute(select(MediaClip))).scalars().all() == []
 
+
+
+# ── Sugestões de formato (XIAOLEEACE-32) ─────────────────────────────────────
+
+def _formats(n=3):
+    return [{"format": f"Formato {i}", "why": "porque sim", "hook": "Olha isso", "platform": "tiktok", "duration_s": 40}
+            for i in range(n)]
+
+
+@pytest.mark.asyncio
+async def test_format_suggestions_use_onboarding_profile_and_own_videos(db, monkeypatch):
+    format_advisor = importlib.import_module("server.format_advisor")
+    format_advisor._cache.clear()
+    h, other = await _login(db, "a"), await _login(db, "b")
+    assert client.patch("/user/me/profile", json={"full_name": "Ana", "interest_profile": ["defi"], "bio": "DeFi fácil"},
+                        headers=h).status_code == 200
+    mine = client.post("/v1/media", json=BODY, headers=h).json()["asset"]["id"]
+    theirs = client.post("/v1/media", json={**BODY, "filename": "segredo.mp4"}, headers=other).json()["asset"]["id"]
+    for aid, text in ((mine, "hoje eu explico pool de liquidez"), (theirs, "texto de outro creator")):
+        db.add(MediaTranscript(media_id=aid, segments_json=json.dumps([{"start": 0, "end": 2, "text": text}]), model="m"))
+    db.add(MediaClip(user_id=1, media_id=mine, rank=1, start_s=0, end_s=30, title="O erro do pool", reason="r"))
+    await db.commit()
+    seen = []
+
+    async def _call_tool(system, tool, content, max_tokens):
+        seen.append((system, content))
+        return {"suggestions": _formats()}
+
+    monkeypatch.setattr(clipper, "_call_tool", _call_tool)
+    r = client.get("/v1/media/format-suggestions?lang=pt", headers=h)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert len(body["suggestions"]) == 3 and body["based_on_videos"] == 1
+    assert set(body["suggestions"][0]) == {"format", "why", "hook", "platform", "duration_s"}
+    system, content = seen[0]
+    assert "Brazilian Portuguese" in system
+    assert "DeFi / decentralized finance" in content and "DeFi fácil" in content
+    assert "pool de liquidez" in content and "O erro do pool" in content
+    assert "segredo" not in content and "outro creator" not in content
+    format_advisor._cache.clear()
+
+
+@pytest.mark.asyncio
+async def test_format_suggestions_errors(db, monkeypatch):
+    format_advisor = importlib.import_module("server.format_advisor")
+    format_advisor._cache.clear()
+    assert client.get("/v1/media/format-suggestions").status_code == 401
+    h = await _login(db, "a")
+
+    async def _no_credit(*a):
+        raise clipper.ProviderUnavailable("anthropic: Your credit balance is too low")
+
+    monkeypatch.setattr(clipper, "_call_tool", _no_credit)
+    r = client.get("/v1/media/format-suggestions", headers=h)
+    assert r.status_code == 503 and "credit" not in r.text and "anthropic" not in r.text.lower()
+
+    async def _one(*a):
+        return {"suggestions": _formats(1)}
+
+    monkeypatch.setattr(clipper, "_call_tool", _one)
+    assert client.get("/v1/media/format-suggestions", headers=h).status_code == 502
+
+
+# ── controles do creator: quantidade/duração no POST e edição de corte (início, fim, layout) ──
+
+@pytest.mark.asyncio
+async def test_clips_count_and_length_are_validated_before_the_model_and_reach_it(clips_env, monkeypatch):
+    e = clips_env
+    seen = {}
+
+    async def _pick_kw(segments, language=None, **kw):
+        seen.update(kw)
+        return [clipper.Highlight(0, 30, "A", "r")]
+
+    monkeypatch.setattr(clipper, "pick_highlights", _pick_kw)
+
+    async def _render(source, ass, start, end, dest, layout="crop"):
+        open(dest, "wb").write(b"mp4")
+
+    monkeypatch.setattr(clipper, "render_clip", _render)
+    for bad in ("count=0", "count=6", "min_s=9", "max_s=91", "min_s=40&max_s=42", "min_s=50&max_s=30"):
+        assert client.post(f"/v1/media/{e.aid}/clips?{bad}", headers=e.h).status_code == 422, bad
+    assert seen == {}                                                                  # nenhum pedido ruim gastou o modelo
+    assert (await e.db.execute(select(MediaClip))).scalars().all() == []
+    assert client.post(f"/v1/media/{e.aid}/clips?count=2&min_s=15&max_s=40&layout=fit", headers=e.h).status_code == 200
+    assert seen == {"n": 2, "min_s": 15.0, "max_s": 40.0}
+
+
+async def _generate(e, monkeypatch, layout="crop"):
+    """Gera cortes com render simulado (sem ffmpeg) e devolve a lista de chamadas ao renderizador."""
+    calls = []
+
+    async def _render(source, ass, start, end, dest, layout="crop"):
+        calls.append((start, end, layout))
+        open(dest, "wb").write(b"mp4-%d" % len(calls))
+
+    async def _no_vision(*a, **k):
+        raise AssertionError("editar um corte não pode chamar a IA de layout")
+
+    async def _thumb(path, key, at_s, width):  # o mp4 simulado não é vídeo de verdade: a miniatura também é simulada
+        await media_routes.media_storage.upload_file(path, key, "image/jpeg")
+        return key
+
+    monkeypatch.setattr(clipper, "render_clip", _render)
+    monkeypatch.setattr(clipper, "detect_layout", _no_vision)
+    monkeypatch.setattr(media_routes, "_store_thumbnail", _thumb)
+    asset = await e.db.get(MediaAsset, e.aid)
+    asset.duration_s = 120.0
+    await e.db.commit()
+    assert client.post(f"/v1/media/{e.aid}/clips?layout={layout}", headers=e.h).status_code == 200
+    return calls
+
+
+@pytest.mark.asyncio
+async def test_edit_clip_trim_rerenders_only_that_clip_with_its_saved_layout(clips_env, monkeypatch):
+    e = clips_env
+    calls = await _generate(e, monkeypatch, "crop")
+    clips = client.get(f"/v1/media/{e.aid}/clips", headers=e.h).json()
+    assert [c["layout"] for c in clips] == ["crop"] * 3 and len(calls) == 3           # o layout escolhido fica registrado
+    target, others = clips[1], [clips[0], clips[2]]
+    row = await e.db.get(MediaClip, target["id"])
+    old_keys = {row.r2_key, row.thumb_key}
+
+    r = client.patch(f"/v1/media/{e.aid}/clips/{target['id']}", json={"start_s": 42.0, "end_s": 66.5, "title": "  Novo  título "}, headers=e.h)
+    assert r.status_code == 200, r.text
+    assert (r.json()["start_s"], r.json()["end_s"], r.json()["title"]) == (42.0, 66.5, "Novo título")
+    assert r.json()["status"] == "pending" and r.json()["download_url"] is None        # volta a renderizar; a resposta já é honesta
+
+    after = client.get(f"/v1/media/{e.aid}/clips", headers=e.h).json()                 # background já rodou
+    assert [c["status"] for c in after] == ["ready"] * 3
+    assert len(calls) == 4 and calls[3] == (42.0, 66.5, "crop")                       # só 1 render novo, mesmo layout, sem IA
+    assert after[1]["download_url"] != target["download_url"]                         # arquivo novo
+    assert [(c["id"], c["download_url"]) for c in (after[0], after[2])] == [(c["id"], c["download_url"]) for c in others]
+    assert set(e.deleted) == old_keys                                                  # só o mp4 e a miniatura ANTIGOS do corte saíram
+
+
+@pytest.mark.asyncio
+async def test_edit_clip_layout_only_changes_the_look_not_the_window(clips_env, monkeypatch):
+    e = clips_env
+    calls = await _generate(e, monkeypatch, "crop")
+    clip = client.get(f"/v1/media/{e.aid}/clips", headers=e.h).json()[0]
+    r = client.patch(f"/v1/media/{e.aid}/clips/{clip['id']}", json={"layout": "fit"}, headers=e.h)
+    assert r.status_code == 200 and r.json()["layout"] == "crop"                       # ainda o antigo até o render acabar
+    assert calls[-1] == (clip["start_s"], clip["end_s"], "fit")
+    assert client.get(f"/v1/media/{e.aid}/clips", headers=e.h).json()[0]["layout"] == "fit"
+    n = len(calls)
+    assert client.patch(f"/v1/media/{e.aid}/clips/{clip['id']}", json={"layout": "fit"}, headers=e.h).status_code == 200
+    assert len(calls) == n                                                              # mesmo layout e janela: nada a refazer
+
+
+@pytest.mark.asyncio
+async def test_edit_clip_rejects_bad_input_without_touching_anything(clips_env, monkeypatch):
+    e = clips_env
+    calls = await _generate(e, monkeypatch)
+    clip = client.get(f"/v1/media/{e.aid}/clips", headers=e.h).json()[0]
+    url = f"/v1/media/{e.aid}/clips/{clip['id']}"
+    for bad in ({}, {"start_s": 50, "end_s": 40}, {"start_s": 10, "end_s": 15}, {"start_s": 0, "end_s": 100},
+                {"end_s": 130}, {"layout": "auto"}, {"layout": "stretch"}, {"start_s": -1}):
+        assert client.patch(url, json=bad, headers=e.h).status_code == 422, bad
+    assert len(calls) == 3                                                              # nada re-renderizou
+    assert client.get(f"/v1/media/{e.aid}/clips", headers=e.h).json()[0]["start_s"] == clip["start_s"]
+
+    row = await e.db.get(MediaClip, clip["id"])
+    row.status, row.updated_at = "rendering", datetime.utcnow()
+    await e.db.commit()
+    assert client.patch(url, json={"start_s": 1, "end_s": 30}, headers=e.h).status_code == 409   # já está renderizando
+    row.status = "ready"
+    (await e.db.get(MediaAsset, e.aid)).status = "expired"
+    await e.db.commit()
+    assert client.patch(url, json={"start_s": 1, "end_s": 30}, headers=e.h).status_code == 409   # original apagado
+    assert client.patch(url, json={"title": "só o nome"}, headers=e.h).status_code == 200        # título continua valendo
+
+
+@pytest.mark.asyncio
+async def test_edit_clip_is_owner_only(clips_env, monkeypatch, db):
+    e = clips_env
+    await _generate(e, monkeypatch)
+    clip = client.get(f"/v1/media/{e.aid}/clips", headers=e.h).json()[0]
+    other = await _login(db, "intruso2")
+    assert client.patch(f"/v1/media/{e.aid}/clips/{clip['id']}", json={"start_s": 1, "end_s": 30}, headers=other).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_failed_rerender_keeps_the_previous_file_and_says_to_retry_the_edit(clips_env, monkeypatch):
+    e = clips_env
+    await _generate(e, monkeypatch)
+    clip = client.get(f"/v1/media/{e.aid}/clips", headers=e.h).json()[0]
+    row = await e.db.get(MediaClip, clip["id"])
+    old_key = row.r2_key
+
+    async def _broken(*a, **k):
+        raise RuntimeError("ffmpeg exploded")
+
+    monkeypatch.setattr(clipper, "render_clip", _broken)
+    assert client.patch(f"/v1/media/{e.aid}/clips/{clip['id']}", json={"start_s": 5, "end_s": 40}, headers=e.h).status_code == 200
+    after = client.get(f"/v1/media/{e.aid}/clips", headers=e.h).json()[0]
+    assert after["status"] == "failed" and after["error"] == "render failed, try the edit again"
+    assert "ffmpeg" not in after["error"] and old_key not in e.deleted                  # a versão anterior não foi perdida
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg ausente")
+@pytest.mark.asyncio
+async def test_edit_clip_trim_produces_a_real_vertical_video_of_the_new_length(clips_env, monkeypatch, tmp_path):
+    e = clips_env
+    saved = {}
+
+    async def _keep(path, key, content_type):          # guarda o arquivo de verdade para medir com ffprobe
+        dest = tmp_path / key.replace("/", "_")
+        shutil.copy(path, dest)
+        saved[key] = dest
+
+    monkeypatch.setattr(media_routes.media_storage, "upload_file", _keep)
+    asset = await e.db.get(MediaAsset, e.aid)
+    asset.duration_s = 120.0
+    await e.db.commit()
+    assert client.post(f"/v1/media/{e.aid}/clips?layout=fit", headers=e.h).status_code == 200
+    clip = client.get(f"/v1/media/{e.aid}/clips", headers=e.h).json()[1]
+    assert clip["status"] == "ready"
+
+    assert client.patch(f"/v1/media/{e.aid}/clips/{clip['id']}", json={"start_s": 42.0, "end_s": 66.5}, headers=e.h).status_code == 200
+    row = await e.db.get(MediaClip, clip["id"])
+    await e.db.refresh(row)
+    assert row.status == "ready" and row.layout == "fit"
+    out = saved[row.r2_key]
+    probe = json.loads(subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-show_entries",
+         "format=duration", "-of", "json", str(out)], capture_output=True, text=True, check=True).stdout)
+    assert (probe["streams"][0]["width"], probe["streams"][0]["height"]) == (1080, 1920)
+    assert float(probe["format"]["duration"]) == pytest.approx(24.5, abs=0.7)           # a janela nova, não a antiga (30 s)
+
+
+@pytest.mark.asyncio
+async def test_edit_clip_caption_fixes_rerender_only_that_clip_with_the_corrected_text(clips_env, monkeypatch):
+    e = clips_env
+    calls = await _generate(e, monkeypatch)
+    ass_texts = []
+
+    async def _render_ass(source, ass, start, end, dest, layout="crop"):
+        calls.append((start, end, layout))
+        ass_texts.append(open(ass, encoding="utf-8").read())
+        open(dest, "wb").write(b"mp4")
+
+    monkeypatch.setattr(clipper, "render_clip", _render_ass)
+    clips = client.get(f"/v1/media/{e.aid}/clips", headers=e.h).json()
+    assert clips[0]["caption_fixes"] == {}
+    url = f"/v1/media/{e.aid}/clips/{clips[0]['id']}"
+
+    r = client.patch(url, json={"caption_fixes": {"varias": "VÁRIAS"}}, headers=e.h)
+    assert r.status_code == 200 and r.json()["status"] == "pending"
+    assert len(ass_texts) == 1 and "VÁRIAS" in ass_texts[0] and "varias" not in ass_texts[0]   # só este corte, texto corrigido
+    again = client.get(f"/v1/media/{e.aid}/clips", headers=e.h).json()
+    assert again[0]["caption_fixes"] == {"varias": "VÁRIAS"} and again[1]["caption_fixes"] == {}   # persistido, só neste corte
+    assert [c["status"] for c in again] == ["ready"] * 3
+
+    assert client.patch(url, json={"caption_fixes": {"varias": "VÁRIAS"}}, headers=e.h).status_code == 200
+    assert len(ass_texts) == 1                                                            # mesma correção: nada a refazer
+    assert client.patch(url, json={"caption_fixes": {}}, headers=e.h).status_code == 200  # {} limpa e volta ao texto original
+    assert len(ass_texts) == 2 and "varias" in ass_texts[1]
+    assert client.get(f"/v1/media/{e.aid}/clips", headers=e.h).json()[0]["caption_fixes"] == {}
+
+    before = len(ass_texts)
+    for bad in ({"duas palavras": "x"}, {"": "x"}, {"a": ""}, {f"w{i}": "x" for i in range(21)}):
+        assert client.patch(url, json={"caption_fixes": bad}, headers=e.h).status_code == 422, bad
+    assert len(ass_texts) == before

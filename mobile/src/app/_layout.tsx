@@ -17,7 +17,12 @@ import {
   useFonts,
 } from '@expo-google-fonts/quicksand';
 import { PrivyProvider } from '@privy-io/expo';
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import {
+  DarkTheme,
+  DefaultTheme,
+  Stack,
+  ThemeProvider as NavigationThemeProvider,
+} from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import * as WebBrowser from 'expo-web-browser';
@@ -27,9 +32,10 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { FadeOutOverlay } from '@/components/fade-out-overlay';
 import { IntroVideo } from '@/components/intro-video';
 import { LoadingScreen } from '@/components/loading-screen';
-import { Colors, DARK_MODE } from '@/constants/theme';
 import { useAuthState } from '@/hooks/use-auth-state';
-import { arcTestnetChain, PRIVY_CONFIG, WalletProvider } from '@/lib/wallet';
+import { useColorSchemeName, useTheme, useThemePreference } from '@/hooks/use-theme';
+import { ThemeProvider } from '@/lib/theme';
+import { arcChain, PRIVY_CONFIG, WalletProvider } from '@/lib/wallet';
 
 // Necessário para fechar o navegador e completar o fluxo OAuth de volta no app (Android/Web)
 WebBrowser.maybeCompleteAuthSession();
@@ -46,6 +52,12 @@ const PRIVY_CLIENT_ID = process.env.EXPO_PUBLIC_PRIVY_CLIENT_ID?.trim() || 'CHAN
 SplashScreen.preventAutoHideAsync();
 
 /**
+ * As cinco abas da barra de baixo trocam entre si sem a transição de pilha (o slide padrão leva ~350 ms e fazia a
+ * troca parecer travada): a tela nova aparece na hora e o conteúdo entra com o próprio reveal.
+ */
+const TAB_ROOT_ANIMATION = 'none' as const;
+
+/**
  * Navegador raiz do aplicativo dentro dos provedores Privy e WalletProvider.
  *
  * Aplica o gate de login via `Stack.Protected`:
@@ -54,13 +66,14 @@ SplashScreen.preventAutoHideAsync();
  * - Enquanto carrega o SecureStore (`authState === 'loading'`), devolve `null`
  *   para evitar flash da tela de login para quem já possui sessão.
  *
- * Cuidado crítico: todas as 14 rotas do `src/app` precisam estar mapeadas
+ * Cuidado crítico: todas as 16 rotas do `src/app` precisam estar mapeadas
  * dentro de um dos blocos protegidos. No Expo Router, rotas não declaradas
  * são injetadas sem guarda e ficariam abertas.
  */
 function RootNavigator() {
   const authState = useAuthState();
   const signedIn = authState === 'signedIn';
+  const colors = useTheme();
 
   if (authState === 'loading') {
     return null;
@@ -69,9 +82,17 @@ function RootNavigator() {
   return (
     <Stack
       screenOptions={{
-        headerStyle: { backgroundColor: Colors.light.card },
-        headerTitleStyle: { fontFamily: 'Quicksand_700Bold', color: Colors.light.ink },
-        contentStyle: { backgroundColor: Colors.light.bg },
+        headerStyle: { backgroundColor: colors.card },
+        headerTitleStyle: {
+          fontFamily: 'Quicksand_700Bold',
+          color: colors.ink,
+        },
+        headerTintColor: colors.accent,
+        contentStyle: { backgroundColor: colors.bg },
+        // Telas fora de vista na pilha não re-renderizam até voltarem ao foco.
+        // Sem isto, trocar o tema re-renderizava todas as telas abertas de uma
+        // vez: com ~20 na pilha, 5 s num celular de entrada (XIAOLEEACE-13).
+        freezeOnBlur: true,
       }}
     >
       <Stack.Protected guard={!signedIn}>
@@ -82,7 +103,10 @@ function RootNavigator() {
         {/* Estas telas trazem o próprio HeaderBar (o wordmark do Figma) via
             `ScreenShell`, então a barra nativa sairia duplicada. A volta
             fica com o gesto do sistema e com o wordmark, que leva ao chat. */}
-        <Stack.Screen name="index" options={{ headerShown: false }} />
+        <Stack.Screen name="index" options={{ headerShown: false, animation: TAB_ROOT_ANIMATION }} />
+        <Stack.Screen name="chat" options={{ headerShown: false, animation: TAB_ROOT_ANIMATION }} />
+        <Stack.Screen name="studio" options={{ headerShown: false, animation: TAB_ROOT_ANIMATION }} />
+        <Stack.Screen name="grow" options={{ headerShown: false, animation: TAB_ROOT_ANIMATION }} />
         {/* Sem ScreenShell/header nativo de propósito: é o único passo
             obrigatório antes do chat/dashboard, não um destino para
             navegar de volta a partir de outra tela. */}
@@ -91,11 +115,31 @@ function RootNavigator() {
         <Stack.Screen name="notifications" options={{ headerShown: false }} />
         <Stack.Screen name="dashboard" options={{ headerShown: false }} />
         <Stack.Screen name="campaigns/index" options={{ headerShown: false }} />
-        <Stack.Screen name="wallet" options={{ headerShown: false }} />
+        <Stack.Screen name="wallet/index" options={{ headerShown: false, animation: TAB_ROOT_ANIMATION }} />
+        <Stack.Screen name="wallet/receipts" options={{ headerShown: false }} />
+        <Stack.Screen name="wallet/activity" options={{ headerShown: false }} />
+        <Stack.Screen name="wallet/breakdown" options={{ headerShown: false }} />
         <Stack.Screen name="transactions" options={{ headerShown: false }} />
         <Stack.Screen name="history" options={{ headerShown: false }} />
+        <Stack.Screen name="marketplace" options={{ headerShown: false }} />
+        <Stack.Screen name="creators/index" options={{ headerShown: false }} />
+        <Stack.Screen name="creators/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="accounts" options={{ headerShown: false }} />
+        {/* Retorno do login do X: transparente e sem animação, a Accounts que abriu o login segue visível por baixo. */}
+        <Stack.Screen
+          name="social/x"
+          options={{
+            headerShown: false,
+            presentation: 'transparentModal',
+            animation: 'none',
+            // o `contentStyle` padrão pinta `colors.bg` e cobriria a Accounts de branco enquanto o login conclui
+            contentStyle: { backgroundColor: 'transparent' },
+          }}
+        />
         <Stack.Screen name="clips/index" options={{ headerShown: false }} />
         <Stack.Screen name="clips/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="reports/index" options={{ headerShown: false }} />
+        <Stack.Screen name="reports/[id]" options={{ headerShown: false }} />
         {/* O formulário é a exceção: entra como modal e mantém a barra
             nativa. Num formulário longo o usuário precisa de uma saída
             sempre visível, e o wordmark do ScreenShell não é uma. */}
@@ -150,72 +194,112 @@ export default function RootLayout() {
   }, []);
 
   return (
-    // Tema fixo, escolhido por `DARK_MODE` em `constants/theme.ts` (claro por
-    // padrão; a paleta escura está pronta atrás desse interruptor). Sem
-    // toggle e sem seguir o tema do aparelho.
     // SafeAreaProvider é obrigatório para `useSafeAreaInsets` devolver algo
     // diferente de zero — sem ele o header fica sob a status bar.
     <SafeAreaProvider>
-      {/* Relógio, wifi e bateria contrastando com a faixa da status bar.
-          O padrão de `style` é `auto`, que segue o tema **do aparelho**: num
-          celular em modo escuro os ícones sairiam brancos sobre o
-          `HeaderBar`, que pinta a faixa com `Colors.light.card` — branco no
-          claro, e o usuário perderia o relógio e as notificações. O app não
-          acompanha o aparelho, então a barra também não: ícones escuros no
-          tema claro, claros no escuro. */}
-      <StatusBar style={DARK_MODE ? 'light' : 'dark'} />
+      {/* Tema claro/escuro/sistema (XIAOLEEACE-13). Por fora de tudo porque a
+          animação de troca fotografa a tela inteira, intro inclusive. */}
+      <ThemeProvider>
+        <ThemedStatusBar />
 
-      {/*
-        `supportedChains` é prop irmã de `config`, não filha — e não existe
-        `defaultChain`: a wallet embutida nasce no primeiro item de
-        `supportedChains` automaticamente (conferido contra
-        `PrivyProviderProps`/`PrivyConfig` em
-        `node_modules/@privy-io/expo/dist/index.d.ts`).
-      */}
-      <PrivyProvider
-        appId={PRIVY_APP_ID}
-        clientId={PRIVY_CLIENT_ID}
-        supportedChains={[arcTestnetChain]}
-        config={PRIVY_CONFIG}
-      >
-        <WalletProvider>
-          <ThemeProvider value={DARK_MODE ? DarkTheme : DefaultTheme}>
-            {/*
-              Só monta o Stack depois que a intro termina — não por
-              performance, é correção. `AnimatedAvatar` (cabeçalho do chat) é
-              outro `VideoView`, e dois `VideoView` simultâneos no Android
-              competem no compositor nativo (SurfaceView) por fora da ordem
-              normal de camadas: um vazava por cima do outro, aparecendo como
-              o "rostinho" da Xiaolee dentro do balão "Hi" do vídeo de intro.
-              `PrivyProvider`/`WalletProvider` continuam montados o tempo
-              todo — só eles não usam vídeo, então hidratam a sessão em
-              paralelo à intro, sem esse conflito.
-            */}
-            {stage === 'ready' && (fontsLoaded || fontError) ? <RootNavigator /> : null}
-          </ThemeProvider>
-        </WalletProvider>
-      </PrivyProvider>
-
-      {/* Ordem de baixo pra cima: loading, depois vídeo — cada uma dissolve
-          revelando a de baixo, que já está montada e visível antes do fade
-          começar (ver `FadeOutOverlay`). O Stack (chat) já monta assim que
-          `stage` chega em 'ready', junto com o loading começar a sumir, pra
-          já estar pronto por baixo quando o fade dele terminar. */}
-      {!loadingGone && (stage === 'loading' || stage === 'ready') ? (
-        <FadeOutOverlay
-          zIndex={100}
-          fadeOut={stage === 'ready'}
-          onFadedOut={() => setLoadingGone(true)}
-          durationMs={700}
+        {/*
+          `supportedChains` é prop irmã de `config`, não filha — e não existe
+          `defaultChain`: a wallet embutida nasce no primeiro item de
+          `supportedChains` automaticamente (conferido contra
+          `PrivyProviderProps`/`PrivyConfig` em
+          `node_modules/@privy-io/expo/dist/index.d.ts`).
+        */}
+        <PrivyProvider
+          appId={PRIVY_APP_ID}
+          clientId={PRIVY_CLIENT_ID}
+          supportedChains={[arcChain]}
+          config={PRIVY_CONFIG}
         >
-          <LoadingScreen onFinish={() => setStage('ready')} />
-        </FadeOutOverlay>
-      ) : null}
-      {!videoGone ? (
-        <FadeOutOverlay zIndex={101} fadeOut={stage !== 'video'} onFadedOut={() => setVideoGone(true)}>
-          <IntroVideo onFinish={() => setStage('loading')} />
-        </FadeOutOverlay>
-      ) : null}
+          <WalletProvider>
+            <NavigationTheme>
+              {/*
+                Só monta o Stack depois que a intro termina — não por
+                performance, é correção. `AnimatedAvatar` (cabeçalho do chat) é
+                outro `VideoView`, e dois `VideoView` simultâneos no Android
+                competem no compositor nativo (SurfaceView) por fora da ordem
+                normal de camadas: um vazava por cima do outro, aparecendo como
+                o "rostinho" da Xiaolee dentro do balão "Hi" do vídeo de intro.
+                `PrivyProvider`/`WalletProvider` continuam montados o tempo
+                todo — só eles não usam vídeo, então hidratam a sessão em
+                paralelo à intro, sem esse conflito.
+              */}
+              {stage === 'ready' && (fontsLoaded || fontError) ? <RootNavigator /> : null}
+            </NavigationTheme>
+          </WalletProvider>
+        </PrivyProvider>
+
+        {/* Ordem de baixo pra cima: loading, depois vídeo — cada uma dissolve
+            revelando a de baixo, que já está montada e visível antes do fade
+            começar (ver `FadeOutOverlay`). O Stack (chat) já monta assim que
+            `stage` chega em 'ready', junto com o loading começar a sumir, pra
+            já estar pronto por baixo quando o fade dele terminar. */}
+        {!loadingGone && (stage === 'loading' || stage === 'ready') ? (
+          <FadeOutOverlay
+            zIndex={100}
+            fadeOut={stage === 'ready'}
+            onFadedOut={() => setLoadingGone(true)}
+            durationMs={700}
+          >
+            <LoadingScreen onFinish={() => setStage('ready')} />
+          </FadeOutOverlay>
+        ) : null}
+        {!videoGone ? (
+          <FadeOutOverlay
+            zIndex={101}
+            fadeOut={stage !== 'video'}
+            onFadedOut={() => setVideoGone(true)}
+          >
+            <IntroVideo onFinish={() => setStage('loading')} />
+          </FadeOutOverlay>
+        ) : null}
+      </ThemeProvider>
     </SafeAreaProvider>
+  );
+}
+
+/**
+ * Relógio, wifi e bateria contrastando com a faixa da status bar, que o
+ * `HeaderBar` pinta com `card`. Segue o tema **do app**, não o do aparelho
+ * (o padrão `auto` do expo-status-bar): com o app fixado no claro e o celular
+ * no escuro, `auto` deixaria os ícones brancos sobre o header branco.
+ */
+function ThemedStatusBar() {
+  return <StatusBar style={useColorSchemeName() === 'dark' ? 'light' : 'dark'} />;
+}
+
+/**
+ * Tema do React Navigation montado com os tokens do app, para o que ele
+ * desenha sozinho (header nativo das telas modais, fundo entre transições)
+ * bater com o resto. Espera a preferência salva para o Stack não montar num
+ * tema e trocar no frame seguinte.
+ */
+function NavigationTheme({ children }: { children: React.ReactNode }) {
+  const scheme = useColorSchemeName();
+  const colors = useTheme();
+  const { ready } = useThemePreference();
+  const base = scheme === 'dark' ? DarkTheme : DefaultTheme;
+
+  return (
+    <NavigationThemeProvider
+      value={{
+        ...base,
+        colors: {
+          ...base.colors,
+          primary: colors.accent,
+          background: colors.bg,
+          card: colors.card,
+          text: colors.ink,
+          border: colors.border,
+          notification: colors.danger,
+        },
+      }}
+    >
+      {ready ? children : null}
+    </NavigationThemeProvider>
   );
 }

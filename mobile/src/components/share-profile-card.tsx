@@ -265,6 +265,8 @@ function SocialPill({
  * cima — o mesmo efeito do mock sem sair dos tokens do tema.
  */
 function CardBackground({ width: w, height: h }: { width: number; height: number }) {
+  // Sempre o tema claro, de propósito: o cartão vira PNG e vai para as redes,
+  // então sai igual em qualquer tema do app (XIAOLEEACE-13).
   const white = Colors.light.card;
   return (
     <Svg width={w} height={h} style={StyleSheet.absoluteFill}>

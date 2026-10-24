@@ -68,7 +68,68 @@ class Settings:
     x_webhook_secret: str = os.getenv("X_WEBHOOK_SECRET", "")
     x_bearer_token: str = os.getenv("X_BEARER_TOKEN", "")
     x_dm_api_base_url: str = os.getenv("X_DM_API_BASE_URL", "https://api.x.com")
+    # Publicação nas redes do creator (server/social_routes.py). Desligado = rotas respondem 404.
+    social_tools_enabled: bool = os.getenv("SOCIAL_TOOLS_ENABLED", "false").lower() in ("true", "1", "yes")
+    social_max_posts_per_day: int = int(os.getenv("SOCIAL_MAX_POSTS_PER_DAY", "10"))
+    # Radar de tendências (server/radar_chat_tools.py): Grok com busca no X. Desligado ou sem chave = o chat não ganha a tool.
+    radar_tools_enabled: bool = os.getenv("RADAR_TOOLS_ENABLED", "false").lower() in ("true", "1", "yes")
+    xai_api_key: str = os.getenv("XAI_API_KEY", "")
+    xai_model: str = os.getenv("XAI_MODEL", "grok-4.7")
+    # Cartões de perguntas no chat (server/ask_chat_tools.py). Desligado = a Xiaolee pergunta em texto, como sempre.
+    ask_cards_enabled: bool = os.getenv("ASK_CARDS_ENABLED", "false").lower() in ("true", "1", "yes")
+    radar_max_runs_per_day: int = int(os.getenv("RADAR_MAX_RUNS_PER_DAY", "7"))
+    # Disjuntor da casa: gasto estimado do radar (Grok + Claude) por dia, somando todos os creators. 0 = sem teto.
+    radar_daily_usd_cap: float = float(os.getenv("RADAR_DAILY_USD_CAP", "20"))
+    # X (OAuth 2.0 PKCE, app público: só Client ID, sem secret). Teto mensal por creator = custo da casa limitado.
+    x_oauth_client_id: str = os.getenv("X_OAUTH_CLIENT_ID", "")
+    x_oauth_redirect: str = os.getenv("X_OAUTH_REDIRECT", "xiaolee://social/x")
+    social_x_max_posts_per_month: int = int(os.getenv("SOCIAL_X_MAX_POSTS_PER_MONTH", "60"))
     inbound_rate_limit_per_minute: int = int(os.getenv("INBOUND_RATE_LIMIT_PER_MINUTE", "60"))
+
+    # ── Guardas de criação de campanha ───────────────────────────────────────
+    # Tetos por campanha (USDC) e participantes; o criador precisa ter o pool em
+    # carteira (Arc) quando `campaign_require_funds`. Ajustáveis por env sem deploy de código.
+    campaign_max_pool_usdc: float = float(os.getenv("CAMPAIGN_MAX_POOL_USDC", "1000"))
+    campaign_max_reward_usdc: float = float(os.getenv("CAMPAIGN_MAX_REWARD_USDC", "100"))
+    campaign_max_participants: int = int(os.getenv("CAMPAIGN_MAX_PARTICIPANTS", "10000"))
+    campaign_allowed_tokens: str = os.getenv("CAMPAIGN_ALLOWED_TOKENS", "USDC")
+    # Só com ARC_SANDBOX=false: lista (handle ou twitter_user_id, separados por vírgula) de quem pode criar.
+    # Vazia = sem restrição; na mainnet, preencher no canário.
+    campaign_creator_allowlist: str = os.getenv("CAMPAIGN_CREATOR_ALLOWLIST", "")
+    # Pagamentos de campanha (só valem com ARC_SANDBOX=false): kill switch e teto diário global em USDC.
+    payouts_enabled: bool = os.getenv("PAYOUTS_ENABLED", "true").lower() == "true"
+    payout_daily_budget_usdc: float = float(os.getenv("PAYOUT_DAILY_BUDGET_USDC", "20"))
+    # ── On/off-ramp (server/onoff.py): tudo desligado até o piloto ─────────────
+    # Kill switches por direção; allowlist (handle ou id, vírgula) vazia = sem restrição, mas só vale com ONOFF_ENABLED.
+    onoff_enabled: bool = os.getenv("ONOFF_ENABLED", "false").lower() == "true"
+    onoff_deposit_enabled: bool = os.getenv("ONOFF_DEPOSIT_ENABLED", "true").lower() == "true"
+    onoff_withdraw_enabled: bool = os.getenv("ONOFF_WITHDRAW_ENABLED", "true").lower() == "true"
+    onoff_allowlist: str = os.getenv("ONOFF_ALLOWLIST", "")
+    # Tetos em USDC (1 USDC ~ 1 USD): por operação, por 24h e por 30 dias, por usuário e por direção.
+    onoff_max_tx_usdc: float = float(os.getenv("ONOFF_MAX_TX_USDC", "100"))
+    onoff_max_day_usdc: float = float(os.getenv("ONOFF_MAX_DAY_USDC", "250"))
+    onoff_max_month_usdc: float = float(os.getenv("ONOFF_MAX_MONTH_USDC", "1000"))
+    onoff_max_global_day_usdc: float = float(os.getenv("ONOFF_MAX_GLOBAL_DAY_USDC", "2000"))  # todos os usuários, por direção
+    # Saque para fiat exige KYC deste nível no provedor que paga; e espera depois de depósito grande (chargeback).
+    onoff_withdraw_min_kyc_level: int = int(os.getenv("ONOFF_WITHDRAW_MIN_KYC_LEVEL", "2"))
+    onoff_cooldown_hours: int = int(os.getenv("ONOFF_COOLDOWN_HOURS", "24"))
+    onoff_cooldown_min_usdc: float = float(os.getenv("ONOFF_COOLDOWN_MIN_USDC", "100"))
+    # Provedor de teste (assina webhooks com este segredo). Só entra no registro se houver segredo.
+    # Saque entre redes (CCTP + Forwarding Service da Circle). Iris mainnet por padrão; "https://iris-api-sandbox.circle.com" = testnet.
+    # TokenMessengerV2 da Arc mainnet: developers.circle.com/cctp/references/contract-addresses.
+    onoff_iris_base: str = os.getenv("ONOFF_IRIS_BASE", "https://iris-api.circle.com")
+    onoff_arc_token_messenger: str = os.getenv("ONOFF_ARC_TOKEN_MESSENGER", "0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d")
+    onoff_forward_fee_tier: str = os.getenv("ONOFF_FORWARD_FEE_TIER", "med")  # low | med | high
+    onoff_sandbox_secret: str = os.getenv("ONOFF_SANDBOX_SECRET", "")
+    campaign_require_funds: bool = os.getenv("CAMPAIGN_REQUIRE_FUNDS", "true").lower() == "true"
+
+    # Cota diária de mensagens que chegam na LLM (UTC). 0 = sem limite.
+    free_daily_messages: int = int(os.getenv("FREE_DAILY_MESSAGES", "25"))   # logado / usuário de bot
+    anon_daily_messages: int = int(os.getenv("ANON_DAILY_MESSAGES", "5"))    # sem login, por IP
+    llm_global_daily_messages: int = int(os.getenv("LLM_GLOBAL_DAILY_MESSAGES", "0"))  # disjuntor global
+    # Quantos proxies confiáveis ficam na frente (Railway = 1): o IP do cliente é o N-ésimo de trás
+    # para frente em X-Forwarded-For (o início da lista é forjável). 0 = usa o IP da conexão.
+    trusted_proxy_hops: int = int(os.getenv("TRUSTED_PROXY_HOPS", "1"))
     cors_allowed_origins: list[str] = None
     cors_allowed_origin_regex: str = ""
     
@@ -92,8 +153,26 @@ class Settings:
     r2_endpoint_url:      str = os.getenv("R2_ENDPOINT_URL",      "")
     r2_region:            str = os.getenv("R2_REGION",            "auto")
     media_max_bytes:      int = int(os.getenv("MEDIA_MAX_BYTES", str(2 * 1024**3)))
+
+    # ── Criadores sintéticos (server/synthetic_creators.py) ─────────────────────
+    elevenlabs_api_key: str = os.getenv("ELEVENLABS_API_KEY", "")
+    fal_key:            str = os.getenv("FAL_KEY", "")
+    # Endereço Arc que recebe o USDC dos vídeos. Vazio = feature desligada (503).
+    creators_pay_to:    str = os.getenv("CREATORS_PAY_TO", "")
+    # SÓ desenvolvimento local: pula o relay do pagamento para quem testa a geração com chaves próprias da fal/ElevenLabs.
+    # Ignorado (com erro no log) se XIAOLEE_ENV != "dev"; nunca defina no Railway.
+    creators_dev_skip_payment: bool = os.getenv("CREATORS_DEV_SKIP_PAYMENT", "false").lower() in ("true", "1", "yes")
+    creators_daily_videos_per_user: int = int(os.getenv("CREATORS_DAILY_VIDEOS_PER_USER", "10"))
+    # Prévias do Swap são grátis para o usuário (uns centavos para nós): o teto diário limita o gasto.
+    creators_daily_previews_per_user: int = int(os.getenv("CREATORS_DAILY_PREVIEWS_PER_USER", "8"))
     # Dias até apagar o vídeo original e os cortes do bucket (0 = nunca). Uploads que nunca foram concluídos: 2 dias.
     media_retention_days: int = int(os.getenv("MEDIA_RETENTION_DAYS", "30"))
+    # Relatório de 30 dias por creator (server/creator_report.py). false = o job não roda (nem chama a IA).
+    creator_report_enabled: bool = os.getenv("CREATOR_REPORT_ENABLED", "true").lower() != "false"
+    # De quantas em quantas horas o job procura creators que completaram 30 dias. A procura em si é uma consulta
+    # barata; o custo (uma chamada à IA) só existe para quem está devido, então isto muda o atraso máximo da
+    # entrega, não o gasto.
+    creator_report_check_hours: int = max(1, int(os.getenv("CREATOR_REPORT_CHECK_HOURS", "24")))
     # Transcrição: endpoint OpenAI-compatível. GROQ_API_KEY sozinha já configura o Groq (ver _transcription_config).
     transcription_api_key:  str = _transcription_config(os.environ)[0]
     transcription_base_url: str = _transcription_config(os.environ)[1]
@@ -136,6 +215,9 @@ class Settings:
     # cada uma sai da conta do relay (~0.002 USDC), e a rota é autorizada por
     # assinatura, não por sessão — sem teto, a conta é drenável por repetição.
     arc_relay_rate_limit_per_hour: int = int(os.getenv("ARC_RELAY_RATE_LIMIT_PER_HOUR", "20"))
+    # Teto GLOBAL do relay (todas as origens somadas): o limite por endereço sozinho não para quem
+    # troca de endereço. 0 = sem teto. Em memória por processo se não houver Redis.
+    arc_relay_global_per_hour: int = int(os.getenv("ARC_RELAY_GLOBAL_PER_HOUR", "200"))
 
     # ── CCTP V2 — Solana (domain 5) ───────────────────────────────────────────────
     # Program IDs reais da Circle (devnet == mainnet, confirmado em developers.circle.com).

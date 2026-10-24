@@ -4,7 +4,8 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 
 import { getGlossary, getGlossarySuggestions, updateGlossary } from '@/api/backend';
 import { ApiError } from '@/api/client';
 import { IconCheck, IconChevronDown, IconClose, IconPlus, IconSpark } from '@/components/icons';
-import { CardShadow, Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useBackendData } from '@/hooks/use-backend-data';
 import { addGlossaryTerms, GLOSSARY_MAX_TERM_LEN, GLOSSARY_MAX_TERMS, pendingSuggestions } from '@/lib/clips';
 
@@ -39,7 +40,9 @@ const COUNT_VISIBLE_FROM = 45;
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
-export function GlossaryCard() {
+export function GlossaryCard({ bare = false }: { bare?: boolean }) {
+  const colors = useTheme();
+  const styles = useStyles();
   const glossary = useBackendData(getGlossary);
   // Sugestões são um extra: se a busca falhar, a seção só não aparece.
   const suggestions = useBackendData(getGlossarySuggestions);
@@ -74,7 +77,7 @@ export function GlossaryCard() {
 
   const loaded = glossary.data !== null;
   const terms = local ?? glossary.data ?? [];
-  const expanded = open ?? (loaded && terms.length === 0);
+  const expanded = bare || (open ?? (loaded && terms.length === 0));
 
   const flush = async () => {
     const list = box.current.pending;
@@ -151,6 +154,7 @@ export function GlossaryCard() {
 
   return (
     <View style={styles.card}>
+      {bare ? null : (
       <Pressable
         onPress={() => setOpen(!expanded)}
         style={({ pressed }) => [styles.header, pressed && styles.pressed]}
@@ -160,7 +164,7 @@ export function GlossaryCard() {
         accessibilityHint={expanded ? 'Collapses the list' : 'Opens the list to add or remove words'}
       >
         <View style={styles.leadIcon}>
-          <IconSpark size={18} color={Colors.light.ink2} />
+          <IconSpark size={18} color={colors.ink2} />
         </View>
         <View style={styles.flex}>
           <Text style={styles.title}>Words to get right</Text>
@@ -171,9 +175,10 @@ export function GlossaryCard() {
           </Text>
         </View>
         <View style={expanded ? styles.chevronOpen : undefined}>
-          <IconChevronDown size={18} sw={2.2} color={Colors.light.ink3} />
+          <IconChevronDown size={18} sw={2.2} color={colors.ink3} />
         </View>
       </Pressable>
+      )}
 
       {/* Fechado: as palavras à vista, só leitura — abrir é para mudar. */}
       {!expanded && terms.length ? (
@@ -192,7 +197,7 @@ export function GlossaryCard() {
       ) : null}
 
       {expanded ? (
-        <View style={styles.body}>
+        <View style={[styles.body, bare && styles.bodyBare]}>
           {!loaded ? (
             glossary.error ? (
               <View style={styles.loadFailed}>
@@ -202,7 +207,7 @@ export function GlossaryCard() {
                 </Pressable>
               </View>
             ) : (
-              <ActivityIndicator color={Colors.light.accent} />
+              <ActivityIndicator color={colors.accent} />
             )
           ) : (
             <>
@@ -212,7 +217,7 @@ export function GlossaryCard() {
                   onChangeText={onChangeText}
                   onSubmitEditing={() => add(input)}
                   placeholder="Type a word and press add"
-                  placeholderTextColor={Colors.light.ink2}
+                  placeholderTextColor={colors.ink2}
                   autoCapitalize="none"
                   autoCorrect={false}
                   returnKeyType="done"
@@ -250,7 +255,7 @@ export function GlossaryCard() {
                         accessibilityRole="button"
                         accessibilityLabel={`Remove ${term}`}
                       >
-                        <IconClose size={12} sw={2.6} color={Colors.light.ink3} />
+                        <IconClose size={12} sw={2.6} color={colors.ink3} />
                       </Pressable>
                     </View>
                   ))}
@@ -270,7 +275,7 @@ export function GlossaryCard() {
                         accessibilityLabel={`Add ${term}`}
                         accessibilityHint={`You said it ${count} times in your videos`}
                       >
-                        <IconPlus size={12} sw={2.6} color={Colors.light.ink2} />
+                        <IconPlus size={12} sw={2.6} color={colors.ink2} />
                         <Text style={[styles.chipText, styles.suggestionText]}>{term}</Text>
                       </Pressable>
                     ))}
@@ -311,10 +316,12 @@ export function GlossaryCard() {
 
 /** "Saving…" enquanto grava, "Saved" ao terminar, e a saída quando falha. Some em `idle`. */
 function SaveIndicator({ status, onRetry }: { status: SaveStatus; onRetry: () => void }) {
+  const colors = useTheme();
+  const styles = useStyles();
   if (status === 'saving') {
     return (
       <View style={styles.indicator} accessibilityLiveRegion="polite">
-        <ActivityIndicator size="small" color={Colors.light.ink3} />
+        <ActivityIndicator size="small" color={colors.ink3} />
         <Text style={styles.indicatorText}>Saving…</Text>
       </View>
     );
@@ -322,7 +329,7 @@ function SaveIndicator({ status, onRetry }: { status: SaveStatus; onRetry: () =>
   if (status === 'saved') {
     return (
       <View style={styles.indicator} accessibilityLiveRegion="polite">
-        <IconCheck size={14} sw={2.6} color={Colors.light.success} />
+        <IconCheck size={14} sw={2.6} color={colors.success} />
         <Text style={[styles.indicatorText, styles.indicatorSaved]}>Saved</Text>
       </View>
     );
@@ -340,14 +347,14 @@ function SaveIndicator({ status, onRetry }: { status: SaveStatus; onRetry: () =>
   return <View />;
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   flex: { flex: 1 },
   pressed: { opacity: 0.7 },
   card: {
     borderRadius: Radius.lg,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
     overflow: 'hidden',
     ...CardShadow,
   },
@@ -362,21 +369,22 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: Radius.md,
-    backgroundColor: Colors.light.bg,
+    backgroundColor: colors.bg,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  title: { fontFamily: Fonts.bold, fontSize: 15, color: Colors.light.ink },
-  subtitle: { fontFamily: Fonts.sans, fontSize: 12, lineHeight: 17, color: Colors.light.ink2, marginTop: 2 },
+  title: { fontFamily: Fonts.bold, fontSize: 15, color: colors.ink },
+  subtitle: { fontFamily: Fonts.sans, fontSize: 12, lineHeight: 17, color: colors.ink2, marginTop: 2 },
   chevronOpen: { transform: [{ rotate: '180deg' }] },
+  bodyBare: { paddingTop: Spacing.three },
   body: { gap: Spacing.three - 4, paddingHorizontal: Spacing.three, paddingBottom: Spacing.three },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: Radius.md,
     borderWidth: 1,
-    borderColor: Colors.light.border,
-    backgroundColor: Colors.light.bg,
+    borderColor: colors.border,
+    backgroundColor: colors.bg,
     paddingLeft: Spacing.three - 4,
     paddingRight: Spacing.one + 2,
     minHeight: 48,
@@ -386,7 +394,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two + 1,
     fontFamily: Fonts.sans,
     fontSize: 15,
-    color: Colors.light.ink,
+    color: colors.ink,
   },
   add: {
     minHeight: 36,
@@ -395,11 +403,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: Spacing.three - 2,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.accent,
+    backgroundColor: colors.accentFill,
   },
-  addOff: { backgroundColor: Colors.light.border },
-  addText: { fontFamily: Fonts.bold, fontSize: 13, color: Colors.light.card },
-  helper: { fontFamily: Fonts.sans, fontSize: 12, lineHeight: 17, color: Colors.light.ink2 },
+  addOff: { backgroundColor: colors.border },
+  addText: { fontFamily: Fonts.bold, fontSize: 13, color: colors.onAccent },
+  helper: { fontFamily: Fonts.sans, fontSize: 12, lineHeight: 17, color: colors.ink2 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   previewChips: { paddingHorizontal: Spacing.three, paddingBottom: Spacing.three, marginTop: -Spacing.one },
   chip: {
@@ -409,29 +417,29 @@ const styles = StyleSheet.create({
     minHeight: 32,
     paddingHorizontal: Spacing.three - 4,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.bg,
+    backgroundColor: colors.bg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
-  chipText: { fontFamily: Fonts.semibold, fontSize: 13, color: Colors.light.ink },
+  chipText: { fontFamily: Fonts.semibold, fontSize: 13, color: colors.ink },
   chipRemove: { width: 18, height: 18, alignItems: 'center', justifyContent: 'center' },
   suggestions: { gap: Spacing.two },
-  suggestionsTitle: { fontFamily: Fonts.semibold, fontSize: 12, color: Colors.light.ink2 },
+  suggestionsTitle: { fontFamily: Fonts.semibold, fontSize: 12, color: colors.ink2 },
   // Neutro como os chips da lista (rosa só nos botões principais); o tracejado e o "+" dizem
   // "ainda não está na lista, toque para pôr".
-  suggestion: { borderStyle: 'dashed', borderWidth: 1, borderColor: Colors.light.ink3, backgroundColor: Colors.light.card },
-  suggestionText: { color: Colors.light.ink2 },
+  suggestion: { borderStyle: 'dashed', borderWidth: 1, borderColor: colors.ink3, backgroundColor: colors.card },
+  suggestionText: { color: colors.ink2 },
   more: { minHeight: 32, justifyContent: 'center', paddingHorizontal: Spacing.two },
-  moreText: { fontFamily: Fonts.semibold, fontSize: 13, color: Colors.light.ink2 },
-  error: { fontFamily: Fonts.semibold, fontSize: 12, lineHeight: 17, color: Colors.light.danger },
+  moreText: { fontFamily: Fonts.semibold, fontSize: 13, color: colors.ink2 },
+  error: { fontFamily: Fonts.semibold, fontSize: 12, lineHeight: 17, color: colors.danger },
   loadFailed: { gap: Spacing.two },
-  retry: { fontFamily: Fonts.bold, fontSize: 13, color: Colors.light.accent },
+  retry: { fontFamily: Fonts.bold, fontSize: 13, color: colors.accent },
   footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  count: { fontFamily: Fonts.medium, fontSize: 12, color: Colors.light.ink3 },
+  count: { fontFamily: Fonts.medium, fontSize: 12, color: colors.ink3 },
   indicator: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two - 2 },
-  indicatorText: { fontFamily: Fonts.semibold, fontSize: 12, color: Colors.light.ink3 },
-  indicatorSaved: { color: Colors.light.success },
-  indicatorError: { color: Colors.light.danger },
+  indicatorText: { fontFamily: Fonts.semibold, fontSize: 12, color: colors.ink3 },
+  indicatorSaved: { color: colors.success },
+  indicatorError: { color: colors.danger },
   undoBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -440,8 +448,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three - 4,
     minHeight: 44,
     borderRadius: Radius.md,
-    backgroundColor: Colors.light.ink,
+    backgroundColor: colors.ink,
   },
-  undoText: { flex: 1, fontFamily: Fonts.medium, fontSize: 13, color: Colors.light.card },
-  undoAction: { fontFamily: Fonts.bold, fontSize: 13, color: Colors.light.card, textDecorationLine: 'underline' },
-});
+  undoText: { flex: 1, fontFamily: Fonts.medium, fontSize: 13, color: colors.card },
+  undoAction: { fontFamily: Fonts.bold, fontSize: 13, color: colors.card, textDecorationLine: 'underline' },
+}));

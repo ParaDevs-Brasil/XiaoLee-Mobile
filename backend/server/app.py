@@ -33,11 +33,18 @@ from server.integrations.x_poller import XPoller
 from server.integrations.x_adapter import XAdapter
 from server.orchestration.service import OrchestrationService
 from server.metrics import record_http_request, render_prometheus_metrics
-from server.schemas import InboundMessage, OrchestrationResponse, SwapPrepareRequest, SwapPrepareResponse
+from server import usage_quota
+from server.schemas import InboundMessage, IntentResponse, OrchestrationResponse, SwapPrepareRequest, SwapPrepareResponse
 from server.settings import settings
 from server.rate_limiter import get_rate_limiter, reset_rate_limiter
 from server.webhooks.helius_routes import router as helius_router
-from server.campaigns_routes import resolve_optional_identity, router as campaigns_router
+from server.caller_trust import unverified_caller
+from server.campaigns_routes import (
+    resolve_optional_identity,
+    resolve_twitter_identity,
+    resolve_verified_identity,
+    router as campaigns_router,
+)
 from server.notifications_routes import router as notifications_router
 from server.routes.stellar_auth_routes import router as stellar_auth_router
 from server.routes.stellar_routes import router as stellar_router
@@ -45,11 +52,17 @@ from server.routes.x402_routes import router as x402_router
 from server.routes.agent_routes import router as agent_router
 from server.routes.arc_routes import router as arc_router
 from server.routes.arc_x402_routes import router as arc_x402_router
+from server.routes.x402_internal_routes import router as x402_internal_router
 from server.routes.trust_routes import router as trust_router
 from server.routes.cctp_routes import router as cctp_router
 from server.routes.chat_sessions_routes import router as chat_sessions_router
-from server import media_maintenance
+from server import creator_report, media_maintenance
 from server.media_routes import router as media_router
+from server.creator_report_routes import router as creator_report_router
+from server.radar_chat_tools import router as radar_router
+from server.social_routes import router as social_router
+from server.synthetic_creator_routes import router as synthetic_creator_router
+from server.onoff_routes import router as onoff_router
 from server.traction_routes import router as traction_router
 
 
@@ -60,6 +73,9 @@ async def lifespan(app: FastAPI):
     _missing = [v for v in ("JWT_SECRET", "STELLAR_SERVER_SECRET", "STELLAR_X402_WALLET") if not _os.getenv(v)]
     if _missing:
         logger.warning("[startup] Missing env vars (service may reject auth/payment): %s", ", ".join(_missing))
+
+    from services.pqc_receipt import assert_ready as _pqc_assert_ready
+    _pqc_assert_ready()  # no-op sem PQC_REQUIRE_PERSISTENT_KEY; com ele, par ausente/inválido derruba o boot
 
     init_db()
     await create_tables()
@@ -83,6 +99,7 @@ async def lifespan(app: FastAPI):
     logger.info("X poller scheduled")
 
     media_task = asyncio.create_task(media_maintenance.run_forever())
+    report_task = asyncio.create_task(creator_report.run_forever())
 
     # Restart resilience: mark any payment_intents that were left as 'pending'
     # (i.e. the process crashed before Arc could confirm) as 'failed' so they
@@ -132,7 +149,7 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    for task in (telegram_task, x_task, media_task):
+    for task in (telegram_task, x_task, media_task, report_task):
         if task and not task.done():
             task.cancel()
             try:
@@ -194,10 +211,16 @@ app.include_router(x402_router)
 app.include_router(agent_router)
 app.include_router(arc_router)
 app.include_router(arc_x402_router)
+app.include_router(x402_internal_router)
 app.include_router(trust_router)
 app.include_router(cctp_router)
 app.include_router(chat_sessions_router)
 app.include_router(media_router)
+app.include_router(creator_report_router)
+app.include_router(social_router)
+app.include_router(radar_router)
+app.include_router(synthetic_creator_router)
+app.include_router(onoff_router)
 app.include_router(traction_router)
 
 request_hits: Dict[str, Deque[datetime]] = defaultdict(deque)
@@ -265,7 +288,12 @@ def _validate_telegram_secret(provided_secret: str | None):
     if not hmac.compare_digest(settings.telegram_webhook_secret, provided_secret):
         raise HTTPException(status_code=401, detail="Invalid Telegram webhook secret")
 
-gemini_client = GeminiClient(api_key=settings.gemini_api_key, model=settings.gemini_model)
+gemini_client = GeminiClient(
+    api_key=settings.gemini_api_key,
+    model=settings.gemini_model,
+    anthropic_api_key=settings.anthropic_api_key,
+    anthropic_model=settings.anthropic_model,
+)
 solana_client = SolanaClient(
     rpc_url=settings.solana_rpc_url,
     jupiter_quote_url=settings.jupiter_quote_url,
@@ -402,6 +430,7 @@ async def _process_inbound(
     db: AsyncSession,
     metadata: dict | None = None,
     session_id: str | None = None,
+    quota: usage_quota.Subject | None = None,
 ) -> OrchestrationResponse:
     repo = DatabaseRepository(db)
     user = await repo.get_or_create_user(platform, user_id)
@@ -427,6 +456,21 @@ async def _process_inbound(
     # transação cortada em duas, a resposta do bot commita normalmente no fim.
     await db.commit()
 
+    # Cota do plano grátis: estourou -> avisa, sem gastar LLM. `quota` vem do chamador quando
+    # ele sabe a identidade real (login/IP); webhooks e pollers usam a conta da plataforma.
+    decision = await usage_quota.consume(db, quota or usage_quota.subject_for_user(platform, user_id))
+    if not decision.allowed:
+        reply = usage_quota.exceeded_message(decision)
+        await repo.log_dm(user.id, platform, reply, message_type="bot", session_id=session_id)
+        if session_id:
+            await repo.touch_chat_session(int(session_id))
+        await db.commit()
+        return OrchestrationResponse(
+            platform=platform, user_id=user_id,
+            intent=IntentResponse(action="quota_exceeded", confidence=1.0, entities=decision.as_dict()),
+            reply_text=reply, execution={"quota": decision.as_dict()},
+        )
+
     result = await orchestrator.execute(text, user_id, history=history, platform=platform)
 
     await repo.log_dm(user.id, platform, result["reply_text"], message_type="bot", session_id=session_id)
@@ -444,8 +488,10 @@ async def _process_inbound(
 
 
 @app.post("/v1/messages/inbound", response_model=OrchestrationResponse)
-async def inbound_message(payload: InboundMessage, db: AsyncSession = Depends(get_db_session)):
+async def inbound_message(payload: InboundMessage, request: Request, db: AsyncSession = Depends(get_db_session)):
     _enforce_rate_limit(f"inbound:{payload.platform}:{payload.user_id}")
+    # Endpoint aberto: `platform`/`user_id` vêm do corpo, não provam identidade.
+    unverified_caller.set(True)
 
     return await _process_inbound(
         platform=payload.platform,
@@ -453,12 +499,70 @@ async def inbound_message(payload: InboundMessage, db: AsyncSession = Depends(ge
         text=payload.text,
         db=db,
         metadata=payload.metadata,
+        quota=usage_quota.subject_for_ip(usage_quota.client_ip(request)),
     )
+
+@app.post("/marketplace/confirm")
+async def marketplace_confirm(
+    payload: dict,
+    authorization: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """O usuário aprova o gasto de uma cotação (`confirmation_required`).
+
+    Fica FORA do loop do modelo de propósito: a aprovação exige a sessão da pessoa (strict:
+    só token emitido pelo backend), então prompt injection vinda do marketplace não consegue
+    aprovar o próprio gasto.
+    """
+    from server.integrations import marketplace_client
+
+    if not marketplace_client.enabled():
+        raise HTTPException(status_code=503, detail="marketplace disabled")
+    confirm_id = str(payload.get("confirm_id", "")).strip()
+    if not confirm_id:
+        raise HTTPException(status_code=400, detail="confirm_id is required")
+    twitter_user_id, _ = await resolve_twitter_identity(db, authorization, strict=True)
+    out = await marketplace_client.confirm(confirm_id, twitter_user_id)
+    if out.get("status") != 200:
+        raise HTTPException(status_code=404, detail="confirmation not found or expired")
+    return {"confirmed": True, "price_usdc": out.get("price_usdc"), "pay_to": out.get("pay_to")}
+
+
+@app.get("/marketplace/search")
+async def marketplace_search(
+    q: str = "",
+    authorization: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Busca de serviços para a tela do app (mesma busca da tool do chat)."""
+    from server.integrations import marketplace_client
+
+    if not marketplace_client.enabled():
+        raise HTTPException(status_code=503, detail="marketplace disabled")
+    await resolve_twitter_identity(db, authorization, strict=True)
+    return await marketplace_client.call("search_marketplace", {"query": q})
+
+
+@app.post("/marketplace/buy")
+async def marketplace_buy(
+    payload: dict,
+    authorization: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Compra pela tela do app. Sem `confirm_id` devolve a cotação (`confirmation_required`, nada é pago);
+    com `confirm_id` já aprovado em /marketplace/confirm, paga. O usuário vem SEMPRE da sessão."""
+    from server.integrations import marketplace_client
+
+    if not marketplace_client.enabled():
+        raise HTTPException(status_code=503, detail="marketplace disabled")
+    twitter_user_id, _ = await resolve_twitter_identity(db, authorization, strict=True)
+    return await marketplace_client.call("buy_marketplace_service", payload, twitter_user_id)
 
 
 @app.post("/chat")
 async def chat_compat(
     payload: dict,
+    request: Request,
     authorization: str | None = Header(default=None),
     db: AsyncSession = Depends(get_db_session),
 ):
@@ -481,8 +585,14 @@ async def chat_compat(
     if stellar_wallet:
         text = f"[System Note: Stellar wallet {stellar_wallet}] {text}"
 
-    user_id = await resolve_optional_identity(db, authorization) or str(payload.get("user_id", "web_anonymous"))
+    # Só um token que o backend emitiu libera as tools de dinheiro; o Bearer
+    # legado (id/endereço como token) segue valendo para histórico, não para isso.
+    unverified_caller.set(await resolve_verified_identity(db, authorization) is None)
+    authed_id = await resolve_optional_identity(db, authorization)
+    user_id = authed_id or str(payload.get("user_id", "web_anonymous"))
     platform = str(payload.get("platform", "web"))
+    quota = (usage_quota.Subject(f"u:auth:{authed_id}", settings.free_daily_messages, "user") if authed_id
+             else usage_quota.subject_for_ip(usage_quota.client_ip(request)))
 
     _enforce_rate_limit(f"chat:{platform}:{user_id}")
 
@@ -505,7 +615,7 @@ async def chat_compat(
             await db.commit()
 
     result = await _process_inbound(
-        platform=platform, user_id=user_id, text=text, db=db, session_id=str(chat_session_id)
+        platform=platform, user_id=user_id, text=text, db=db, session_id=str(chat_session_id), quota=quota
     )
 
     # Keep legacy response shape consumed by frontend ChatPanel.

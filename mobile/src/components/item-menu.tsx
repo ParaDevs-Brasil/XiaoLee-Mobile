@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ApiError } from '@/api/client';
 import { IconEdit, IconTrash } from '@/components/icons';
-import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 
 /**
  * O menu "⋯" de um vídeo ou de um corte: renomear e apagar.
@@ -36,6 +37,8 @@ export function ItemMenu({
   onDelete: () => Promise<void>;
   onClose: () => void;
 }) {
+  const colors = useTheme();
+  const styles = useStyles();
   const insets = useSafeAreaInsets();
   const [step, setStep] = useState<'menu' | 'confirm'>('menu');
   const [deleting, setDeleting] = useState(false);
@@ -80,7 +83,7 @@ export function ItemMenu({
                   accessibilityRole="button"
                 >
                   <View style={styles.rowIcon}>
-                    <IconEdit size={18} sw={2} color={Colors.light.ink} />
+                    <IconEdit size={18} sw={2} color={colors.ink} />
                   </View>
                   <Text style={styles.rowText}>Rename {kind}</Text>
                 </Pressable>
@@ -91,7 +94,7 @@ export function ItemMenu({
                   accessibilityRole="button"
                 >
                   <View style={[styles.rowIcon, styles.rowIconDanger]}>
-                    <IconTrash size={18} sw={2} color={Colors.light.danger} />
+                    <IconTrash size={18} sw={2} color={colors.danger} />
                   </View>
                   <Text style={[styles.rowText, styles.dangerText]}>Delete {kind}</Text>
                 </Pressable>
@@ -100,7 +103,7 @@ export function ItemMenu({
           ) : (
             <>
               <View style={styles.confirmIcon}>
-                <IconTrash size={24} sw={2} color={Colors.light.danger} />
+                <IconTrash size={24} sw={2} color={colors.danger} />
               </View>
               <Text style={styles.confirmTitle}>Delete this {kind}?</Text>
               <Text style={styles.confirmName} numberOfLines={2}>
@@ -125,7 +128,7 @@ export function ItemMenu({
                   accessibilityRole="button"
                   accessibilityState={{ busy: deleting }}
                 >
-                  {deleting ? <ActivityIndicator size="small" color={Colors.light.card} /> : null}
+                  {deleting ? <ActivityIndicator size="small" color={colors.onAccent} /> : null}
                   <Text style={styles.deleteText}>Delete {kind}</Text>
                 </Pressable>
               </View>
@@ -137,25 +140,25 @@ export function ItemMenu({
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(26,25,23,0.35)', justifyContent: 'flex-end' },
+const useStyles = makeStyles((colors) => ({
+  backdrop: { flex: 1, backgroundColor: colors.scrim, justifyContent: 'flex-end' },
   sheet: {
     gap: Spacing.three - 4,
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.two,
     borderTopLeftRadius: Radius.xl,
     borderTopRightRadius: Radius.xl,
-    backgroundColor: Colors.light.card,
+    backgroundColor: colors.card,
   },
   handle: {
     alignSelf: 'center',
     width: 36,
     height: 4,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.border,
+    backgroundColor: colors.border,
     marginBottom: Spacing.one,
   },
-  heading: { fontFamily: Fonts.bold, fontSize: 16, lineHeight: 22, color: Colors.light.ink2 },
+  heading: { fontFamily: Fonts.bold, fontSize: 16, lineHeight: 22, color: colors.ink2 },
   list: { gap: Spacing.one },
   row: {
     flexDirection: 'row',
@@ -169,26 +172,26 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: Radius.md,
-    backgroundColor: Colors.light.bg,
+    backgroundColor: colors.bg,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  rowIconDanger: { backgroundColor: Colors.light.dangerSoft },
-  rowText: { fontFamily: Fonts.bold, fontSize: 16, color: Colors.light.ink },
-  dangerText: { color: Colors.light.danger },
+  rowIconDanger: { backgroundColor: colors.dangerSoft },
+  rowText: { fontFamily: Fonts.bold, fontSize: 16, color: colors.ink },
+  dangerText: { color: colors.danger },
   pressed: { opacity: 0.7 },
   confirmIcon: {
     width: 52,
     height: 52,
     borderRadius: Radius.lg,
-    backgroundColor: Colors.light.dangerSoft,
+    backgroundColor: colors.dangerSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  confirmTitle: { fontFamily: Fonts.bold, fontSize: 20, color: Colors.light.ink },
-  confirmName: { fontFamily: Fonts.semibold, fontSize: 15, lineHeight: 21, color: Colors.light.ink2 },
-  confirmText: { fontFamily: Fonts.sans, fontSize: 14, lineHeight: 21, color: Colors.light.ink2 },
-  error: { fontFamily: Fonts.semibold, fontSize: 13, lineHeight: 19, color: Colors.light.danger },
+  confirmTitle: { fontFamily: Fonts.bold, fontSize: 20, color: colors.ink },
+  confirmName: { fontFamily: Fonts.semibold, fontSize: 15, lineHeight: 21, color: colors.ink2 },
+  confirmText: { fontFamily: Fonts.sans, fontSize: 14, lineHeight: 21, color: colors.ink2 },
+  error: { fontFamily: Fonts.semibold, fontSize: 13, lineHeight: 19, color: colors.danger },
   actions: { flexDirection: 'row', gap: Spacing.three - 4, marginTop: Spacing.two },
   keep: {
     flex: 1,
@@ -197,9 +200,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: Radius.pill,
     borderWidth: 1,
-    borderColor: Colors.light.border,
+    borderColor: colors.border,
   },
-  keepText: { fontFamily: Fonts.bold, fontSize: 15, color: Colors.light.ink },
+  keepText: { fontFamily: Fonts.bold, fontSize: 15, color: colors.ink },
   delete: {
     flex: 1,
     minHeight: 52,
@@ -208,7 +211,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: Spacing.two,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.light.danger,
+    backgroundColor: colors.dangerFill,
   },
-  deleteText: { fontFamily: Fonts.bold, fontSize: 15, color: Colors.light.card },
-});
+  deleteText: { fontFamily: Fonts.bold, fontSize: 15, color: colors.onAccent },
+}));

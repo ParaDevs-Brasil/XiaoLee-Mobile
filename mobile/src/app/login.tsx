@@ -9,14 +9,12 @@ import {
   KeyboardAvoidingView,
   Pressable,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Circle, Path, Svg } from 'react-native-svg';
-import { StatusBar } from 'expo-status-bar';
 
 import { GoogleLogo } from '@/components/google-logo';
 import {
@@ -30,6 +28,7 @@ import {
 } from '@/components/login-decorations';
 import { OtpInput } from '@/components/otp-input';
 import { Fonts, Radius, Spacing } from '@/constants/theme';
+import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useAuthState } from '@/hooks/use-auth-state';
 import { usePrivyLogin } from '@/hooks/use-privy-login';
 import { usePrivyWallet } from '@/lib/wallet';
@@ -38,6 +37,7 @@ import { usePrivyWallet } from '@/lib/wallet';
  * Spinner circular em arco rotativo para o estado "Setting up your account".
  */
 function CircularArcSpinner({ size = 64 }: { size?: number }) {
+  const colors = useTheme();
   const [rotateAnim] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
@@ -61,10 +61,10 @@ function CircularArcSpinner({ size = 64 }: { size?: number }) {
   return (
     <Animated.View style={{ width: size, height: size, transform: [{ rotate: spin }] }}>
       <Svg width={size} height={size} viewBox="0 0 64 64" fill="none">
-        <Circle cx="32" cy="32" r="26" stroke="#FCE7F3" strokeWidth="4.5" />
+        <Circle cx="32" cy="32" r="26" stroke={colors.accentSoft} strokeWidth="4.5" />
         <Path
           d="M32 6 A26 26 0 0 1 58 32"
-          stroke="#D81B78"
+          stroke={colors.accent}
           strokeWidth="4.5"
           strokeLinecap="round"
         />
@@ -77,6 +77,8 @@ function CircularArcSpinner({ size = 64 }: { size?: number }) {
  * Botão chevron voltar no topo esquerdo da tela.
  */
 function BackButton({ onPress }: { onPress: () => void }) {
+  const colors = useTheme();
+  const styles = useStyles();
   return (
     <Pressable
       onPress={onPress}
@@ -88,7 +90,7 @@ function BackButton({ onPress }: { onPress: () => void }) {
       <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
         <Path
           d="M15 19l-7-7 7-7"
-          stroke="#18181B"
+          stroke={colors.ink}
           strokeWidth="2.4"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -109,6 +111,8 @@ function BackButton({ onPress }: { onPress: () => void }) {
  * 5. "We couldn't finish signing you in" (ilustração de erro + retry)
  */
 export default function LoginScreen() {
+  const colors = useTheme();
+  const styles = useStyles();
   const insets = useSafeAreaInsets();
   const authState = useAuthState();
   const { isReady } = usePrivy();
@@ -180,7 +184,6 @@ export default function LoginScreen() {
 
   return (
     <View style={styles.screen}>
-      <StatusBar style="dark" />
       <BackgroundGlow />
 
       {/* Brilhos decorativos no topo */}
@@ -214,7 +217,7 @@ export default function LoginScreen() {
               <Text style={styles.wordmark}>
                 Xiao<Text style={styles.wordmarkAccent}>lee</Text>
               </Text>
-              <SparkleStar size={18} color="#D81B78" style={styles.sparkleLogo} />
+              <SparkleStar size={18} color={colors.accent} style={styles.sparkleLogo} />
             </View>
             <Text style={styles.tagline}>
               Your AI agent for creator payments,{'\n'}on{' '}
@@ -299,7 +302,7 @@ export default function LoginScreen() {
                   >
                     {login.isGoogleLoading ? (
                       <View style={styles.buttonContentRow}>
-                        <ActivityIndicator color="#18181B" size="small" />
+                        <ActivityIndicator color={colors.ink} size="small" />
                         <Text style={styles.googleButtonText}>Connecting to Google...</Text>
                       </View>
                     ) : (
@@ -330,14 +333,14 @@ export default function LoginScreen() {
                       ]}
                     >
                       <View style={styles.inputIconLeft}>
-                        <IconMail size={18} color={login.emailError ? '#F43F5E' : '#9CA3AF'} />
+                        <IconMail size={18} color={login.emailError ? colors.danger : colors.ink3} />
                       </View>
                       <TextInput
                         value={login.email}
                         onChangeText={login.onChangeEmail}
                         onSubmitEditing={handleSendEmail}
                         placeholder="Email address"
-                        placeholderTextColor="#A1A1AA"
+                        placeholderTextColor={colors.ink3}
                         keyboardType="email-address"
                         autoCapitalize="none"
                         autoCorrect={false}
@@ -350,7 +353,7 @@ export default function LoginScreen() {
                       />
                       {login.emailError ? (
                         <View style={styles.inputIconRight}>
-                          <IconAlertCircle size={18} color="#F43F5E" />
+                          <IconAlertCircle size={18} color={colors.dangerFill} />
                         </View>
                       ) : null}
                     </View>
@@ -374,11 +377,11 @@ export default function LoginScreen() {
                     accessibilityState={{ disabled, busy: login.isEmailLoading }}
                   >
                     {login.isEmailLoading ? (
-                      <ActivityIndicator color="#FFFFFF" />
+                      <ActivityIndicator color={colors.onAccent} />
                     ) : (
                       <View style={styles.buttonContentRow}>
                         <Text style={styles.primaryButtonText}>Continue with email</Text>
-                        <IconArrowRight size={18} color="#FFFFFF" />
+                        <IconArrowRight size={18} color={colors.onAccent} />
                       </View>
                     )}
                   </Pressable>
@@ -418,11 +421,11 @@ export default function LoginScreen() {
                     accessibilityState={{ disabled, busy: login.isEmailLoading }}
                   >
                     {login.isEmailLoading ? (
-                      <ActivityIndicator color="#FFFFFF" />
+                      <ActivityIndicator color={colors.onAccent} />
                     ) : (
                       <View style={styles.buttonContentRow}>
                         <Text style={styles.primaryButtonText}>Verify and continue</Text>
-                        <IconArrowRight size={18} color="#FFFFFF" />
+                        <IconArrowRight size={18} color={colors.onAccent} />
                       </View>
                     )}
                   </Pressable>
@@ -458,10 +461,10 @@ export default function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   screen: {
     flex: 1,
-    backgroundColor: '#FAF8F7',
+    backgroundColor: colors.bg,
   },
   keyboardView: {
     flex: 1,
@@ -511,10 +514,10 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.brand,
     fontSize: 44,
     lineHeight: 54,
-    color: '#18181B',
+    color: colors.ink,
   },
   wordmarkAccent: {
-    color: '#D81B78',
+    color: colors.accent,
   },
   sparkleLogo: {
     marginLeft: 4,
@@ -525,21 +528,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     textAlign: 'center',
-    color: '#6B6862',
+    color: colors.ink2,
     marginTop: 2,
   },
   arcAccent: {
-    color: '#8B5CF6',
+    color: colors.arc,
     fontFamily: Fonts.bold,
   },
 
   /* Card Principal */
   card: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.card,
     borderRadius: 24,
     padding: Spacing.four + 4,
     borderWidth: 1,
-    borderColor: '#F0EDEA',
+    borderColor: colors.border,
     gap: Spacing.three + 2,
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 4 },
@@ -551,19 +554,19 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bold,
     fontSize: 22,
     lineHeight: 28,
-    color: '#18181B',
+    color: colors.ink,
     textAlign: 'left',
   },
   cardSubtitle: {
     fontFamily: Fonts.medium,
     fontSize: 14,
     lineHeight: 20,
-    color: '#71717A',
+    color: colors.ink2,
     marginTop: -Spacing.one,
   },
   emailHighlighted: {
     fontFamily: Fonts.bold,
-    color: '#18181B',
+    color: colors.ink,
   },
 
   /* Botão Google */
@@ -575,19 +578,19 @@ const styles = StyleSheet.create({
     gap: Spacing.two + 2,
     borderRadius: Radius.pill,
     borderWidth: 1,
-    borderColor: '#E4E4E7',
-    backgroundColor: '#FFFFFF',
+    borderColor: colors.border,
+    backgroundColor: colors.card,
   },
   googleButtonText: {
     fontFamily: Fonts.semibold,
     fontSize: 15,
-    color: '#18181B',
+    color: colors.ink,
   },
   googleError: {
     fontFamily: Fonts.medium,
     fontSize: 13,
     lineHeight: 18,
-    color: '#F43F5E',
+    color: colors.danger,
     textAlign: 'center',
     marginTop: -4,
     marginBottom: 4,
@@ -603,12 +606,12 @@ const styles = StyleSheet.create({
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: '#ECEAE7',
+    backgroundColor: colors.border,
   },
   dividerText: {
     fontFamily: Fonts.medium,
     fontSize: 13,
-    color: '#A1A1AA',
+    color: colors.ink3,
   },
 
   /* Input de E-mail */
@@ -618,13 +621,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 14,
     borderWidth: 1.2,
-    borderColor: '#E4E4E7',
-    backgroundColor: '#FFFFFF',
+    borderColor: colors.border,
+    backgroundColor: colors.card,
     paddingHorizontal: Spacing.three,
   },
   inputWrapperError: {
-    borderColor: '#F43F5E',
-    backgroundColor: '#FFF5F6',
+    borderColor: colors.danger,
+    backgroundColor: colors.dangerSoft,
   },
   inputIconLeft: {
     marginRight: Spacing.two,
@@ -636,14 +639,14 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: Fonts.medium,
     fontSize: 15,
-    color: '#18181B',
+    color: colors.ink,
     paddingVertical: 0,
   },
   inlineError: {
     fontFamily: Fonts.medium,
     fontSize: 12,
     lineHeight: 16,
-    color: '#F43F5E',
+    color: colors.danger,
     marginTop: 6,
     paddingHorizontal: Spacing.one,
   },
@@ -652,7 +655,7 @@ const styles = StyleSheet.create({
   primaryButton: {
     height: 52,
     borderRadius: Radius.pill,
-    backgroundColor: '#D81B78',
+    backgroundColor: colors.accentFill,
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
@@ -666,7 +669,7 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     fontFamily: Fonts.bold,
     fontSize: 15,
-    color: '#FFFFFF',
+    color: colors.onAccent,
   },
 
   /* Termos e Política */
@@ -674,13 +677,13 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 11,
     lineHeight: 16,
-    color: '#71717A',
+    color: colors.ink2,
     textAlign: 'center',
     marginTop: Spacing.one,
   },
   termsLink: {
     textDecorationLine: 'underline',
-    color: '#71717A',
+    color: colors.ink2,
   },
 
   /* Links na tela de Código OTP */
@@ -692,7 +695,7 @@ const styles = StyleSheet.create({
   resendCodeLink: {
     fontFamily: Fonts.semibold,
     fontSize: 14,
-    color: '#D81B78',
+    color: colors.accent,
     textDecorationLine: 'underline',
   },
   resendDisabled: {
@@ -701,7 +704,7 @@ const styles = StyleSheet.create({
   useAnotherEmailLink: {
     fontFamily: Fonts.medium,
     fontSize: 13,
-    color: '#71717A',
+    color: colors.ink2,
     textDecorationLine: 'underline',
   },
 
@@ -721,14 +724,14 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bold,
     fontSize: 20,
     lineHeight: 26,
-    color: '#18181B',
+    color: colors.ink,
     textAlign: 'center',
   },
   flowSubtitle: {
     fontFamily: Fonts.medium,
     fontSize: 14,
     lineHeight: 20,
-    color: '#71717A',
+    color: colors.ink2,
     textAlign: 'center',
     maxWidth: 290,
   },
@@ -739,11 +742,11 @@ const styles = StyleSheet.create({
   linkAccent: {
     fontFamily: Fonts.semibold,
     fontSize: 14,
-    color: '#D81B78',
+    color: colors.accent,
     textDecorationLine: 'underline',
   },
 
   pressed: {
     opacity: 0.75,
   },
-});
+}));
