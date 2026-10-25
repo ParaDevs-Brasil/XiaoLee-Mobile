@@ -102,7 +102,7 @@ export function Studio() {
 
       <div ref={track} style={{ height: `calc(100dvh + ${(n - 1) * STEP_VH}dvh)` }} className="relative">
         <div className="sticky top-0 flex h-[100dvh] items-center overflow-hidden">
-          <div className="mx-auto grid w-full max-w-6xl items-center gap-5 px-5 pt-20 sm:px-8 lg:grid-cols-[1fr_auto] lg:gap-20 lg:pt-8">
+          <div className="mx-auto grid w-full max-w-6xl items-center gap-5 px-5 pt-20 sm:px-8 lg:grid-cols-[1fr_auto] lg:gap-20 lg:pt-24">
             {/* chapters */}
             <div className="order-2 lg:order-1">
               <ol className="relative hidden space-y-1 lg:block">
@@ -150,7 +150,7 @@ export function Studio() {
             </div>
 
             {/* the pinned phone */}
-            <Reveal className="order-1 mx-auto w-[min(46vw,200px)] sm:w-[min(40vw,230px)] lg:order-2 lg:w-[340px]">
+            <Reveal className="order-1 mx-auto w-[clamp(130px,min(46vw,calc((100dvh-24rem)*0.47)),200px)] sm:w-[clamp(130px,min(40vw,calc((100dvh-24rem)*0.47)),230px)] lg:order-2 lg:w-[clamp(180px,calc((100dvh-9.5rem)*0.47),340px)]">
               <div className="relative [perspective:1400px]">
                 <div aria-hidden className="absolute -inset-10 -z-10 rounded-full bg-rose/50 blur-3xl" />
                 <motion.div style={{ rotateY: turn }}>
