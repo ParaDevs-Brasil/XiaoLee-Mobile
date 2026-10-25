@@ -21,9 +21,9 @@ const en = {
       "send 5 USDC to @maria",
     ],
     inputHint: "Ask Xiaolee…",
+    giant: ["Clip it.", "Join a campaign.", "Get paid in USDC."],
     eyebrow: ["Creators", "On-chain payments"],
     tag: ["Create.", "Earn.", "Grow."],
-    toast: { title: "USDC received", body: "+0.30 · post verified", tag: "Example" },
     features: [
       { title: "Turn videos", body: "Cut one long video into three vertical clips with captions." },
       { title: "Join campaigns", body: "Brands set the budget. You do the tasks." },
@@ -208,9 +208,9 @@ const pt: Copy = {
       "envia 5 USDC pro @maria",
     ],
     inputHint: "Pergunte à Xiaolee…",
+    giant: ["Corte.", "Entre numa campanha.", "Receba em USDC."],
     eyebrow: ["Criadores", "Pagamentos on-chain"],
     tag: ["Crie.", "Ganhe.", "Cresça."],
-    toast: { title: "USDC recebido", body: "+0,30 · post verificado", tag: "Exemplo" },
     features: [
       { title: "Transforme vídeos", body: "Corte um vídeo longo em três clipes verticais com legenda." },
       { title: "Entre em campanhas", body: "A marca define o orçamento. Você faz as tarefas." },

@@ -81,7 +81,6 @@ function Stage({ section }: { section: RefObject<HTMLElement | null> }) {
     mx.set((e.clientX - r.left) / r.width - 0.5);
     my.set((e.clientY - r.top) / r.height - 0.5);
   };
-  const toast = t.hero.toast;
 
   return (
     <div onPointerMove={onMove} className="relative mx-auto aspect-[1/1.04] w-full max-w-[600px] [perspective:1500px]">
@@ -89,43 +88,30 @@ function Stage({ section }: { section: RefObject<HTMLElement | null> }) {
       <div aria-hidden className="absolute inset-[-8%] bg-[radial-gradient(closest-side_at_62%_46%,var(--halo),transparent_72%)]" />
       <div aria-hidden className="absolute inset-x-0 bottom-[3%] h-px bg-gradient-to-r from-transparent via-accent/50 to-transparent" />
 
-      <motion.div style={{ x: reduced ? 0 : girlX }} className="absolute bottom-[3%] right-[-7%] z-0 w-[76%]">
-        {/* the art is a square crop, so its right and bottom edges are fed into the dark instead of ending in a line */}
-        <img
-          src="/mascot/xiaolee-cutout.webp" width={512} height={512} alt=""
-          className="w-full select-none drop-shadow-[0_0_46px_rgba(224,40,132,0.35)]"
-          style={{
-            WebkitMaskImage: "linear-gradient(180deg,#000 72%,transparent 100%), linear-gradient(270deg,transparent 0%,#000 16%)",
-            maskImage: "linear-gradient(180deg,#000 72%,transparent 100%), linear-gradient(270deg,transparent 0%,#000 16%)",
-            WebkitMaskComposite: "source-in",
-            maskComposite: "intersect",
-          }}
-          draggable={false}
-        />
+      {/* a pink pool behind her so the dark jacket and hair still read on the dark page */}
+      <div aria-hidden className="absolute bottom-[6%] right-[2%] aspect-square w-[62%] rounded-full bg-[radial-gradient(closest-side,rgba(224,40,132,0.5),transparent_72%)]" />
+      <motion.div style={{ x: reduced ? 0 : girlX }} className="absolute bottom-0 right-[-3%] z-0 w-[64%]">
+        {/* the glow sits on this wrapper, outside the image's fade mask, so it follows her outline and is never cut into a box */}
+        <div className="drop-shadow-[0_0_26px_rgba(224,40,132,0.45)]">
+          <img
+            src="/mascot/xiaolee-hero.webp" width={900} height={1350} alt=""
+            className="w-full select-none"
+            style={{ WebkitMaskImage: "linear-gradient(180deg,#000 80%,transparent 100%)", maskImage: "linear-gradient(180deg,#000 80%,transparent 100%)" }}
+            draggable={false}
+          />
+        </div>
       </motion.div>
 
       <motion.div
         style={reduced ? { rotateY: -12, rotateX: 4 } : { rotateY: rotY, rotateX: rotX, transformStyle: "preserve-3d" }}
-        className="absolute left-[3%] top-[2%] z-10 w-[56%]"
+        className="absolute bottom-[7%] left-[2%] z-10 w-[46%] sm:w-[40%]"
       >
         <AppPhone rim className="max-w-none"><HomeScreen /></AppPhone>
       </motion.div>
 
-      <motion.div
-        initial={{ opacity: 0, y: 22, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ delay: 2.4, duration: 0.9, ease: EASE }}
-        className="absolute bottom-[10%] left-[-4%] z-20 flex items-center gap-3 rounded-2xl bg-surface/95 p-3 pr-5 shadow-[0_24px_50px_-20px_rgba(0,0,0,0.6)] ring-1 ring-ink/10 sm:left-[-15%]"
-      >
-        <span className="grid size-10 place-items-center rounded-full bg-accent text-[15px] font-bold text-white shadow-[0_8px_18px_-6px_var(--color-accent)]">$</span>
-        <div>
-          <p className="text-[13.5px] font-bold leading-tight text-ink">{toast.title}</p>
-          <p className="mt-0.5 text-[12px] leading-tight text-ink-2">{toast.body}</p>
-        </div>
-        <span className="absolute -top-2 right-3 rounded-full bg-ink px-2 py-0.5 font-mono text-[9px] font-medium uppercase tracking-[0.14em] text-cream">{toast.tag}</span>
-      </motion.div>
-
-      <div aria-hidden className="absolute right-[1%] top-[9%] z-20 hidden -rotate-[9deg] font-script text-[clamp(22px,2.4vw,32px)] leading-[1.04] text-accent sm:block">
-        {t.hero.tag.map((w) => <span key={w} className="block">{w}</span>)}
-        <svg viewBox="0 0 120 14" className="mt-1 w-[88px]" fill="none"><path d="M3 9c26-8 52-8 74-3 14 3 28 3 40-1" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" /></svg>
+      <div aria-hidden className="absolute left-[1%] top-[0%] z-20 hidden -rotate-[6deg] font-script text-[clamp(20px,2.1vw,28px)] leading-[1.05] text-accent sm:block">
+        <span className="flex gap-x-3">{t.hero.tag.map((w) => <span key={w}>{w}</span>)}</span>
+        <svg viewBox="0 0 120 14" className="mt-1 w-[96px]" fill="none"><path d="M3 9c26-8 52-8 74-3 14 3 28 3 40-1" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" /></svg>
       </div>
     </div>
   );
@@ -210,29 +196,29 @@ export function Hero() {
         <SparkleField />
       </div>
 
-      <div className="mx-auto grid min-h-[min(100dvh,860px)] max-w-[1280px] items-center gap-12 px-5 pb-10 pt-32 sm:px-8 lg:grid-cols-[0.92fr_1.08fr] lg:gap-6 lg:pt-28">
+      <div className="mx-auto grid min-h-[min(100dvh,860px)] max-w-[1280px] items-center gap-12 px-5 pb-10 pt-32 sm:px-8 lg:min-h-[min(100dvh,700px)] lg:grid-cols-[0.92fr_1.08fr] lg:gap-6 lg:pb-6 lg:pt-24">
         <div>
           <Reveal>
-            <p className="mb-7 flex items-center gap-3 font-mono text-[11.5px] font-medium uppercase tracking-[0.22em] text-ink-2">
+            <p className="mb-7 flex items-center gap-3 font-mono lg:mb-4 text-[11.5px] font-medium uppercase tracking-[0.22em] text-ink-2">
               {t.hero.eyebrow[0]}<span aria-hidden className="size-1.5 rounded-full bg-accent" />{t.hero.eyebrow[1]}
             </p>
           </Reveal>
           <h1 className="display text-[clamp(46px,6.4vw,92px)] text-ink">
             <Lines delay={0.1}><Caption words={wa} from={0} total={total} /></Lines>
-            <Lines delay={0.2} className="-mt-[0.1em]"><span className="serif-em text-accent"><Caption words={wb} from={wa.length} total={total} /></span></Lines>
+            <Lines delay={0.2} className="-mt-[0.1em] lg:-mt-[0.26em]"><span className="serif-em text-accent"><Caption words={wb} from={wa.length} total={total} /></span></Lines>
           </h1>
 
           <Reveal delay={0.5}>
-            <p className="mt-8 max-w-[520px] text-[clamp(16px,1.45vw,19px)] leading-relaxed text-ink-2">{t.hero.sub}</p>
+            <p className="mt-8 max-w-[520px] lg:mt-4 text-[clamp(16px,1.45vw,19px)] leading-relaxed text-ink-2">{t.hero.sub}</p>
           </Reveal>
           <Reveal delay={0.66}>
-            <div className="mt-9 flex flex-wrap items-center gap-3">
+            <div className="mt-9 flex flex-wrap items-center gap-3 lg:mt-6">
               <CtaButton onClick={startDownload}>{t.hero.cta1}</CtaButton>
               <GhostAction onClick={open}>{t.hero.cta2}</GhostAction>
             </div>
           </Reveal>
           <Reveal delay={0.8}>
-            <ul className="mt-9 flex flex-wrap gap-x-7 gap-y-3 text-[14px] font-semibold text-ink-2">
+            <ul className="mt-9 flex flex-wrap gap-x-7 gap-y-3 text-[14px] lg:mt-5 font-semibold text-ink-2">
               {t.hero.trust.map((x) => (
                 <li key={x} className="flex items-center gap-2.5">
                   <span className="grid size-6 place-items-center rounded-full bg-accent/15 text-accent ring-1 ring-accent/30"><IconCheck size={13} /></span>{x}
