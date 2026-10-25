@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Nav } from "@/components/sections/Nav";
 import { Hero } from "@/components/sections/Hero";
+import { Giant } from "@/components/sections/Giant";
 import { Can } from "@/components/sections/Can";
 import { Studio } from "@/components/sections/Studio";
 import { How } from "@/components/sections/How";
@@ -18,6 +19,7 @@ export default function App() {
       {ready && <Nav />}
       {ready && <main>
         <Hero />
+        <Giant />
         <Can />
         <Studio />
         <How />
