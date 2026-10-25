@@ -83,8 +83,8 @@ export function AppScreen({
  * mock keeps the app's real proportions at any size. Decorative: hidden from assistive tech.
  */
 export function AppPhone({
-  children, light = false, className,
-}: { children: ReactNode; light?: boolean; className?: string }) {
+  children, light = false, rim = false, className,
+}: { children: ReactNode; light?: boolean; rim?: boolean; className?: string }) {
   const box = useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = useState(0.8);
 
@@ -98,7 +98,21 @@ export function AppPhone({
 
   return (
     <div className={cn("w-full max-w-[340px]", className)} aria-hidden>
-      <div className="rounded-[44px] bg-[#0b090d] p-[9px] shadow-[0_60px_100px_-40px_rgba(120,20,80,0.6)] ring-1 ring-white/12">
+      <div
+        className={cn(
+          "relative rounded-[44px] bg-[#0b090d] p-[9px] ring-1 ring-white/12",
+          rim
+            ? "bg-[linear-gradient(150deg,#4a4350_0%,#14111a_28%,#0b090d_62%,#3a1830_100%)] shadow-[-26px_0_70px_-26px_rgba(224,40,132,0.65),0_70px_110px_-30px_rgba(0,0,0,0.85),inset_0_0_0_1px_rgba(255,255,255,0.22),inset_2px_0_3px_rgba(255,255,255,0.18)]"
+            : "shadow-[0_60px_100px_-40px_rgba(120,20,80,0.6)]",
+        )}
+      >
+        {rim && (
+          <>
+            <span aria-hidden className="absolute -right-[3px] top-[22%] h-14 w-[3px] rounded-r bg-[#2c2631]" />
+            <span aria-hidden className="absolute -left-[3px] top-[17%] h-8 w-[3px] rounded-l bg-[#2c2631]" />
+            <span aria-hidden className="absolute -left-[3px] top-[27%] h-12 w-[3px] rounded-l bg-[#2c2631]" />
+          </>
+        )}
         <div
           ref={box}
           className={cn("app-ui relative overflow-hidden rounded-[35px]", light && "light")}

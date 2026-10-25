@@ -1,9 +1,9 @@
-import { Fragment, useRef, useState, type CSSProperties } from "react";
-import { animate, motion, useInView, useMotionValue, useReducedMotion, useSpring, useTransform } from "motion/react";
+import { Fragment, useRef, useState, type CSSProperties, type RefObject } from "react";
+import { motion, useMotionValue, useReducedMotion, useScroll, useSpring, useTransform } from "motion/react";
+import { Scissors, ShieldCheck, Target, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLang } from "@/lib/lang";
-import { useTypewriter } from "@/lib/hooks";
-import { Bezel, CtaButton, GhostAction, MascotVideo, Reveal } from "@/components/kit";
+import { CtaButton, GhostAction, Reveal } from "@/components/kit";
 import { ClipStream } from "@/components/ui/clip-stream";
 import { AppPhone } from "@/components/app/AppPhone";
 import { HomeScreen } from "@/components/app/screens";
@@ -11,8 +11,7 @@ import { SparkleField } from "@/components/ui/sparkle-field";
 import { Marquee } from "@/components/ui/marquee";
 import { useWaitlist } from "@/components/Waitlist";
 import { useDownload } from "@/components/Download";
-import { IconCheck, IconSend, IconSpark } from "@/components/icons";
-import { ClipCard, Depth, PayoutTicket, VerifiedStamp } from "./hero-objects";
+import { IconCheck } from "@/components/icons";
 
 const EASE = [0.32, 0.72, 0, 1] as const;
 
@@ -60,61 +59,102 @@ function Caption({ words, from, total }: { words: string[]; from: number; total:
   );
 }
 
-function PromptPill() {
+/**
+ * The stage: the real app on a tilted metal-rimmed phone, Xiaolee cut out behind it, a pink light on the phone's edge.
+ * The phone starts turned and straightens as the page scrolls; the pointer adds a little more. All transform-only.
+ */
+function Stage({ section }: { section: RefObject<HTMLElement | null> }) {
   const { t } = useLang();
-  const text = useTypewriter(t.hero.prompts);
-  return (
-    <Bezel glow radius={999} pad={5} className="group/p max-w-[520px] transition-transform duration-500 ease-spring hover:-translate-y-0.5" coreClassName="flex items-center gap-3 py-2 pl-5 pr-2">
-      <IconSpark size={18} className="shrink-0 text-accent" />
-      <span className="min-h-[1.4em] flex-1 truncate text-[15.5px] font-medium text-ink" aria-label={t.hero.inputHint}>
-        {text}
-        <span className="ml-px inline-block h-[1.05em] w-[2px] translate-y-[3px] animate-pulse bg-accent" />
-      </span>
-      <span className="grid size-10 shrink-0 place-items-center rounded-full bg-ink text-cream transition-all duration-500 ease-spring group-hover/p:rotate-12 group-hover/p:bg-accent"><IconSend size={17} /></span>
-    </Bezel>
-  );
-}
-
-/** Portrait stage: a gentle pointer tilt, with the loop's objects floating at their own depths in front of it. */
-function Portrait() {
   const reduced = useReducedMotion();
-  const box = useRef<HTMLDivElement | null>(null);
-  const live = useInView(box, { margin: "120px 0px" });
   const mx = useMotionValue(0);
   const my = useMotionValue(0);
-  const sx = useSpring(mx, { stiffness: 90, damping: 18 });
-  const sy = useSpring(my, { stiffness: 90, damping: 18 });
-  const rotY = useTransform(sx, [-0.5, 0.5], [-7, 7]);
-  const rotX = useTransform(sy, [-0.5, 0.5], [6, -6]);
-  const bump = useMotionValue(1);
+  const sx = useSpring(mx, { stiffness: 70, damping: 18 });
+  const sy = useSpring(my, { stiffness: 70, damping: 18 });
+  const { scrollYProgress } = useScroll({ target: section, offset: ["start start", "end start"] });
+  const rotY = useTransform([scrollYProgress, sx], ([p, x]: number[]) => -17 + Math.min(1, p / 0.55) * 14 + x * 10);
+  const rotX = useTransform(sy, [-0.5, 0.5], [8, 0]);
+  const girlX = useTransform(sx, [-0.5, 0.5], [12, -12]);
 
-  const onMove = (e: React.PointerEvent) => {
-    if (reduced || e.pointerType !== "mouse" || !box.current) return;
-    const r = box.current.getBoundingClientRect();
+  const onMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (reduced || e.pointerType !== "mouse") return;
+    const r = e.currentTarget.getBoundingClientRect();
     mx.set((e.clientX - r.left) / r.width - 0.5);
     my.set((e.clientY - r.top) / r.height - 0.5);
   };
-  const onLeave = () => { mx.set(0); my.set(0); };
-  /** The stamp hits the portrait: it compresses for a beat and springs back. */
-  const thunk = () => { animate(bump, [1, 0.982, 1.004, 1], { duration: 0.6, ease: EASE, times: [0, 0.22, 0.6, 1] }); };
+  const toast = t.hero.toast;
 
   return (
-    <div ref={box} data-live={live} onPointerMove={onMove} onPointerLeave={onLeave} className="relative mx-auto w-full max-w-[520px] [perspective:1200px]">
-      <motion.div style={{ rotateX: rotX, rotateY: rotY, scale: bump, transformStyle: "preserve-3d" }} className="relative">
-        {/* the mascot sits behind and to the left; the real app is in front. Below md only the phone shows. */}
-        <div aria-hidden className="absolute -left-[6%] top-[8%] hidden w-[62%] -rotate-[5deg] md:block">
-          <Bezel radius={40} pad={7} className="shadow-[0_50px_90px_-40px_rgba(224,40,132,0.5)]" coreClassName="aspect-[4/5] bg-[#d3cfcc]">
-            <MascotVideo name="hello" position="50% 4%" zoom={1.32} />
-          </Bezel>
-        </div>
-        <div className="relative mx-auto flex w-full justify-end md:pl-[26%]">
-          <AppPhone className="max-w-[330px]"><HomeScreen /></AppPhone>
-        </div>
+    <div onPointerMove={onMove} className="relative mx-auto aspect-[1/1.04] w-full max-w-[600px] [perspective:1500px]">
+      {/* light behind everything: a pool of pink and a faint floor line the figure stands on */}
+      <div aria-hidden className="absolute inset-[-8%] bg-[radial-gradient(closest-side_at_62%_46%,var(--halo),transparent_72%)]" />
+      <div aria-hidden className="absolute inset-x-0 bottom-[3%] h-px bg-gradient-to-r from-transparent via-accent/50 to-transparent" />
 
-        <Depth z={70} className="-left-[2%] top-[54%] sm:-left-[15%]"><ClipCard delay={BEAT.clip} /></Depth>
-        <Depth z={125} className="right-[1%] top-[11%] sm:-right-[9%]"><VerifiedStamp delay={BEAT.stamp} onLand={thunk} /></Depth>
-        <Depth z={95} className="-bottom-[6%] right-[2%] sm:-right-[4%]"><PayoutTicket delay={BEAT.ticket} /></Depth>
+      <motion.div style={{ x: reduced ? 0 : girlX }} className="absolute bottom-[3%] right-[-7%] z-0 w-[76%]">
+        {/* the art is a square crop, so its right and bottom edges are fed into the dark instead of ending in a line */}
+        <img
+          src="/mascot/xiaolee-cutout.webp" width={512} height={512} alt=""
+          className="w-full select-none drop-shadow-[0_0_46px_rgba(224,40,132,0.35)]"
+          style={{
+            WebkitMaskImage: "linear-gradient(180deg,#000 72%,transparent 100%), linear-gradient(270deg,transparent 0%,#000 16%)",
+            maskImage: "linear-gradient(180deg,#000 72%,transparent 100%), linear-gradient(270deg,transparent 0%,#000 16%)",
+            WebkitMaskComposite: "source-in",
+            maskComposite: "intersect",
+          }}
+          draggable={false}
+        />
       </motion.div>
+
+      <motion.div
+        style={reduced ? { rotateY: -12, rotateX: 4 } : { rotateY: rotY, rotateX: rotX, transformStyle: "preserve-3d" }}
+        className="absolute left-[3%] top-[2%] z-10 w-[56%]"
+      >
+        <AppPhone rim className="max-w-none"><HomeScreen /></AppPhone>
+      </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 22, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ delay: 2.4, duration: 0.9, ease: EASE }}
+        className="absolute bottom-[10%] left-[-4%] z-20 flex items-center gap-3 rounded-2xl bg-surface/95 p-3 pr-5 shadow-[0_24px_50px_-20px_rgba(0,0,0,0.6)] ring-1 ring-ink/10 sm:left-[-15%]"
+      >
+        <span className="grid size-10 place-items-center rounded-full bg-accent text-[15px] font-bold text-white shadow-[0_8px_18px_-6px_var(--color-accent)]">$</span>
+        <div>
+          <p className="text-[13.5px] font-bold leading-tight text-ink">{toast.title}</p>
+          <p className="mt-0.5 text-[12px] leading-tight text-ink-2">{toast.body}</p>
+        </div>
+        <span className="absolute -top-2 right-3 rounded-full bg-ink px-2 py-0.5 font-mono text-[9px] font-medium uppercase tracking-[0.14em] text-cream">{toast.tag}</span>
+      </motion.div>
+
+      <div aria-hidden className="absolute right-[1%] top-[9%] z-20 hidden -rotate-[9deg] font-script text-[clamp(22px,2.4vw,32px)] leading-[1.04] text-accent sm:block">
+        {t.hero.tag.map((w) => <span key={w} className="block">{w}</span>)}
+        <svg viewBox="0 0 120 14" className="mt-1 w-[88px]" fill="none"><path d="M3 9c26-8 52-8 74-3 14 3 28 3 40-1" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" /></svg>
+      </div>
+    </div>
+  );
+}
+
+const FEATURE_ICONS = [Scissors, Target, Wallet, ShieldCheck];
+
+/** Four plain statements under the hero: icon tile, name, one sentence. Hairlines between, a pink glint on top. */
+function Features() {
+  const { t } = useLang();
+  return (
+    <div className="relative mx-auto max-w-[1280px] px-5 sm:px-8">
+      <div aria-hidden className="absolute inset-x-5 top-0 h-px bg-gradient-to-r from-transparent via-accent/60 to-transparent sm:inset-x-8" />
+      <ul className="grid gap-x-0 gap-y-10 py-12 sm:grid-cols-2 lg:grid-cols-4">
+        {t.hero.features.map((f, i) => {
+          const Icon = FEATURE_ICONS[i];
+          return (
+            <Reveal key={f.title} delay={0.05 * i}>
+              <li className={cn("flex h-full flex-col gap-4 sm:px-6 lg:px-8", i === 0 && "lg:pl-0", i > 0 && "lg:border-l lg:border-line")}>
+                <span className="grid size-[52px] place-items-center rounded-2xl bg-accent-soft text-accent ring-1 ring-accent/20"><Icon size={22} strokeWidth={1.6} aria-hidden /></span>
+                <div>
+                  <h3 className="text-[18px] font-bold tracking-tight text-ink">{f.title}</h3>
+                  <p className="mt-1.5 max-w-[260px] text-[14.5px] leading-relaxed text-ink-2">{f.body}</p>
+                </div>
+              </li>
+            </Reveal>
+          );
+        })}
+      </ul>
     </div>
   );
 }
@@ -132,6 +172,7 @@ export function Hero() {
   const { open } = useWaitlist();
   const { start: startDownload } = useDownload();
   const reduced = useReducedMotion();
+  const section = useRef<HTMLElement | null>(null);
   const [wide] = useState(() => window.matchMedia("(min-width: 1024px)").matches);
 
   // the aurora drifts against the cursor at three depths (transform only)
@@ -157,46 +198,54 @@ export function Hero() {
   const total = wa.length + wb.length;
 
   return (
-    <section id="top" onPointerMove={onMove} className="relative isolate overflow-hidden">
+    <section ref={section} id="top" onPointerMove={onMove} className="relative isolate overflow-hidden">
       {/* aurora: layered radial gradients, no blur filters on large areas */}
       <div aria-hidden className="absolute inset-0 -z-10">
         <motion.div style={{ x: a1x, y: a1y }} className="absolute -right-[10%] -top-[20%] h-[900px] w-[900px] rounded-full bg-[radial-gradient(closest-side,var(--aurora-1),transparent_70%)]" />
         <motion.div style={{ x: a2x, y: a2y }} className="absolute -left-[15%] top-[35%] h-[800px] w-[800px] rounded-full bg-[radial-gradient(closest-side,var(--aurora-2),transparent_70%)]" />
         <motion.div style={{ x: a3x, y: a3y }} className="absolute right-[20%] top-[55%] h-[600px] w-[600px] rounded-full bg-[radial-gradient(closest-side,var(--aurora-3),transparent_70%)]" />
         <div className="absolute inset-0 [mask-image:linear-gradient(90deg,transparent_0%,transparent_30%,rgba(0,0,0,0.45)_50%,#000_72%)] max-lg:[mask-image:linear-gradient(180deg,transparent_0%,rgba(0,0,0,0.3)_35%,#000_70%)]">
-          <ClipStream cx={wide ? 0.74 : 0.5} cy={wide ? 0.5 : 0.72} count={100} />
+          <ClipStream className="opacity-55" cx={wide ? 0.72 : 0.5} cy={wide ? 0.48 : 0.7} count={46} />
         </div>
         <SparkleField />
       </div>
 
-      <div className="mx-auto grid min-h-[100dvh] max-w-[1280px] items-center gap-16 px-5 pb-20 pt-32 sm:px-8 lg:grid-cols-[1.15fr_0.85fr] lg:gap-10 lg:pt-28">
+      <div className="mx-auto grid min-h-[min(100dvh,860px)] max-w-[1280px] items-center gap-12 px-5 pb-10 pt-32 sm:px-8 lg:grid-cols-[0.92fr_1.08fr] lg:gap-6 lg:pt-28">
         <div>
-          <h1 className="display text-[clamp(46px,6.5vw,96px)] text-ink">
+          <Reveal>
+            <p className="mb-7 flex items-center gap-3 font-mono text-[11.5px] font-medium uppercase tracking-[0.22em] text-ink-2">
+              {t.hero.eyebrow[0]}<span aria-hidden className="size-1.5 rounded-full bg-accent" />{t.hero.eyebrow[1]}
+            </p>
+          </Reveal>
+          <h1 className="display text-[clamp(46px,6.4vw,92px)] text-ink">
             <Lines delay={0.1}><Caption words={wa} from={0} total={total} /></Lines>
             <Lines delay={0.2} className="-mt-[0.1em]"><span className="serif-em text-accent"><Caption words={wb} from={wa.length} total={total} /></span></Lines>
           </h1>
 
           <Reveal delay={0.5}>
-            <p className="mt-8 max-w-[560px] text-[clamp(16px,1.5vw,19.5px)] leading-relaxed text-ink-2">{t.hero.sub}</p>
+            <p className="mt-8 max-w-[520px] text-[clamp(16px,1.45vw,19px)] leading-relaxed text-ink-2">{t.hero.sub}</p>
           </Reveal>
-          <Reveal delay={0.62} className="mt-8"><PromptPill /></Reveal>
-          <Reveal delay={0.74}>
+          <Reveal delay={0.66}>
             <div className="mt-9 flex flex-wrap items-center gap-3">
               <CtaButton onClick={startDownload}>{t.hero.cta1}</CtaButton>
               <GhostAction onClick={open}>{t.hero.cta2}</GhostAction>
             </div>
           </Reveal>
-          <Reveal delay={0.86}>
-            <ul className="mt-9 flex flex-wrap gap-x-6 gap-y-2 text-[13.5px] font-semibold text-ink-2">
+          <Reveal delay={0.8}>
+            <ul className="mt-9 flex flex-wrap gap-x-7 gap-y-3 text-[14px] font-semibold text-ink-2">
               {t.hero.trust.map((x) => (
-                <li key={x} className="group/t flex cursor-default items-center gap-1.5 transition-colors duration-500 ease-spring hover:text-ink"><IconCheck size={15} className="text-success transition-transform duration-500 ease-spring group-hover/t:scale-125" /> {x}</li>
+                <li key={x} className="flex items-center gap-2.5">
+                  <span className="grid size-6 place-items-center rounded-full bg-accent/15 text-accent ring-1 ring-accent/30"><IconCheck size={13} /></span>{x}
+                </li>
               ))}
             </ul>
           </Reveal>
         </div>
 
-        <Reveal delay={0.35} y={40}><Portrait /></Reveal>
+        <Reveal delay={0.35} y={40}><Stage section={section} /></Reveal>
       </div>
+
+      <Features />
 
       <div className="border-y border-line/80 bg-surface/40 py-9">
         <p className="mb-6 text-center text-[11px] font-bold uppercase tracking-[0.24em] text-ink-3">{t.partners}</p>

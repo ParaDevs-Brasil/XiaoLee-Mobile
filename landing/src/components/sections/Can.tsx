@@ -7,9 +7,8 @@ import { Bezel, MascotVideo, Reveal } from "@/components/kit";
 import { BorderBeam } from "@/components/ui/border-beam";
 import { Marquee } from "@/components/ui/marquee";
 import { NumberTicker } from "@/components/ui/number-ticker";
-import { OrbitingCircles } from "@/components/ui/orbiting-circles";
 import {
-  IconCheck, IconDiamond, IconGlobe, IconPhone, IconSend, IconTelegram, IconX,
+  IconCheck, IconGlobe, IconPhone, IconTelegram, IconX,
 } from "@/components/icons";
 
 const EASE = [0.32, 0.72, 0, 1] as const;
@@ -63,7 +62,7 @@ function Tile({
   title, body, className, children, visualClass, split,
 }: { title: string; body: string; className?: string; children: ReactNode; visualClass?: string; split?: boolean }) {
   return (
-    <Reveal className={cn("h-full", className)}>
+    <Reveal className={cn("h-full min-w-0", className)}>
       <Bezel glow radius={36} pad={7} className="group h-full" coreClassName={cn("flex h-full flex-col p-6 sm:p-7", split && "lg:flex-row lg:items-center lg:gap-10")}>
         <div className={cn(split && "lg:w-[34%] lg:shrink-0")}>
           <h3 className="text-[clamp(22px,2.2vw,28px)] font-bold leading-tight tracking-tight text-ink">{title}</h3>
@@ -75,79 +74,17 @@ function Tile({
   );
 }
 
-/* ───────────────────────────── chat ───────────────────────────── */
-const CHAT_DELAYS = [700, 1000, 900, 1100, 1000, 1000];
-
-function Typing() {
-  return (
-    <div className="flex items-center gap-1 rounded-2xl rounded-bl-md bg-surface px-3.5 py-3 shadow-sm ring-1 ring-ink/5">
-      {[0, 1, 2].map((i) => (
-        <motion.span key={i} className="size-1.5 rounded-full bg-ink-3" animate={{ y: [0, -3, 0], opacity: [0.4, 1, 0.4] }} transition={{ duration: 1, repeat: Infinity, delay: i * 0.15, ease: "easeInOut" }} />
-      ))}
-    </div>
-  );
-}
-
-function ChatDemo() {
-  const { t } = useLang();
-  const msgs = t.can.chat.msgs;
-  const { ref, step } = useSequence(msgs.length + 1, CHAT_DELAYS, 3800);
-  const shown = msgs.slice(0, step);
-  const next = msgs[step];
-  const typing = next?.who === "bot" && step < msgs.length;
-
-  return (
-    <div ref={ref} className="flex h-full min-h-[360px] flex-col overflow-hidden rounded-3xl bg-line/45 ring-1 ring-ink/5">
-      <div className="flex items-center gap-3 border-b border-ink/5 bg-surface/60 px-4 py-3">
-        <img src="/assets/xiaolee-icon-160.webp" width={36} height={36} alt="" className="size-9 rounded-full object-cover ring-2 ring-surface" />
-        <div>
-          <div className="text-[14px] font-bold leading-none text-ink">{t.can.chat.title}</div>
-          <div className="mt-1 text-[11px] font-semibold text-success">{t.can.chat.status}</div>
-        </div>
-      </div>
-      <div className="flex flex-1 flex-col justify-end gap-2.5 overflow-hidden p-4">
-        <AnimatePresence initial={false}>
-          {shown.map((m, i) => (
-            <motion.div
-              key={i} layout
-              initial={{ opacity: 0, y: 14, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.55, ease: EASE }}
-              className={cn("flex", m.who === "user" ? "justify-end" : "justify-start")}
-            >
-              {m.who === "user" ? (
-                <div className="max-w-[78%] rounded-[20px] rounded-br-md bg-ink px-4 py-2.5 text-[14.5px] font-medium text-cream">{m.text}</div>
-              ) : (
-                <div className="max-w-[84%] rounded-[20px] rounded-bl-md bg-surface px-4 py-2.5 text-[14.5px] font-medium text-ink shadow-sm ring-1 ring-ink/5">
-                  {m.text}
-                  {i === 3 && (
-                    <div className="mt-2 flex items-center justify-center gap-2 rounded-xl bg-accent-soft px-3 py-2 text-[12.5px] font-bold text-accent"><IconCheck size={14} /> Confirm</div>
-                  )}
-                </div>
-              )}
-            </motion.div>
-          ))}
-          {typing && (
-            <motion.div key="typing" layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex justify-start"><Typing /></motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-      <div className="m-3 mt-0 flex items-center gap-2 rounded-full bg-surface py-1.5 pl-4 pr-1.5 text-[13.5px] text-ink-3 ring-1 ring-ink/5">
-        <span className="flex-1">{t.hero.inputHint}</span>
-        <span className="grid size-8 place-items-center rounded-full bg-accent text-white"><IconSend size={15} /></span>
-      </div>
-    </div>
-  );
-}
-
 /* ─────────────────────────── campaign ─────────────────────────── */
-const CAMPAIGN_DELAYS = [900, 800, 800, 800, 900];
+const CAMPAIGN_DELAYS = [900, 800, 800, 800, 900, 1500];
 
 /** A brand's one-sentence brief becomes chips, one by one; Xiaolee "types", then asks to publish. */
 function CampaignDemo() {
   const { t } = useLang();
   const c = t.can.campaign;
-  const { ref, step } = useSequence(c.chips.length + 1, CAMPAIGN_DELAYS, 3600);
+  const { ref, step } = useSequence(c.chips.length + 2, CAMPAIGN_DELAYS, 3600);
   const typing = step === c.chips.length; // every chip is in: she is composing her reply
   const asked = step > c.chips.length;
+  const live = step > c.chips.length + 1; // she published it
   return (
     <div ref={ref} className="rounded-3xl bg-line/45 p-4 ring-1 ring-ink/5">
       <div className="flex flex-wrap gap-2">
@@ -155,7 +92,7 @@ function CampaignDemo() {
           <motion.span
             key={x}
             initial={false}
-            animate={{ opacity: step > i ? 1 : 0.18, scale: step > i ? 1 : 0.92, y: step > i ? 0 : 6 }}
+            animate={{ opacity: step > i ? 1 : 0.4, scale: step > i ? 1 : 0.94, y: step > i ? 0 : 6 }}
             transition={{ duration: 0.6, ease: EASE }}
             className="rounded-full bg-surface px-3.5 py-2 text-[13px] font-bold text-ink shadow-sm ring-1 ring-ink/5"
           >
@@ -187,7 +124,12 @@ function CampaignDemo() {
             </motion.p>
           )}
         </div>
-        {asked && <BorderBeam size={80} duration={4} colorFrom="#d81b78" colorTo="#f7c9e0" borderWidth={1.5} />}
+        {/* height reserved from the start, so the card never jumps when the status appears */}
+        <p className={cn("mt-3 flex items-center gap-2 border-t border-line pt-3 font-mono text-[11.5px] font-medium uppercase tracking-[0.14em] transition-all duration-700 ease-spring", live ? "translate-y-0 text-success opacity-100" : "translate-y-1 text-ink-3 opacity-0")}>
+          <span className="relative flex size-2"><span className={cn("absolute inline-flex size-full rounded-full bg-success", live && "animate-pulse-ring")} /><span className="relative inline-flex size-2 rounded-full bg-success" /></span>
+          {c.live}
+        </p>
+        {asked && !live && <BorderBeam size={80} duration={4} colorFrom="#d81b78" colorTo="#f7c9e0" borderWidth={1.5} />}
       </motion.div>
     </div>
   );
@@ -239,6 +181,13 @@ function PayoutDemo() {
           )}
         </AnimatePresence>
       </div>
+      {/* the receipt: always laid out (so nothing shifts), it lights up when the payment settles */}
+      <dl className={cn("mt-3 grid grid-cols-[auto_1fr] gap-x-5 gap-y-1.5 rounded-2xl bg-ink/[0.035] px-4 py-3 font-mono text-[11.5px] leading-snug ring-1 ring-ink/8 transition-all duration-700 ease-spring", claimed ? "opacity-100" : "opacity-40")}>
+        <dt className="text-ink-3">{p.receipt.verified}</dt><dd className={cn("transition-colors duration-700", claimed ? "text-success" : "text-ink-3")}>{p.receipt.checks}</dd>
+        <dt className="text-ink-3">{p.receipt.paid}</dt><dd className="text-ink">{p.receipt.amount}</dd>
+        <dt className="text-ink-3">{p.receipt.receipt}</dt><dd className="truncate text-ink">{p.receipt.hash}</dd>
+        <dd className="col-span-2 mt-0.5 text-[10px] uppercase tracking-[0.16em] text-ink-3">{p.receipt.example}</dd>
+      </dl>
     </div>
   );
 }
@@ -246,7 +195,12 @@ function PayoutDemo() {
 /* ──────────────────────────── clipper ─────────────────────────── */
 // where each of the three cuts sits on the source track, in % of its length
 const CUTS = [[8, 20], [41, 53], [74, 86]] as const;
-const CLIP_POSTERS = ["clip-1", "clip-2", "clip-3"];
+// three different stills, framings and tints, so the three cuts read as three moments and not one picture three times
+const CLIP_LOOKS = [
+  { img: "hello", pos: "50% 38%", zoom: 1.0, flip: false, tint: "from-[#ff4fa3]/45" },
+  { img: "love", pos: "50% 38%", zoom: 1.0, flip: false, tint: "from-[#7c5cff]/45" },
+  { img: "cheer", pos: "50% 30%", zoom: 1.0, flip: true, tint: "from-[#18b8d0]/40" },
+] as const;
 
 const seconds = (clock: string) => {
   const [m, s] = clock.split(":").map(Number);
@@ -291,7 +245,7 @@ function ClipperDemo() {
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden><rect x="6" y="5" width="4" height="14" rx="1.2" /><rect x="14" y="5" width="4" height="14" rx="1.2" /></svg>
         </span>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[13px] font-bold text-ink">{c.source}</div>
+          <div className="flex items-center gap-2"><span className="truncate text-[13px] font-bold text-ink">{c.source}</span><span className="shrink-0 rounded-full bg-ink/[0.06] px-2 py-0.5 font-mono text-[9px] font-medium uppercase tracking-[0.14em] text-ink-3">{c.example}</span></div>
           {/* scrubber: three cuts, and a playhead that passes under them */}
           <div className="relative mt-2 h-1.5 rounded-full bg-ink/8">
             {CUTS.map(([l, r]) => (
@@ -313,160 +267,47 @@ function ClipperDemo() {
         </span>
       </div>
       <div className="mt-4 grid flex-1 grid-cols-3 content-center gap-2.5 sm:gap-4">
-        {c.clips.map((label, i) => (
-          <motion.div
-            key={label}
-            initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, margin: "-40px" }}
-            transition={{ duration: 0.9, ease: EASE, delay: 0.5 + i * 0.12 }}
-            className={cn("group/clip relative transition-[transform,translate,rotate,scale] duration-500 ease-spring hover:z-10 hover:-translate-y-2 hover:rotate-0", i === 0 && "sm:-rotate-3", i === 2 && "sm:rotate-3", i === 1 && "sm:-translate-y-2")}
-          >
-            <div className="clip-lift loop" style={{ "--start": CUTS[i][0] / 100 } as CSSProperties}>
-              <div className="relative aspect-[9/16] overflow-hidden rounded-2xl bg-[#d3cfcc] shadow-[0_18px_30px_-18px_rgba(60,15,40,0.5)] ring-1 ring-ink/10 transition-[box-shadow] duration-500 ease-spring group-hover/clip:shadow-[0_30px_40px_-18px_rgba(120,20,70,0.55)] group-hover/clip:ring-accent/40">
-                <img src={`/mascot/${CLIP_POSTERS[i]}.jpg`} alt="" loading="lazy" className="size-full object-cover object-top transition-transform duration-700 ease-spring group-hover/clip:scale-[1.06]" style={{ transform: "scale(1.12)", transformOrigin: "50% 10%" }} />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-                <div className="absolute inset-x-2 bottom-2">
-                  <span className="inline-block rounded-md bg-accent px-1.5 py-0.5 text-[10px] font-bold leading-tight text-white">{label}</span>
-                  <div className="mt-1 h-0.5 overflow-hidden rounded-full bg-surface/30">
-                    <div className="clip-progress loop h-full w-full rounded-full bg-surface" style={{ "--start": CUTS[i][0] / 100 } as CSSProperties} />
+        {c.clips.map((label, i) => {
+          const look = CLIP_LOOKS[i];
+          return (
+            <motion.div
+              key={label}
+              initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, margin: "-40px" }}
+              transition={{ duration: 0.9, ease: EASE, delay: 0.5 + i * 0.12 }}
+              className={cn("group/clip relative transition-[transform,translate,rotate,scale] duration-500 ease-spring hover:z-10 hover:-translate-y-2 hover:rotate-0", i === 0 && "sm:-rotate-3", i === 2 && "sm:rotate-3", i === 1 && "sm:-translate-y-2")}
+            >
+              <div className="clip-lift loop" style={{ "--start": CUTS[i][0] / 100 } as CSSProperties}>
+                <div className="relative aspect-[9/16] overflow-hidden rounded-2xl bg-[#d3cfcc] shadow-[0_18px_30px_-18px_rgba(0,0,0,0.6)] ring-1 ring-ink/10 transition-[box-shadow] duration-500 ease-spring group-hover/clip:shadow-[0_30px_40px_-18px_rgba(224,40,132,0.55)] group-hover/clip:ring-accent/40">
+                  {/* a different gesture in each cut (peace, heart, cheer): the loops play only while the tile is on screen */}
+                  <div className="size-full" style={look.flip ? { transform: "scaleX(-1)" } : undefined}>
+                    <MascotVideo name={look.img} position={look.pos} zoom={look.zoom} />
+                  </div>
+                  <div className={cn("absolute inset-0 bg-gradient-to-br to-transparent mix-blend-soft-light", look.tint)} />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/35 to-transparent" />
+                  <span className="absolute left-2 top-2 rounded-md bg-black/55 px-1.5 py-0.5 font-mono text-[9.5px] font-medium tabular-nums text-white">{c.durs[i]}</span>
+                  <span className="absolute right-2 top-2 rounded-md bg-accent px-1.5 py-0.5 text-[9px] font-bold leading-tight text-white">{label}</span>
+                  {/* burned-in caption, the way a real short has it */}
+                  <p className="clip-caption absolute inset-x-1.5 bottom-6 text-center text-[clamp(10px,1.35vw,15px)] font-extrabold uppercase leading-[1.1] tracking-tight">
+                    {c.captions[i].map((w, k) => (
+                      <span key={w + k} className="clip-word loop mr-[0.28em] inline-block" style={{ "--start": CUTS[i][0] / 100, "--i": k } as CSSProperties}>{w}</span>
+                    ))}
+                  </p>
+                  <div className="absolute inset-x-2 bottom-2 h-0.5 overflow-hidden rounded-full bg-white/30">
+                    <div className="clip-progress loop h-full w-full rounded-full bg-white" style={{ "--start": CUTS[i][0] / 100 } as CSSProperties} />
                   </div>
                 </div>
               </div>
-            </div>
-          </motion.div>
-        ))}
+            </motion.div>
+          );
+        })}
       </div>
-      <p className="mt-3 flex items-center gap-1.5 text-[12.5px] font-bold text-success"><IconCheck size={14} className="clip-check loop" /> {c.ready}</p>
-    </div>
-  );
-}
-
-/* ───────────────────────────── doors ──────────────────────────── */
-function DoorsDemo() {
-  const doors = [<IconPhone key="m" size={18} />, <IconGlobe key="w" size={18} />, <IconTelegram key="t" size={18} />, <IconX key="x" size={18} />];
-  return (
-    <div className="relative mx-auto flex size-[280px] items-center justify-center sm:size-[320px]">
-      <div aria-hidden className="absolute inset-4 rounded-full bg-[radial-gradient(closest-side,var(--halo),transparent)]" />
-      <div className="relative z-10 size-20 overflow-hidden rounded-full ring-4 ring-surface shadow-[0_20px_40px_-12px_rgba(120,20,70,0.5)]">
-        <MascotVideo name="kawaii" position="50% 6%" zoom={1.5} />
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <p className="flex items-center gap-1.5 text-[12.5px] font-bold text-success"><IconCheck size={14} className="clip-check loop" /> {c.ready}</p>
+        <p className="flex flex-wrap items-center gap-1.5 text-[12px] text-ink-3">
+          <span className="whitespace-nowrap">{c.sendTo}</span>
+          {c.share.map((x) => <span key={x} className="rounded-full bg-ink/[0.06] px-2.5 py-1 text-[11.5px] font-semibold text-ink-2 ring-1 ring-ink/8">{x}</span>)}
+        </p>
       </div>
-      <OrbitingCircles radius={92} iconSize={44} duration={22} className="border-0 bg-transparent">
-        {doors.slice(0, 2).map((d, i) => <span key={i} className="grid size-11 cursor-pointer place-items-center rounded-full bg-surface text-ink shadow-md ring-1 ring-ink/8 transition-all duration-500 ease-spring hover:scale-125 hover:bg-accent hover:text-white hover:ring-accent">{d}</span>)}
-      </OrbitingCircles>
-      <OrbitingCircles radius={140} iconSize={44} duration={30} reverse path className="border-0 bg-transparent">
-        {doors.slice(2).map((d, i) => <span key={i} className="grid size-11 cursor-pointer place-items-center rounded-full bg-ink text-cream shadow-md transition-all duration-500 ease-spring hover:scale-125 hover:bg-accent">{d}</span>)}
-      </OrbitingCircles>
-    </div>
-  );
-}
-
-/* ───────────────────────────── chains ─────────────────────────── */
-const TUCK = 14; // rails tuck this far under their card and under the hub, so coins slide out of one and sink into the other
-const SOURCES = [
-  { label: "Solana", icon: <img src="/assets/chain-solana.png" alt="" className="h-[18px] w-auto" /> },
-  { label: "EVM", icon: <IconDiamond size={22} className="text-bow" /> },
-  { label: "Stellar", icon: <img src="/assets/chain-stellar.png" alt="" className="h-[18px] w-auto" /> },
-];
-const STAGE_DOTS = {
-  backgroundImage: "radial-gradient(color-mix(in srgb, var(--color-ink) 16%, transparent) 1px, transparent 1.3px)",
-  backgroundSize: "18px 18px",
-  maskImage: "radial-gradient(ellipse 85% 100% at 88% 50%, #000, transparent 78%)",
-  WebkitMaskImage: "radial-gradient(ellipse 85% 100% at 88% 50%, #000, transparent 78%)",
-} satisfies CSSProperties;
-
-type Rails = { w: number; h: number; paths: string[] };
-
-/**
- * Rail paths in stage pixels, measured from the real card and hub boxes: one S-curve per source, fanned across the
- * hub's left arc so they never pile onto one point. Re-measured whenever any of those boxes resizes (fonts, breakpoints).
- */
-function useRails(stage: React.RefObject<HTMLDivElement | null>, cards: React.RefObject<(HTMLDivElement | null)[]>, hub: React.RefObject<HTMLDivElement | null>) {
-  const [rails, setRails] = useState<Rails | null>(null);
-  useEffect(() => {
-    const root = stage.current;
-    const hubEl = hub.current;
-    const els = cards.current.filter((c): c is HTMLDivElement => !!c);
-    if (!root || !hubEl || !els.length) return;
-    const measure = () => {
-      const o = root.getBoundingClientRect();
-      const hb = hubEl.getBoundingClientRect();
-      const r = hb.width / 2;
-      const cx = hb.left - o.left + r;
-      const cy = hb.top - o.top + r;
-      const paths = els.map((el, i) => {
-        const b = el.getBoundingClientRect();
-        const sx = b.right - o.left - TUCK;
-        const sy = b.top - o.top + b.height / 2;
-        const dy = (i - (els.length - 1) / 2) * r * 0.46;
-        const ex = cx - Math.sqrt(r * r - dy * dy) + TUCK;
-        const ey = cy + dy;
-        const mx = sx + (ex - sx) * 0.55;
-        return `M${sx.toFixed(1)},${sy.toFixed(1)} C${mx.toFixed(1)},${sy.toFixed(1)} ${mx.toFixed(1)},${ey.toFixed(1)} ${ex.toFixed(1)},${ey.toFixed(1)}`;
-      });
-      setRails({ w: o.width, h: o.height, paths });
-    };
-    const ro = new ResizeObserver(measure);
-    [root, hubEl, ...els].forEach((el) => ro.observe(el));
-    measure();
-    return () => ro.disconnect();
-  }, [stage, cards, hub]);
-  return rails;
-}
-
-function Coin({ className, style }: { className?: string; style?: CSSProperties }) {
-  return <span aria-hidden style={style} className={cn("grid place-items-center rounded-full bg-accent font-bold leading-none text-white", className)}>$</span>;
-}
-
-function Source({ label, icon, cardRef }: { label: string; icon: ReactNode; cardRef: (el: HTMLDivElement | null) => void }) {
-  return (
-    <div ref={cardRef} className="relative z-10 flex w-28 items-center gap-2.5 rounded-2xl bg-surface p-2 pr-3 shadow-[0_14px_28px_-16px_rgba(60,15,40,0.45)] ring-1 ring-ink/6 transition-all duration-500 ease-spring hover:-translate-y-0.5 hover:shadow-[0_22px_34px_-16px_rgba(200,24,111,0.5)] hover:ring-accent/30 sm:w-40 sm:gap-3 sm:p-2.5 sm:pr-4">
-      <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-cream ring-1 ring-ink/5 sm:size-10">{icon}</span>
-      <span className="text-[13px] font-bold text-ink sm:text-[14.5px]">{label}</span>
-    </div>
-  );
-}
-
-/**
- * Three transfers on one 6s loop, 2s apart (the CSS lives under .rail-stage in index.css): a USDC coin slides out from
- * under its chain's card along a dotted rail, a magenta trail lights the rail behind it, and each arrival makes the hub ring once.
- */
-function ChainsDemo() {
-  const { t } = useLang();
-  const { ref, live } = useLive<HTMLDivElement>();
-  const cards = useRef<(HTMLDivElement | null)[]>([]);
-  const hub = useRef<HTMLDivElement | null>(null);
-  const rails = useRails(ref, cards, hub);
-  return (
-    <div ref={ref} data-live={live} className="rail-stage relative flex min-h-[290px] items-center justify-between overflow-hidden rounded-3xl bg-ink/[0.035] px-4 py-7 ring-1 ring-ink/8 sm:min-h-[320px] sm:px-8">
-      <div aria-hidden className="absolute inset-0" style={STAGE_DOTS} />
-      <div className="flex flex-col gap-3.5">
-        {SOURCES.map((s, i) => <Source key={s.label} label={s.label} icon={s.icon} cardRef={(el) => { cards.current[i] = el; }} />)}
-      </div>
-      <div className="relative">
-        <div aria-hidden className="absolute left-1/2 top-1/2 size-[380px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(closest-side,var(--halo),transparent)] sm:size-[440px]" />
-        <span aria-hidden className="rail-ring loop absolute inset-0 rounded-full ring-2 ring-accent" />
-        <div ref={hub} className="relative z-10 grid size-20 place-items-center rounded-full bg-night shadow-[0_26px_44px_-14px_rgba(224,40,132,0.55)] ring-[5px] ring-surface sm:size-28">
-          <img src="/assets/logos/arc.svg" alt={t.can.chains.arc} className="h-5 w-auto brightness-0 invert sm:h-7" />
-        </div>
-        {/* out of flow, so the hub itself sits on the stage's centre line, level with the middle card */}
-        <span className="absolute left-1/2 top-full z-10 mt-4 inline-flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full bg-surface py-1 pl-1.5 pr-3 text-[11px] font-bold text-ink-2 ring-1 ring-ink/8">
-          <Coin className="size-4 text-[9px]" />{t.can.chains.note}
-        </span>
-      </div>
-      {rails && (
-        <>
-          <svg aria-hidden width={rails.w} height={rails.h} className="pointer-events-none absolute left-0 top-0 overflow-visible" fill="none">
-            {rails.paths.map((d, i) => (
-              <g key={i}>
-                <path d={d} style={{ stroke: "color-mix(in srgb, var(--color-ink) 34%, transparent)" }} strokeWidth={2.5} strokeLinecap="round" strokeDasharray="0 7" />
-                <path d={d} pathLength={1} className="rail-trail loop" stroke="var(--color-accent)" strokeWidth={2.5} strokeLinecap="round" style={{ "--i": i } as CSSProperties} />
-              </g>
-            ))}
-          </svg>
-          {rails.paths.map((d, i) => (
-            <Coin key={i} className="rail-coin loop" style={{ offsetPath: `path("${d}")`, "--i": i } as CSSProperties} />
-          ))}
-        </>
-      )}
     </div>
   );
 }
@@ -534,6 +375,31 @@ function CreatorsDemo() {
   );
 }
 
+/* ───────────────────────────── channels ───────────────────────── */
+/** Where she lives: one slim row instead of three tiles. */
+function Channels() {
+  const { t } = useLang();
+  const d = t.can.tiles.doors;
+  const icons = [<IconPhone key="m" size={16} />, <IconGlobe key="w" size={16} />, <IconTelegram key="t" size={16} />, <IconX key="x" size={16} />];
+  return (
+    <Reveal className="mt-4">
+      <Bezel radius={32} pad={6} coreClassName="flex flex-col gap-5 px-6 py-5 sm:px-8 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p className="text-[18px] font-bold tracking-tight text-ink">{d.title}</p>
+          <p className="mt-1 max-w-lg text-[14.5px] leading-relaxed text-ink-2">{d.body}</p>
+        </div>
+        <ul className="flex flex-wrap gap-2">
+          {t.can.channels.map((label, i) => (
+            <li key={label} className="inline-flex items-center gap-2 rounded-full bg-ink/[0.05] px-4 py-2.5 text-[14px] font-semibold text-ink ring-1 ring-ink/8">
+              <span className="text-accent">{icons[i]}</span>{label}
+            </li>
+          ))}
+        </ul>
+      </Bezel>
+    </Reveal>
+  );
+}
+
 /* ───────────────────────────── section ────────────────────────── */
 function Pill({ children }: { children: ReactNode }) {
   return <span className="cursor-default whitespace-nowrap rounded-full bg-surface/80 px-5 py-3 text-[14.5px] font-semibold text-ink ring-1 ring-ink/8 transition-all duration-500 ease-spring hover:-translate-y-0.5 hover:bg-accent hover:text-white hover:ring-accent">{children}</span>;
@@ -549,14 +415,12 @@ export function Can() {
         <HorizonHead />
 
         <div className="mt-6 grid gap-4 lg:grid-cols-12">
-          <Tile className="lg:col-span-7 lg:row-span-2" title={k.clipper.title} body={k.clipper.body}><ClipperDemo /></Tile>
-          <Tile className="lg:col-span-5" title={k.payout.title} body={k.payout.body}><PayoutDemo /></Tile>
+          <Tile className="lg:col-span-7" title={k.clipper.title} body={k.clipper.body}><ClipperDemo /></Tile>
+          <Tile className="lg:col-span-5" title={k.payout.title} body={k.payout.body} visualClass="flex flex-col justify-center"><PayoutDemo /></Tile>
           <Tile className="lg:col-span-5" title={k.campaign.title} body={k.campaign.body}><CampaignDemo /></Tile>
-          <Tile className="lg:col-span-7" title={k.chat.title} body={k.chat.body}><ChatDemo /></Tile>
-          <Tile className="lg:col-span-5" title={k.doors.title} body={k.doors.body} visualClass="flex items-center justify-center"><DoorsDemo /></Tile>
-          <Tile className="lg:col-span-12" split title={k.creators.title} body={k.creators.body}><CreatorsDemo /></Tile>
-          <Tile className="lg:col-span-12" split title={k.chains.title} body={k.chains.body}><ChainsDemo /></Tile>
+          <Tile className="lg:col-span-7" title={k.creators.title} body={k.creators.body}><CreatorsDemo /></Tile>
         </div>
+        <Channels />
       </div>
 
       <div className="mt-20 space-y-4">

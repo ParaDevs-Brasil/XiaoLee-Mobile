@@ -1,5 +1,5 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { useRef, useState, type ReactNode } from "react";
+import { motion, useMotionValueEvent, useReducedMotion, useScroll, useSpring, useTransform } from "motion/react";
 import { cn } from "@/lib/utils";
 import { useLang } from "@/lib/lang";
 import { Reveal, SectionHead } from "@/components/kit";
@@ -8,8 +8,8 @@ import {
   ClipsScreen, CreatorScreen, GrowScreen, ReportsScreen, ShareScreen, VoiceScreen,
 } from "@/components/app/screens";
 
-const EASE = [0.32, 0.72, 0, 1] as const;
-const ROTATE_MS = 6500;
+/** Scroll distance given to each chapter, in viewport heights. */
+const STEP_VH = 70;
 
 const SCREEN: Record<string, () => ReactNode> = {
   clips: () => <ClipsScreen />,
@@ -20,97 +20,145 @@ const SCREEN: Record<string, () => ReactNode> = {
   grow: () => <GrowScreen />,
 };
 
+/** Every screen stacked in one phone; only the active one shows. Cross-fades with CSS, so it never goes blank mid-change. */
+function Screens({ active, ids }: { active: number; ids: string[] }) {
+  return (
+    <div className="relative h-full">
+      {ids.map((id, i) => (
+        <div
+          key={id} aria-hidden={i !== active}
+          className={cn(
+            "absolute inset-0 transition-[opacity,filter,transform] duration-500 ease-spring motion-reduce:transition-none",
+            i === active ? "opacity-100 blur-0" : "pointer-events-none translate-y-2 opacity-0 blur-[6px]",
+          )}
+        >
+          {SCREEN[id]()}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The studio tour is driven by scroll: the phone stays pinned and changes screen as the page moves, one chapter per
+ * stretch of scrolling. Nobody has to click through tabs. The chapters are still buttons (they scroll to their stretch),
+ * so mouse, keyboard and screen readers all reach every one. With reduced motion there is no pinning: each chapter is
+ * a plain row with its own phone.
+ */
 export function Studio() {
   const { t } = useLang();
   const s = t.studio;
   const reduced = useReducedMotion();
+  const n = s.items.length;
+  const ids = s.items.map((i) => i.id);
+  const track = useRef<HTMLDivElement | null>(null);
   const [active, setActive] = useState(0);
-  const [touched, setTouched] = useState(false);
-  const [hover, setHover] = useState(false);
 
-  // Rotates through the screens until the visitor picks one; never for reduced-motion users.
-  useEffect(() => {
-    if (touched || hover || reduced) return;
-    const id = window.setInterval(() => setActive((i) => (i + 1) % s.items.length), ROTATE_MS);
-    return () => window.clearInterval(id);
-  }, [touched, hover, reduced, s.items.length]);
+  const { scrollYProgress } = useScroll({ target: track, offset: ["start start", "end end"] });
+  useMotionValueEvent(scrollYProgress, "change", (p) => {
+    const i = Math.max(0, Math.min(n - 1, Math.floor(p * n)));
+    setActive((cur) => (cur === i ? cur : i));
+  });
+  const fill = useSpring(scrollYProgress, { stiffness: 120, damping: 28, mass: 0.4 });
+  const turn = useTransform(scrollYProgress, [0, 1], [-9, 9]);
 
-  const pick = (i: number) => { setTouched(true); setActive(i); };
-  const item = s.items[active];
+  const go = (i: number) => {
+    const el = track.current;
+    if (!el) return;
+    const top = el.getBoundingClientRect().top + window.scrollY;
+    const range = el.offsetHeight - window.innerHeight;
+    window.scrollTo({ top: top + ((i + 0.5) / n) * range, behavior: reduced ? "auto" : "smooth" });
+  };
+
+  const header = (
+    <div className="mx-auto max-w-6xl px-5 pb-10 pt-24 sm:px-8 sm:pt-32 lg:pb-0">
+      <SectionHead a={s.h2a} b={s.h2b} sub={s.sub} />
+    </div>
+  );
+
+  if (reduced) {
+    return (
+      <section id="app" aria-label={s.eyebrow} className="relative">
+        {header}
+        <ol className="mx-auto max-w-6xl space-y-16 px-5 py-14 sm:px-8">
+          {s.items.map((it, i) => (
+            <li key={it.id} className="grid items-center gap-8 lg:grid-cols-[1fr_auto] lg:gap-20">
+              <div className="max-w-md">
+                <span className="font-script text-[22px] text-accent">{String(i + 1).padStart(2, "0")}</span>
+                <h3 className="mt-1 text-[clamp(26px,3vw,36px)] font-bold tracking-tight">{it.title}</h3>
+                <p className="mt-3 text-[16px] leading-relaxed text-ink-2">{it.body}</p>
+              </div>
+              <AppPhone className="mx-auto lg:mx-0"><Screens active={0} ids={[it.id]} /></AppPhone>
+            </li>
+          ))}
+        </ol>
+      </section>
+    );
+  }
 
   return (
-    <section id="app" className="relative px-5 py-24 sm:px-8 sm:py-32">
-      <div className="mx-auto max-w-6xl">
-        <div className="grid items-start gap-12 lg:grid-cols-[1fr_auto] lg:gap-20">
-          <div className="order-2 lg:order-1">
-            <SectionHead a={s.h2a} b={s.h2b} sub={s.sub} />
-          <Reveal delay={0.1} className="mt-12">
-            <ul role="tablist" aria-label={s.eyebrow} className="space-y-2">
-              {s.items.map((it, i) => {
-                const on = i === active;
-                return (
-                  <li key={it.id}>
-                    <button
-                      role="tab" aria-selected={on} aria-controls="studio-panel" type="button"
-                      onClick={() => pick(i)}
-                      onPointerEnter={(e) => e.pointerType === "mouse" && setHover(true)}
-                      onPointerLeave={() => setHover(false)}
-                      className={cn(
-                        "group relative w-full rounded-3xl px-6 py-5 text-left transition-all duration-500 ease-spring focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
-                        on ? "bg-surface shadow-[0_24px_50px_-28px_rgba(80,30,60,0.35)] ring-1 ring-ink/6" : "hover:bg-surface/60",
-                      )}
-                    >
-                      <span className="flex items-center gap-3">
-                        <span className={cn("font-script text-[22px] leading-none transition-colors", on ? "text-accent" : "text-ink-3")}>{String(i + 1).padStart(2, "0")}</span>
-                        <span className={cn("text-[clamp(20px,2vw,26px)] font-bold tracking-tight transition-colors", on ? "text-ink" : "text-ink-2")}>{it.title}</span>
-                      </span>
-                      <AnimatePresence initial={false}>
-                        {on && (
-                          <motion.p
-                            initial={reduced ? false : { height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={reduced ? undefined : { height: 0, opacity: 0 }}
-                            transition={{ duration: 0.5, ease: EASE }}
-                            className="max-w-md overflow-hidden pl-[42px] text-[15px] leading-relaxed text-ink-2"
-                          >
-                            <span className="block pt-2">{it.body}</span>
-                          </motion.p>
-                        )}
-                      </AnimatePresence>
-                      {on && !touched && !reduced && !hover && (
-                        <motion.span
-                          key={`bar-${active}`} aria-hidden
-                          initial={{ scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ duration: ROTATE_MS / 1000, ease: "linear" }}
-                          className="absolute inset-x-6 bottom-2 h-0.5 origin-left rounded-full bg-accent/40"
-                        />
-                      )}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </Reveal>
-          </div>
+    <section id="app" aria-label={s.eyebrow} className="relative">
+      {header}
 
-          <Reveal delay={0.05} className="order-1 mx-auto w-full max-w-[340px] lg:sticky lg:top-28 lg:order-2 lg:mt-16">
-            <div id="studio-panel" role="tabpanel" aria-label={item.title} className="relative">
-              <div aria-hidden className="absolute -inset-10 -z-10 rounded-full bg-rose/50 blur-3xl" />
-              <AppPhone>
-                <div className="relative h-full">
+      <div ref={track} style={{ height: `calc(100dvh + ${(n - 1) * STEP_VH}dvh)` }} className="relative">
+        <div className="sticky top-0 flex h-[100dvh] items-center overflow-hidden">
+          <div className="mx-auto grid w-full max-w-6xl items-center gap-5 px-5 pt-20 sm:px-8 lg:grid-cols-[1fr_auto] lg:gap-20 lg:pt-8">
+            {/* chapters */}
+            <div className="order-2 lg:order-1">
+              <ol className="relative hidden space-y-1 lg:block">
+                <span aria-hidden className="absolute bottom-5 left-[17px] top-5 w-px bg-line" />
+                <motion.span aria-hidden style={{ scaleY: fill }} className="absolute bottom-5 left-[17px] top-5 w-px origin-top bg-accent" />
+                {s.items.map((it, i) => {
+                  const on = i === active;
+                  return (
+                    <li key={it.id}>
+                      <button
+                        type="button" onClick={() => go(i)} aria-current={on ? "step" : undefined}
+                        className="group relative flex w-full items-start gap-5 rounded-2xl py-3 pr-4 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                      >
+                        <span className={cn(
+                          "relative z-[1] grid size-9 shrink-0 place-items-center rounded-full font-mono text-[12px] font-medium ring-1 transition-all duration-500 ease-spring",
+                          on ? "scale-110 bg-accent text-white ring-accent" : i < active ? "bg-accent/15 text-accent ring-accent/40" : "bg-surface-hi text-ink-3 ring-line",
+                        )}>{i + 1}</span>
+                        <span className="min-w-0 pt-1.5">
+                          <span className={cn("block font-bold tracking-tight transition-all duration-500 ease-spring", on ? "text-[clamp(26px,2.6vw,34px)] text-ink" : "text-[18px] text-ink-3 group-hover:text-ink-2")}>{it.title}</span>
+                          <span className={cn("grid transition-all duration-500 ease-spring", on ? "mt-2 grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0")}>
+                            <span className="overflow-hidden"><span className="block max-w-[420px] text-[16px] leading-relaxed text-ink-2">{it.body}</span></span>
+                          </span>
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ol>
+
+              {/* small screens: only the active chapter, with a dot per chapter */}
+              <div className="lg:hidden">
+                <div className="flex items-center gap-1.5" role="group" aria-label={s.eyebrow}>
                   {s.items.map((it, i) => (
-                    <div
-                      key={it.id}
-                      aria-hidden={i !== active}
-                      className={cn(
-                        "absolute inset-0 transition-[opacity,filter,transform] duration-500 ease-spring motion-reduce:transition-none",
-                        i === active ? "opacity-100 blur-0" : "pointer-events-none translate-y-2 opacity-0 blur-[6px]",
-                      )}
+                    <button
+                      key={it.id} type="button" onClick={() => go(i)} aria-label={it.title} aria-current={i === active ? "step" : undefined}
+                      className="grid h-6 place-items-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
                     >
-                      {SCREEN[it.id]()}
-                    </div>
+                      <span className={cn("block h-1.5 rounded-full transition-all duration-500 ease-spring", i === active ? "w-8 bg-accent" : "w-2.5 bg-ink/20")} />
+                    </button>
                   ))}
                 </div>
-              </AppPhone>
+                <h3 className="mt-4 text-[26px] font-bold leading-tight tracking-tight">{s.items[active].title}</h3>
+                <p className="mt-2 min-h-[5.2em] text-[15px] leading-relaxed text-ink-2">{s.items[active].body}</p>
+              </div>
             </div>
-          </Reveal>
+
+            {/* the pinned phone */}
+            <Reveal className="order-1 mx-auto w-[min(46vw,200px)] sm:w-[min(40vw,230px)] lg:order-2 lg:w-[340px]">
+              <div className="relative [perspective:1400px]">
+                <div aria-hidden className="absolute -inset-10 -z-10 rounded-full bg-rose/50 blur-3xl" />
+                <motion.div style={{ rotateY: turn }}>
+                  <AppPhone rim className="max-w-none"><Screens active={active} ids={ids} /></AppPhone>
+                </motion.div>
+              </div>
+            </Reveal>
+          </div>
         </div>
       </div>
     </section>
