@@ -2,6 +2,7 @@ import { useLang } from "@/lib/lang";
 import { Bezel, CtaButton, GhostAction, MascotVideo, Reveal, Wordmark } from "@/components/kit";
 import { useWaitlist } from "@/components/Waitlist";
 import { useDownload } from "@/components/Download";
+import { DOWNLOAD_ENABLED } from "@/lib/links";
 import { Meteors } from "@/components/ui/meteors";
 import { Tilt } from "@/components/ui/tilt";
 import { ClipTrail } from "@/components/ui/clip-trail";
@@ -30,10 +31,16 @@ export function Cta() {
               <h2 className="display text-[clamp(48px,8vw,116px)] text-ink">
                 {t.cta.h2a} <span className="serif-em text-accent">{t.cta.h2b}</span>
               </h2>
-              <p className="mt-6 max-w-md text-[17px] leading-relaxed text-ink/65">{t.cta.sub}</p>
+              <p className="mt-6 max-w-md text-[17px] leading-relaxed text-ink/65">{DOWNLOAD_ENABLED ? t.cta.sub : t.cta.subWl}</p>
               <div className="mt-9 flex flex-wrap items-center gap-3">
-                <CtaButton onClick={startDownload} variant="ink">{t.cta.btn}</CtaButton>
-                <GhostAction onClick={open}>{t.hero.cta2}</GhostAction>
+                {DOWNLOAD_ENABLED ? (
+                  <>
+                    <CtaButton onClick={startDownload} variant="ink">{t.cta.btn}</CtaButton>
+                    <GhostAction onClick={open}>{t.hero.cta2}</GhostAction>
+                  </>
+                ) : (
+                  <CtaButton onClick={open} variant="ink">{t.hero.cta2}</CtaButton>
+                )}
               </div>
             </div>
             <div className="relative mx-auto -mb-px w-full max-w-[400px] self-end">

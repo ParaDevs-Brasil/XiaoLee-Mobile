@@ -11,6 +11,7 @@ import { SparkleField } from "@/components/ui/sparkle-field";
 import { Marquee } from "@/components/ui/marquee";
 import { useWaitlist } from "@/components/Waitlist";
 import { useDownload } from "@/components/Download";
+import { DOWNLOAD_ENABLED } from "@/lib/links";
 import { IconCheck } from "@/components/icons";
 
 const EASE = [0.32, 0.72, 0, 1] as const;
@@ -213,8 +214,17 @@ export function Hero() {
           </Reveal>
           <Reveal delay={0.66}>
             <div className="mt-9 flex flex-wrap items-center gap-3 lg:mt-6">
-              <CtaButton onClick={startDownload}>{t.hero.cta1}</CtaButton>
-              <GhostAction onClick={open}>{t.hero.cta2}</GhostAction>
+              {DOWNLOAD_ENABLED ? (
+                <>
+                  <CtaButton onClick={startDownload}>{t.hero.cta1}</CtaButton>
+                  <GhostAction onClick={open}>{t.hero.cta2}</GhostAction>
+                </>
+              ) : (
+                <>
+                  <CtaButton onClick={open}>{t.hero.cta2}</CtaButton>
+                  <GhostAction onClick={() => document.getElementById("app")?.scrollIntoView({ behavior: "smooth" })}>{t.hero.meet}</GhostAction>
+                </>
+              )}
             </div>
           </Reveal>
           <Reveal delay={0.8}>
