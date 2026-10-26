@@ -564,7 +564,7 @@ export default function CreatorScreen() {
             <View style={styles.payInfo}>
               <Text style={styles.payTitle}>Pay ${price?.toFixed(2)} in USDC?</Text>
               <Text style={styles.payHint} numberOfLines={2}>
-                Paid from your wallet. We start as soon as it goes through.
+                You're only charged when your video is ready.
               </Text>
             </View>
             <Pressable onPress={() => setConfirming(false)} disabled={paying} style={styles.payCancel} accessibilityRole="button">

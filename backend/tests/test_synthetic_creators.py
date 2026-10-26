@@ -4,7 +4,8 @@ test_synthetic_creators.py — personas sintéticas: preço, pagamento antes da 
 Regras que estes testes travam:
 - preço = custo x2 arredondado para cima no centavo; o roteiro é cortado no teto de palavras da duração;
 - o pagamento precisa ir para CREATORS_PAY_TO com o valor exato; o mesmo nonce não paga dois vídeos;
-- relay falhou = 402 e nada é gerado; geração falhou depois de pago = `refund_due`.
+- a cobrança só acontece depois do vídeo pronto: saldo insuficiente = 402 e nada é gerado; geração falhou = nada
+  cobrado; cobrança falhou no final = vídeo não entregue.
 """
 from __future__ import annotations
 
@@ -90,6 +91,15 @@ def _payment(value, to=PAY_TO, nonce="0x" + "1" * 64):
             "valid_before": 9999999999, "nonce": nonce, "signature": "0x" + "c" * 130}
 
 
+@pytest.fixture(autouse=True)
+def _wallet_balance(monkeypatch):
+    """Saldo da carteira do pagador na Arc (o pedido confere antes de gerar). Cada teste pode sobrescrever."""
+    async def bal(address):
+        return 1000.0
+
+    monkeypatch.setattr(arc_routes, "read_arc_usdc_balance", bal)
+
+
 def _relay_ok(monkeypatch, calls):
     class Arc:
         async def relay_transfer_authorization(self, **kw):
@@ -100,17 +110,19 @@ def _relay_ok(monkeypatch, calls):
 
 
 @pytest.mark.asyncio
-async def test_pays_then_queues_the_video(db, monkeypatch):
+async def test_queues_the_video_without_charging_yet(db, monkeypatch):
     cid, h = await _persona(db)
     calls = []
     _relay_ok(monkeypatch, calls)
     r = client.post(f"/v1/creators/{cid}/videos", headers=h,
                     json={"quality": "standard", "duration_s": 5, "script": "oi " * 50, "payment": _payment(800_000)})
     assert r.status_code == 200, r.text
-    assert r.json()["status"] == "queued" and r.json()["payment_tx"] == "0xtx"
+    assert r.json()["status"] == "queued" and r.json()["payment_tx"] is None
     assert len(r.json()["script"].split()) == sc.max_words(5)
-    assert calls[0]["value"] == 800_000
-    assert float((await db.execute(select(ArcTransfer))).scalars().one().amount_usdc) == pytest.approx(0.8)
+    assert calls == []  # nada cobrado até o vídeo ficar pronto
+    v = (await db.execute(select(CreatorVideo))).scalars().one()
+    assert v.payment_value == 800_000 and v.payment_signature == "0x" + "c" * 130
+    assert (await db.execute(select(ArcTransfer))).scalars().all() == []
 
     again = client.post(f"/v1/creators/{cid}/videos", headers=h,
                         json={"quality": "standard", "duration_s": 5, "script": "oi", "payment": _payment(800_000)})
@@ -124,18 +136,19 @@ async def test_dev_skip_payment_queues_without_relay_but_only_in_dev(db, monkeyp
     _relay_ok(monkeypatch, calls)
     body = {"quality": "standard", "duration_s": 5, "script": "oi", "payment": _payment(800_000)}
 
-    # produção com o interruptor esquecido: ignora e cobra como sempre
+    # produção com o interruptor esquecido: ignora e guarda a autorização para cobrar no fim
     monkeypatch.setattr(routes, "settings", dataclasses.replace(routes.settings, creators_dev_skip_payment=True, environment="production"))
     r = client.post(f"/v1/creators/{cid}/videos", headers=h, json=body)
-    assert r.status_code == 200 and r.json()["payment_tx"] == "0xtx" and len(calls) == 1
+    assert r.status_code == 200 and r.json()["payment_tx"] is None
+    assert (await db.execute(select(CreatorVideo))).scalars().one().payment_signature
 
     # dev: pula o relay, ainda confere valor e destino, e não registra repasse
     monkeypatch.setattr(routes, "settings", dataclasses.replace(routes.settings, creators_dev_skip_payment=True, environment="dev"))
     body["payment"] = _payment(800_000, nonce="0x" + "2" * 64)
     r = client.post(f"/v1/creators/{cid}/videos", headers=h, json=body)
     assert r.status_code == 200 and r.json()["status"] == "queued" and r.json()["payment_tx"].startswith("dev-skip-")
-    assert len(calls) == 1
-    assert len((await db.execute(select(ArcTransfer))).scalars().all()) == 1
+    assert calls == []
+    assert (await db.execute(select(ArcTransfer))).scalars().all() == []
     body["payment"] = _payment(700_000, nonce="0x" + "3" * 64)
     assert client.post(f"/v1/creators/{cid}/videos", headers=h, json=body).status_code == 422
 
@@ -152,27 +165,24 @@ async def test_rejects_wrong_amount_or_destination(db, monkeypatch, value, to):
 
 
 @pytest.mark.asyncio
-async def test_failed_relay_is_402_and_nothing_runs(db, monkeypatch):
+async def test_insufficient_balance_is_402_and_nothing_runs(db, monkeypatch):
     cid, h = await _persona(db)
 
-    class Arc:
-        async def relay_transfer_authorization(self, **kw):
-            raise RuntimeError("insufficient balance")
+    async def bal(address):
+        return 1.0
 
-    monkeypatch.setattr(arc_routes, "_arc_native", lambda: Arc())
+    monkeypatch.setattr(arc_routes, "read_arc_usdc_balance", bal)
     r = client.post(f"/v1/creators/{cid}/videos", headers=h,
                     json={"quality": "pro", "duration_s": 5, "script": "oi", "payment": _payment(1_400_000)})
-    assert r.status_code == 402
-    assert (await db.execute(select(CreatorVideo))).scalars().one().status == "failed"
+    assert r.status_code == 402 and "Not enough USDC" in r.text
+    assert (await db.execute(select(CreatorVideo))).scalars().all() == []
 
 
 @pytest.mark.asyncio
-async def test_generation_failure_after_payment_marks_refund(db, monkeypatch):
-    cid, _ = await _persona(db)
-    v = CreatorVideo(user_id=1, creator_id=cid, quality="standard", model="m", duration_s=5, script="oi",
-                     price_usdc=0.8, payment_from=PAYER, payment_nonce="n1", payment_tx="0xtx", status="queued")
-    db.add(v)
-    await db.commit()
+async def test_generation_failure_charges_nothing(db, monkeypatch):
+    v = await _unpaid_video(db)
+    calls = []
+    _relay_ok(monkeypatch, calls)
 
     async def boom(**kw):
         raise RuntimeError("fal down")
@@ -181,7 +191,96 @@ async def test_generation_failure_after_payment_marks_refund(db, monkeypatch):
     monkeypatch.setattr(routes._dbmod, "SessionLocal", lambda: _Ctx(db))
     await _real_run_video(v.id)
     await db.refresh(v)
-    assert v.status == "failed" and v.refund_due
+    assert v.status == "failed" and not v.refund_due and calls == []
+    assert v.payment_tx is None and v.payment_signature is None and "weren't charged" in v.error
+
+
+async def _unpaid_video(db, valid_before=9999999999):
+    cid, _ = await _persona(db)
+    v = CreatorVideo(user_id=1, creator_id=cid, quality="standard", model="m", duration_s=5, script="oi",
+                     price_usdc=0.8, payment_from=PAYER, payment_nonce="0x" + "1" * 64, status="queued",
+                     payment_signature="0x" + "c" * 130, payment_to=PAY_TO, payment_value=800_000,
+                     payment_valid_after=0, payment_valid_before=valid_before)
+    db.add(v)
+    await db.commit()
+    return v
+
+
+async def _run_ready(db, monkeypatch, v):
+    async def ok(**kw):
+        return None
+
+    monkeypatch.setattr(routes.sc, "render", ok)
+    monkeypatch.setattr(routes._dbmod, "SessionLocal", lambda: _Ctx(db))
+    await _real_run_video(v.id)
+    await db.refresh(v)
+
+
+@pytest.mark.asyncio
+async def test_video_ready_is_charged_then_delivered(db, monkeypatch):
+    v = await _unpaid_video(db)
+    calls = []
+    _relay_ok(monkeypatch, calls)
+    await _run_ready(db, monkeypatch, v)
+    assert v.status == "done" and v.payment_tx == "0xtx" and v.video_key and v.payment_signature is None
+    assert len(calls) == 1 and calls[0]["value"] == 800_000 and calls[0]["from_address"] == PAYER
+    assert float((await db.execute(select(ArcTransfer))).scalars().one().amount_usdc) == pytest.approx(0.8)
+
+
+@pytest.mark.asyncio
+async def test_charge_failure_withholds_the_video(db, monkeypatch):
+    v = await _unpaid_video(db)
+
+    class Arc:
+        async def relay_transfer_authorization(self, **kw):
+            raise RuntimeError("insufficient balance")
+
+    monkeypatch.setattr(arc_routes, "_arc_native", lambda: Arc())
+    await _run_ready(db, monkeypatch, v)
+    assert v.status == "failed" and v.video_key is None and v.payment_tx is None and v.payment_signature is None
+    assert "wasn't delivered" in v.error and "weren't charged" in v.error
+    assert (await db.execute(select(ArcTransfer))).scalars().all() == []
+
+
+@pytest.mark.asyncio
+async def test_expired_approval_is_not_relayed(db, monkeypatch):
+    v = await _unpaid_video(db, valid_before=1)
+    calls = []
+    _relay_ok(monkeypatch, calls)
+    await _run_ready(db, monkeypatch, v)
+    assert v.status == "failed" and calls == []
+
+
+@pytest.mark.asyncio
+async def test_approval_must_outlast_the_generation(db, monkeypatch):
+    import time
+
+    cid, h = await _persona(db)
+    short = {**_payment(800_000), "valid_before": int(time.time()) + 60}
+    r = client.post(f"/v1/creators/{cid}/videos", headers=h,
+                    json={"quality": "standard", "duration_s": 5, "script": "oi", "payment": short})
+    assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_limits_unpaid_videos_in_flight_and_counts_them_against_the_balance(db, monkeypatch):
+    cid, h = await _persona(db)
+    body = lambda n: {"quality": "standard", "duration_s": 5, "script": "oi",
+                      "payment": _payment(800_000, nonce="0x" + str(n) * 64)}
+    assert client.post(f"/v1/creators/{cid}/videos", headers=h, json=body(1)).status_code == 200
+
+    async def bal(address):
+        return 1.0  # cobre um vídeo (0,80) mas não dois
+
+    monkeypatch.setattr(arc_routes, "read_arc_usdc_balance", bal)
+    assert client.post(f"/v1/creators/{cid}/videos", headers=h, json=body(2)).status_code == 402
+
+    async def rich(address):
+        return 100.0
+
+    monkeypatch.setattr(arc_routes, "read_arc_usdc_balance", rich)
+    assert client.post(f"/v1/creators/{cid}/videos", headers=h, json=body(3)).status_code == 200
+    assert client.post(f"/v1/creators/{cid}/videos", headers=h, json=body(4)).status_code == 429
 
 
 class _Ctx:
@@ -246,7 +345,7 @@ async def test_complete_rejects_and_deletes_an_image_over_the_limit(db, monkeypa
 
 def test_seedance_failure_points_to_the_models_that_accept_the_image():
     assert "Standard or Pro" in routes._failure_message("pro_seedance")
-    assert "refunded" in routes._failure_message("standard")
+    assert "weren't charged" in routes._failure_message("standard")
 
 
 # --- mimic (motion swap) -------------------------------------------------------------------------------------
@@ -292,7 +391,7 @@ async def test_mimic_pays_and_keeps_the_motion_and_the_rights_timestamp(db, monk
     _motion_ok(monkeypatch)
     r = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_mimic_body())
     assert r.status_code == 200, r.text
-    assert r.json()["status"] == "queued" and r.json()["script"] == "" and calls[0]["value"] == 700_000
+    assert r.json()["status"] == "queued" and r.json()["script"] == "" and calls == []
     v = (await db.execute(select(CreatorVideo))).scalars().one()
     assert v.motion_key == MOTION and v.motion_rights_at is not None and v.model.endswith("v2.6/standard/motion-control")
 
@@ -366,7 +465,7 @@ async def test_motion_upload_takes_only_videos_under_the_cap(db, monkeypatch):
 
 
 def test_mimic_failure_tells_what_the_reference_needs():
-    assert "full view" in routes._failure_message("mimic_v3") and "refunded" in routes._failure_message("mimic")
+    assert "full view" in routes._failure_message("mimic_v3") and "weren't charged" in routes._failure_message("mimic")
 
 
 @pytest.mark.asyncio
