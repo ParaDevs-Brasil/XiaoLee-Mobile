@@ -6,6 +6,7 @@ import { useLang } from "@/lib/lang";
 import { useTheme } from "@/lib/theme";
 import { useWaitlist } from "@/components/Waitlist";
 import { useDownload } from "@/components/Download";
+import { DOWNLOAD_ENABLED } from "@/lib/links";
 import { FlowButton } from "@/components/ui/flow-button";
 import { AnimatedWordmark } from "@/components/ui/animated-logo";
 
@@ -151,8 +152,8 @@ export function Nav() {
           <div className="flex items-center gap-2">
             <ThemeToggle />
             <LangToggle />
-            <FlowButton onClick={startDownload} size="sm" className="hidden sm:inline-flex">
-              {t.nav.cta}
+            <FlowButton onClick={DOWNLOAD_ENABLED ? startDownload : open} size="sm" className="hidden sm:inline-flex">
+              {DOWNLOAD_ENABLED ? t.nav.cta : t.nav.wl}
             </FlowButton>
             <button
               ref={menuBtn} type="button" onClick={() => setMenu((m) => !m)} aria-expanded={menu} aria-controls={menuId} aria-label={t.nav.menu}
@@ -191,11 +192,11 @@ export function Nav() {
         <FlowButton
           // focus goes back to the menu button first: the dialog returns focus to whatever had it when it opened,
           // and this button is about to turn invisible
-          onClick={() => { setMenu(false); menuBtn.current?.focus(); startDownload(); }}
+          onClick={() => { setMenu(false); menuBtn.current?.focus(); (DOWNLOAD_ENABLED ? startDownload : open)(); }}
           className={cn("mt-10 text-[16px] transition-all duration-700", menu ? "translate-y-0 opacity-100" : "translate-y-8 opacity-0")}
           style={{ transitionDelay: menu ? "440ms" : "0ms" }}
         >
-          {t.nav.cta}
+          {DOWNLOAD_ENABLED ? t.nav.cta : t.nav.wl}
         </FlowButton>
       </nav>
     </>

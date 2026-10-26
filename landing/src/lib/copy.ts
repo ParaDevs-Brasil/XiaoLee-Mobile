@@ -5,13 +5,14 @@ export type Lang = "en" | "pt";
 export type Status = "live" | "soon";
 
 const en = {
-  nav: { can: "What she does", how: "How it works", trust: "Trust", cta: "Get the app", main: "Main", menu: "Menu" },
+  nav: { can: "What she does", how: "How it works", trust: "Trust", cta: "Get the app", wl: "Join the waitlist", main: "Main", menu: "Menu" },
   hero: {
     h1a: "Get paid for",
     h1b: "your content.",
     sub: "Cut your long videos into clips, join paid campaigns from brands, and get USDC in your wallet as soon as your post is verified, not at the end of the month. No bank, no card. All by chatting.",
     cta1: "Download the app",
     cta2: "Join the waitlist",
+    meet: "Meet Xiaolee",
     trust: ["Your keys, your money", "Paid in USDC", "No bank or card needed"],
     prompts: [
       "make 3 clips from my podcast",
@@ -146,6 +147,7 @@ const en = {
     h2a: "Make your",
     h2b: "content pay.",
     sub: "Download the app, say hi, and get paid for the content you already make. She never touches your keys.",
+    subWl: "Join the waitlist and get paid for the content you already make. She never touches your keys.",
     btn: "Download the app",
   },
   footer: { tag: "The conversational agent for creator money — USDC on Arc.", backed: "Backed by ParaDevs", terms: "Terms", privacy: "Privacy" },
@@ -192,13 +194,14 @@ const en = {
 export type Copy = typeof en;
 
 const pt: Copy = {
-  nav: { can: "O que ela faz", how: "Como funciona", trust: "Confiança", cta: "Baixar o app", main: "Principal", menu: "Menu" },
+  nav: { can: "O que ela faz", how: "Como funciona", trust: "Confiança", cta: "Baixar o app", wl: "Entrar na lista de espera", main: "Principal", menu: "Menu" },
   hero: {
     h1a: "Ganhe com o",
     h1b: "seu conteúdo.",
     sub: "Corte seus vídeos longos em clipes, entre em campanhas pagas de marcas e receba USDC na carteira assim que seu post for verificado, não no fim do mês. Sem banco, sem cartão. Tudo conversando.",
     cta1: "Baixar o app",
     cta2: "Entrar na lista de espera",
+    meet: "Conheça a Xiaolee",
     trust: ["Suas chaves, seu dinheiro", "Pago em USDC", "Sem banco nem cartão"],
     prompts: [
       "faz 3 cortes do meu podcast",
@@ -333,6 +336,7 @@ const pt: Copy = {
     h2a: "Faça seu",
     h2b: "conteúdo render.",
     sub: "Baixe o app, diga oi e receba pelo conteúdo que você já faz. Ela nunca toca nas suas chaves.",
+    subWl: "Entre na lista de espera e receba pelo conteúdo que você já faz. Ela nunca toca nas suas chaves.",
     btn: "Baixar o app",
   },
   footer: { tag: "O agente conversacional para o dinheiro de criadores — USDC no Arc.", backed: "Apoiado pela ParaDevs", terms: "Termos", privacy: "Privacidade" },
