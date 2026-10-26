@@ -1,6 +1,6 @@
 """Criadores: guarda a autorização de pagamento e só cobra quando o vídeo fica pronto.
 
-Revision ID: 20261026_creator_charge_on_success
+Revision ID: 20261026_creator_pay_on_ready
 Revises: 20261024_creator_motion_start
 """
 
@@ -9,7 +9,7 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-revision = "20261026_creator_charge_on_success"
+revision = "20261026_creator_pay_on_ready"
 down_revision = "20261024_creator_motion_start"
 branch_labels = None
 depends_on = None
