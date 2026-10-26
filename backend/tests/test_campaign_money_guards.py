@@ -90,6 +90,19 @@ class TestLimits:
     def test_valid_returns_pool(self):
         assert self._check(reward_per_participant=2.5, max_participants=4) == 10.0
 
+    def test_no_reward_or_pool_cap_by_default(self):
+        assert self._check(reward_per_participant=5000, max_participants=100) == 500_000
+
+    def test_reward_and_pool_caps_apply_when_configured(self, monkeypatch):
+        monkeypatch.setattr(
+            campaigns,
+            "settings",
+            dataclasses.replace(campaigns.settings, campaign_max_reward_usdc=100, campaign_max_pool_usdc=1000),
+        )
+        for over in ({"reward_per_participant": 100.01}, {"reward_per_participant": 100, "max_participants": 11}):
+            with pytest.raises(HTTPException):
+                self._check(**over)
+
     @pytest.mark.parametrize(
         "over",
         [
@@ -99,9 +112,7 @@ class TestLimits:
             {"reward_per_participant": float("inf")},
             {"max_participants": 0},
             {"reward_token": "DOGE"},
-            {"reward_per_participant": 100.01},  # teto por participante
             {"max_participants": 10_001},  # teto de participantes
-            {"reward_per_participant": 100, "max_participants": 11},  # pool 1100 > 1000
         ],
     )
     def test_rejected(self, over):
@@ -161,6 +172,7 @@ class TestHttpCreate:
 
     @pytest.mark.asyncio
     async def test_huge_pool_is_refused_before_any_balance_lookup(self, db, monkeypatch):
+        monkeypatch.setattr(campaigns, "settings", dataclasses.replace(campaigns.settings, campaign_max_pool_usdc=1000))
         headers = await _login(db)
         _balance(monkeypatch, error=AssertionError("não deveria consultar o saldo"))
         r = client.post(

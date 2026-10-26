@@ -1059,7 +1059,7 @@ def _validate_campaign_limits(payload: CreateCampaignRequest) -> float:
         raise HTTPException(
             status_code=400, detail=f"Token de recompensa não suportado. Use: {', '.join(sorted(allowed))}."
         )
-    if reward > settings.campaign_max_reward_usdc:
+    if settings.campaign_max_reward_usdc and reward > settings.campaign_max_reward_usdc:
         raise HTTPException(
             status_code=400, detail=f"A recompensa por participante pode ser no máximo {settings.campaign_max_reward_usdc:g} USDC."
         )
@@ -1068,7 +1068,7 @@ def _validate_campaign_limits(payload: CreateCampaignRequest) -> float:
             status_code=400, detail=f"O máximo de participantes pode ser {settings.campaign_max_participants}."
         )
     pool = reward * people
-    if pool > settings.campaign_max_pool_usdc:
+    if settings.campaign_max_pool_usdc and pool > settings.campaign_max_pool_usdc:
         raise HTTPException(
             status_code=400,
             detail=f"O pool total ({pool:g} USDC) passa do limite de {settings.campaign_max_pool_usdc:g} USDC por campanha.",

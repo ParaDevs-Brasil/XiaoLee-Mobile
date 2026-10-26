@@ -89,8 +89,9 @@ class Settings:
     # ── Guardas de criação de campanha ───────────────────────────────────────
     # Tetos por campanha (USDC) e participantes; o criador precisa ter o pool em
     # carteira (Arc) quando `campaign_require_funds`. Ajustáveis por env sem deploy de código.
-    campaign_max_pool_usdc: float = float(os.getenv("CAMPAIGN_MAX_POOL_USDC", "1000"))
-    campaign_max_reward_usdc: float = float(os.getenv("CAMPAIGN_MAX_REWARD_USDC", "100"))
+    # Pool e recompensa: 0 = sem teto (o limite real é o saldo do criador).
+    campaign_max_pool_usdc: float = float(os.getenv("CAMPAIGN_MAX_POOL_USDC", "0"))
+    campaign_max_reward_usdc: float = float(os.getenv("CAMPAIGN_MAX_REWARD_USDC", "0"))
     campaign_max_participants: int = int(os.getenv("CAMPAIGN_MAX_PARTICIPANTS", "10000"))
     campaign_allowed_tokens: str = os.getenv("CAMPAIGN_ALLOWED_TOKENS", "USDC")
     # Só com ARC_SANDBOX=false: lista (handle ou twitter_user_id, separados por vírgula) de quem pode criar.
