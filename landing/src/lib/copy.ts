@@ -9,11 +9,11 @@ const en = {
   hero: {
     h1a: "Get paid for",
     h1b: "your content.",
-    sub: "Cut your long videos into clips, join paid campaigns from brands, and get USDC in your wallet as soon as your post is verified, not at the end of the month. No bank, no card. All by chatting.",
+    sub: "Make talking videos with your own AI characters, cut long videos into clips and join paid campaigns, all by chatting. Pay per video in USDC, and get campaign rewards in your wallet as soon as your post is verified.",
     cta1: "Download the app",
     cta2: "Join the waitlist",
     meet: "Meet Xiaolee",
-    trust: ["Your keys, your money", "Paid in USDC", "No bank or card needed"],
+    trust: ["Your keys, your money", "Paid in USDC", "No bank account needed"],
     prompts: [
       "make 3 clips from my podcast",
       "join the launch week campaign",
@@ -22,11 +22,11 @@ const en = {
       "send 5 USDC to @maria",
     ],
     inputHint: "Ask Xiaolee…",
-    giant: ["Clip it.", "Join a campaign.", "Get paid in USDC."],
+    giant: ["Create with AI.", "Join a campaign.", "Get paid in USDC."],
     eyebrow: ["Creators", "On-chain payments"],
     tag: ["Create.", "Earn.", "Grow."],
     features: [
-      { title: "Turn videos", body: "Cut one long video into three vertical clips with captions." },
+      { title: "Create and clip", body: "Make talking videos with your AI characters, or cut one long video into three vertical clips." },
       { title: "Join campaigns", body: "Brands set the budget. You do the tasks." },
       { title: "Get paid in USDC", body: "Paid as soon as your post is verified, straight to your wallet." },
       { title: "Verified by rules", body: "Who is paid is fixed in the system, never decided by the AI." },
@@ -37,7 +37,7 @@ const en = {
     eyebrow: "What she does",
     h2a: "From long video",
     h2b: "to paid, in one chat.",
-    sub: "Clip your content, join paid campaigns and get paid in USDC. All in one conversation, in English or Portuguese.",
+    sub: "Create videos with AI characters, clip your content, join paid campaigns and get paid in USDC. All in one conversation, in English or Portuguese.",
     tiles: {
       chat: { tag: "Wallet", title: "Wallet, hands-free", body: "Balance, send, swap — by message. She asks before anything moves and you sign it." },
       campaign: { tag: "For brands", title: "Brands launch by chatting", body: "A brand describes a campaign in one sentence and she builds it field by field. That's how paid campaigns reach you." },
@@ -198,11 +198,11 @@ const pt: Copy = {
   hero: {
     h1a: "Ganhe com o",
     h1b: "seu conteúdo.",
-    sub: "Corte seus vídeos longos em clipes, entre em campanhas pagas de marcas e receba USDC na carteira assim que seu post for verificado, não no fim do mês. Sem banco, sem cartão. Tudo conversando.",
+    sub: "Crie vídeos falados com seus próprios personagens de IA, corte vídeos longos em clipes e entre em campanhas pagas, tudo conversando. Pague por vídeo em USDC e receba as recompensas das campanhas na carteira assim que seu post for verificado.",
     cta1: "Baixar o app",
     cta2: "Entrar na lista de espera",
     meet: "Conheça a Xiaolee",
-    trust: ["Suas chaves, seu dinheiro", "Pago em USDC", "Sem banco nem cartão"],
+    trust: ["Suas chaves, seu dinheiro", "Pago em USDC", "Sem conta bancária"],
     prompts: [
       "faz 3 cortes do meu podcast",
       "entra na campanha da semana de lançamento",
@@ -211,11 +211,11 @@ const pt: Copy = {
       "envia 5 USDC pro @maria",
     ],
     inputHint: "Pergunte à Xiaolee…",
-    giant: ["Corte.", "Entre numa campanha.", "Receba em USDC."],
+    giant: ["Crie com IA.", "Entre numa campanha.", "Receba em USDC."],
     eyebrow: ["Criadores", "Pagamentos on-chain"],
     tag: ["Crie.", "Ganhe.", "Cresça."],
     features: [
-      { title: "Transforme vídeos", body: "Corte um vídeo longo em três clipes verticais com legenda." },
+      { title: "Crie e corte", body: "Faça vídeos falados com seus personagens de IA, ou corte um vídeo longo em três clipes verticais." },
       { title: "Entre em campanhas", body: "A marca define o orçamento. Você faz as tarefas." },
       { title: "Receba em USDC", body: "Pago assim que seu post é verificado, direto na sua carteira." },
       { title: "Verificado por regras", body: "Quem recebe é definido no sistema, nunca pela IA." },
@@ -226,7 +226,7 @@ const pt: Copy = {
     eyebrow: "O que ela faz",
     h2a: "Do vídeo longo",
     h2b: "ao pagamento, num chat.",
-    sub: "Corte seu conteúdo, entre em campanhas pagas e receba em USDC. Tudo em uma conversa, em português ou inglês.",
+    sub: "Crie vídeos com personagens de IA, corte seu conteúdo, entre em campanhas pagas e receba em USDC. Tudo em uma conversa, em português ou inglês.",
     tiles: {
       chat: { tag: "Carteira", title: "Carteira sem as mãos", body: "Saldo, envio, swap — por mensagem. Ela pergunta antes de mexer em qualquer coisa e você assina." },
       campaign: { tag: "Para marcas", title: "Marcas criam conversando", body: "A marca descreve a campanha em uma frase e ela monta campo a campo. É assim que as campanhas pagas chegam até você." },
