@@ -24,6 +24,7 @@ import json
 import logging
 import re
 import tempfile
+import time
 import uuid
 from datetime import datetime, timedelta
 from typing import Literal, Optional
@@ -399,6 +400,60 @@ async def script(body: ScriptIn, authorization: Optional[str] = Header(default=N
     return {"script": text, "max_words": sc.max_words(body.duration_s)}
 
 
+# Quanto da janela da assinatura precisa sobrar no pedido: a geração (Pro+/Swap) leva minutos e a cobrança vem depois.
+_MIN_AUTH_WINDOW_S = 900
+# Vídeos já em geração (ainda não cobrados) que um usuário pode ter ao mesmo tempo: limita o que arriscamos se ele
+# esvaziar a carteira no meio da geração.
+_MAX_UNPAID_VIDEOS = 2
+_IN_FLIGHT = ("queued", "voice", "video", "charging")
+
+
+async def _require_funds(db: AsyncSession, user_id: int, p, price: float) -> None:
+    """A carteira cobre este vídeo mais os que ainda geram (não cobrados), e a assinatura dura até a cobrança."""
+    now = int(time.time())
+    if p.valid_after > now or p.valid_before < now + _MIN_AUTH_WINDOW_S:
+        raise HTTPException(422, "The payment approval is too short. Try again.")
+    rows = (await db.execute(select(CreatorVideo.price_usdc).where(
+        CreatorVideo.user_id == user_id, CreatorVideo.status.in_(_IN_FLIGHT),
+        CreatorVideo.payment_valid_before > now))).scalars().all()
+    if len(rows) >= _MAX_UNPAID_VIDEOS:
+        raise HTTPException(429, "You already have videos being made. Wait for them to finish.")
+    from server.routes.arc_routes import read_arc_usdc_balance
+    try:
+        balance = await read_arc_usdc_balance(p.from_address)
+    except Exception as exc:
+        logger.warning("creator video balance check failed: %s", type(exc).__name__)
+        raise HTTPException(503, "We couldn't check your balance right now. Try again.")
+    need = price + sum(float(x) for x in rows)
+    if balance + 1e-9 < need:
+        raise HTTPException(402, f"Not enough USDC: this video costs {price:g} and your wallet has {balance:.2f}.")
+
+
+async def _settle_payment(db: AsyncSession, v: CreatorVideo) -> bool:
+    """Cobra o vídeo pronto enviando a autorização que o usuário assinou. True = pago (ou dev). Nunca levanta:
+    quem chama decide o que fazer com um vídeo que ficou sem pagamento."""
+    if v.payment_tx:  # dev local, ou já cobrado
+        return True
+    now = int(time.time())
+    if not v.payment_signature or (v.payment_valid_before or 0) <= now:
+        logger.warning("creator video %s: payment approval expired before charging", v.id)
+        return False
+    from server.routes.arc_routes import _arc_native
+    try:
+        result = await _arc_native().relay_transfer_authorization(
+            from_address=v.payment_from, to_address=v.payment_to, value=int(v.payment_value),
+            valid_after=int(v.payment_valid_after), valid_before=int(v.payment_valid_before),
+            nonce=v.payment_nonce, signature=v.payment_signature)
+    except Exception as exc:
+        # "nonce gasto" = pago por fora ou autorização cancelada; sem como distinguir aqui, então não liberamos.
+        logger.warning("creator video %s: charge failed: %s", v.id, exc)
+        return False
+    v.payment_tx, v.payment_signature = result.tx_hash, None
+    db.add(ArcTransfer(from_address=v.payment_from, to_address=v.payment_to, amount_usdc=float(v.price_usdc),
+                       tx_hash=result.tx_hash))
+    return True
+
+
 @router.post("/{creator_id}/videos", response_model=VideoOut)
 async def create_video(creator_id: int, body: VideoCreate, background: BackgroundTasks,
                        authorization: Optional[str] = Header(default=None),
@@ -457,10 +512,19 @@ async def create_video(creator_id: int, body: VideoCreate, background: Backgroun
     if today >= settings.creators_daily_videos_per_user:
         raise HTTPException(429, "You've reached today's video limit. Try again tomorrow.")
 
-    # Intent log antes do relay: nonce único barra o mesmo pagamento duas vezes.
+    skip = _skip_payment()
+    if not skip:
+        await _require_funds(db, user.id, p, price)
+
+    # Intent log antes de gerar: nonce único barra o mesmo pagamento duas vezes. A cobrança só acontece depois que
+    # o vídeo está pronto (`_settle_payment`); falhar antes disso não cobra nada.
     v = CreatorVideo(user_id=user.id, creator_id=c.id, quality=body.quality, model=sc.QUALITIES[body.quality]["model"],
                      duration_s=body.duration_s, script=script_text, price_usdc=price,
-                     payment_from=p.from_address.lower(), payment_nonce=p.nonce.lower(), status="paying",
+                     payment_from=p.from_address.lower(), payment_nonce=p.nonce.lower(), status="queued",
+                     payment_signature=None if skip else p.signature, payment_to=p.to_address.lower(),
+                     payment_value=p.value, payment_valid_after=p.valid_after, payment_valid_before=p.valid_before,
+                     # Dev local: valor, destino e nonce já foram conferidos acima; não há cobrança on-chain.
+                     payment_tx=f"dev-skip-{p.nonce.lower()[:18]}" if skip else None,
                      motion_key=body.motion_key if mimic else None,
                      motion_start_s=body.motion_start_s if mimic else 0.0, audio=body.audio if mimic else "none",
                      preview_id=preview.id if preview else None,
@@ -472,28 +536,6 @@ async def create_video(creator_id: int, body: VideoCreate, background: Backgroun
     except IntegrityError:
         await db.rollback()
         raise HTTPException(409, "That payment was already used. Try again.")
-
-    if _skip_payment():
-        # Dev local: valor, destino e nonce já foram conferidos acima; só o relay on-chain (e o registro do repasse) é pulado.
-        v.payment_tx, v.status = f"dev-skip-{p.nonce.lower()[:18]}", "queued"
-        await db.commit()
-    else:
-        from server.routes.arc_routes import _arc_native
-        try:
-            result = await _arc_native().relay_transfer_authorization(
-                from_address=p.from_address, to_address=p.to_address, value=p.value,
-                valid_after=p.valid_after, valid_before=p.valid_before, nonce=p.nonce, signature=p.signature,
-            )
-        except Exception as exc:
-            logger.warning("creator video payment relay failed: %s", exc)
-            v.status, v.error = "failed", "payment failed"
-            await db.commit()
-            raise HTTPException(402, "The payment didn't go through. Check your USDC balance and try again.")
-
-        v.payment_tx, v.status = result.tx_hash, "queued"
-        db.add(ArcTransfer(from_address=p.from_address.lower(), to_address=p.to_address.lower(),
-                           amount_usdc=price, tx_hash=result.tx_hash))
-        await db.commit()
     background.add_task(run_video, v.id)
     return _video_out(v)
 
@@ -611,16 +653,16 @@ async def get_video(video_id: int, authorization: Optional[str] = Header(default
 def _failure_message(quality: str) -> str:
     if sc.kind(quality) == "swap":
         return ("We couldn't make this video. It works best when the person you replace is clearly in view. "
-                "Your payment will be refunded.")
+                "You weren't charged.")
     if sc.kind(quality) == "mimic":
         return ("We couldn't make this video. It works best with one person in full view in the video, and a clear "
-                "full-body character photo. Your payment will be refunded.")
-    return "We couldn't make this video. Your payment will be refunded."
+                "full-body character photo. You weren't charged.")
+    return "We couldn't make this video. You weren't charged."
 
 
 async def run_video(video_id: int) -> None:
-    # ponytail: tarefa em processo (workers=1 no Railway); restart no meio deixa o vídeo parado em
-    # voice/video com refund_due para reembolso manual. Fila Redis quando houver >1 worker.
+    # ponytail: tarefa em processo (workers=1 no Railway); restart no meio deixa o vídeo parado em voice/video,
+    # sem cobrança (a assinatura vence sozinha). Fila Redis quando houver >1 worker.
     async with _dbmod.SessionLocal() as db:
         v = await db.get(CreatorVideo, video_id)
         c = await db.get(SyntheticCreator, v.creator_id)
@@ -652,11 +694,18 @@ async def run_video(video_id: int) -> None:
                                 on_step=on_step)
         except Exception as exc:
             logger.warning("creator video %s failed: %s: %s", v.id, type(exc).__name__, exc)
-            # Já pago: marca para reembolso manual em vez de sumir com o dinheiro.
-            v.status, v.error, v.refund_due = "failed", _failure_message(v.quality), True
+            # Nada foi cobrado: a cobrança só vem depois do vídeo pronto.
+            v.status, v.error, v.payment_signature = "failed", _failure_message(v.quality), None
             await db.commit()
             return
-        v.status, v.video_key = "done", key
+        v.status, v.video_key = "charging", key
+        await db.commit()
+        if await _settle_payment(db, v):
+            v.status = "done"
+        else:
+            v.status, v.error, v.video_key, v.payment_signature = (
+                "failed", "We made your video but couldn't charge your wallet, so it wasn't delivered. "
+                "You weren't charged. Check your USDC balance and try again.", None, None)
         await db.commit()
         v.thumb_key = await _make_thumb(v)
         await db.commit()

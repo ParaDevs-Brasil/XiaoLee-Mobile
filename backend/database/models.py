@@ -445,8 +445,10 @@ class SyntheticCreator(Base):
 
 
 class CreatorVideo(Base):
-    """Vídeo falado de uma persona. Gravado ANTES do relay do pagamento (intent log; `payment_nonce` único
-    = anti-replay). status: paying → queued → voice → video → done | failed (`refund_due` se já pago)."""
+    """Vídeo falado de uma persona. Gravado ANTES de qualquer cobrança (intent log; `payment_nonce` único = anti-replay).
+    O usuário assina a autorização EIP-3009 no pedido; o backend a guarda (`payment_signature`...) e só a envia depois
+    que o vídeo está pronto (`charging`). Falhou antes disso = nada cobrado. status: queued → voice → video →
+    charging → done | failed. `refund_due` é legado (vídeos antigos, cobrados antes de gerar)."""
     __tablename__ = 'creator_videos'
 
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
@@ -459,7 +461,14 @@ class CreatorVideo(Base):
     payment_from: Mapped[str] = mapped_column(String(64))
     payment_nonce: Mapped[str] = mapped_column(String(80), unique=True)
     payment_tx: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    status: Mapped[str] = mapped_column(String(20), default='paying', index=True)
+    # Autorização assinada pelo usuário, enviada só após o vídeo ficar pronto. Vale para este valor, este destino e
+    # este nonce, uma vez; vazar não desvia nada. Zerada (None) depois de usada.
+    payment_signature: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    payment_to: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    payment_value: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    payment_valid_after: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    payment_valid_before: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default='queued', index=True)
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     refund_due: Mapped[bool] = mapped_column(Boolean, default=False)
     video_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

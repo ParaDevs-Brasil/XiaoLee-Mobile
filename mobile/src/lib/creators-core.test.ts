@@ -46,5 +46,5 @@ test('the video kind comes from the quality key', () => {
 });
 
 test('a video in progress moves paid, making, ready', () => {
-  assert.deepEqual(['paying', 'queued', 'voice', 'video', 'done'].map(videoStage), [0, 0, 1, 1, 2]);
+  assert.deepEqual(['paying', 'queued', 'voice', 'video', 'charging', 'done'].map(videoStage), [0, 0, 1, 1, 1, 2]);
 });
