@@ -116,6 +116,10 @@ export interface MyProfile {
   social_links: Record<string, string>;
   interest_profile: string[];
   onboarded: boolean;
+  /** Saldo de pontos das campanhas de pontos. */
+  points: number;
+  /** Só os donos criam campanhas de pontos (o backend decide pelo id do usuário). */
+  can_create_points_campaigns: boolean;
 }
 
 export interface ProfileUpdateRequest {

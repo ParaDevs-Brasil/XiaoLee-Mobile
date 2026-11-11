@@ -95,6 +95,10 @@ class Settings:
     campaign_allowed_tokens: str = os.getenv("CAMPAIGN_ALLOWED_TOKENS", "USDC")
     # Só com ARC_SANDBOX=false: lista (handle ou twitter_user_id, separados por vírgula) de quem pode criar.
     # Vazia = sem restrição; na mainnet, preencher no canário.
+    # Campanhas de PONTOS (sem dinheiro): só quem está aqui cria. Lista de ids de usuário (o `twitter_user_id` verificado no
+    # login, ex.: privy_did:privy:...), não de carteiras: o endereço de uma carteira é público e `/auth/wallet` não exige
+    # assinatura, então quem o vinculasse à própria conta passaria por dono.
+    campaign_points_admins: str = os.getenv("CAMPAIGN_POINTS_ADMINS", "")
     campaign_creator_allowlist: str = os.getenv("CAMPAIGN_CREATOR_ALLOWLIST", "")
     # Pagamentos de campanha (só valem com ARC_SANDBOX=false): kill switch e teto diário global em USDC.
     payouts_enabled: bool = os.getenv("PAYOUTS_ENABLED", "true").lower() == "true"

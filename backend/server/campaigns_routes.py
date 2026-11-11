@@ -692,6 +692,14 @@ class ProfileUpdate(BaseModel):
     interest_profile: Optional[list[str]] = None
 
 
+async def _profile_out(db: AsyncSession, user: User) -> dict:
+    return {
+        **_profile_dict(user),
+        "points": await points_balance(db, user.id),
+        "can_create_points_campaigns": can_create_points_campaigns(user),
+    }
+
+
 def _profile_dict(user: User) -> dict:
     interests = json.loads(user.interest_profile) if user.interest_profile else []
     return {
@@ -712,7 +720,7 @@ async def get_my_profile(
 ):
     user = await _resolve_user(db, authorization, strict=True)
     await db.commit()
-    return _profile_dict(user)
+    return await _profile_out(db, user)
 
 
 @router.patch("/user/me/profile")
@@ -736,7 +744,7 @@ async def update_my_profile(
             raise HTTPException(status_code=422, detail=f"interesses inválidos: {invalid}; use {sorted(INTERESTS)}")
         user.interest_profile = json.dumps(list(dict.fromkeys(interests)))
     await db.commit()
-    return _profile_dict(user)
+    return await _profile_out(db, user)
 
 
 # ---------------------------------------------------------------------------
@@ -1100,8 +1108,75 @@ async def _require_creator_funds(db: AsyncSession, user: User, pool: float) -> N
         )
 
 
+POINTS = "POINTS"
+MAX_POINTS_REWARD = 1_000_000
+
+
+def _is_points(token: Optional[str]) -> bool:
+    return (token or "").strip().upper() == POINTS
+
+
+def can_create_points_campaigns(user: User) -> bool:
+    """Só os donos (ids em CAMPAIGN_POINTS_ADMINS). Vale o id verificado no login, nunca a carteira (ver settings)."""
+    admins = {a.strip().lower() for a in settings.campaign_points_admins.split(",") if a.strip()}
+    return str(user.twitter_user_id).lower() in admins
+
+
+def _validate_points_campaign(payload: CreateCampaignRequest) -> float:
+    """Pontos não custam dinheiro: sem pool nem saldo, só valores sensatos. Devolve o total de pontos em jogo."""
+    import math
+
+    reward, people = payload.reward_per_participant, payload.max_participants
+    if not (isinstance(reward, (int, float)) and math.isfinite(reward) and 0 < reward <= MAX_POINTS_REWARD):
+        raise HTTPException(status_code=400, detail=f"Os pontos por participante precisam estar entre 0 e {MAX_POINTS_REWARD:,}.")
+    if not 1 <= people <= settings.campaign_max_participants:
+        raise HTTPException(status_code=400, detail=f"O máximo de participantes precisa estar entre 1 e {settings.campaign_max_participants}.")
+    return reward * people
+
+
+async def _award_points(db: AsyncSession, campaign: CampaignModel, participant: CampaignParticipant) -> float:
+    """Pontos entram direto no saldo (status `paid`), sem resgate: não há carteira nem transferência. `paid_at` fica
+    vazio de propósito: ele marca payout on-chain e entra no teto diário de dinheiro."""
+    points = float(campaign.reward_per_participant)
+    participant.status = "paid"
+    participant.tasks_verified_at = participant.tasks_verified_at or datetime.now(timezone.utc)
+    participant.claim_receipt_id = f"points-{uuid.uuid4().hex[:12]}"
+    db.add(
+        NotificationEvent(
+            user_id=participant.user_id,
+            channel="in_app",
+            title=f"You earned points: {campaign.name}",
+            body=f"+{points:g} points from '{campaign.name}'.",
+            status="pending",
+            related_signature=participant.claim_receipt_id,
+            metadata_json=json.dumps({"campaign_id": campaign.id, "points": points}),
+        )
+    )
+    return points
+
+
+async def points_balance(db: AsyncSession, user_id: int) -> float:
+    total = await db.execute(
+        select(func.coalesce(func.sum(CampaignModel.reward_per_participant), 0))
+        .select_from(CampaignParticipant)
+        .join(CampaignModel, CampaignModel.id == CampaignParticipant.campaign_id)
+        .where(
+            CampaignParticipant.user_id == user_id,
+            CampaignParticipant.status == "paid",
+            func.upper(CampaignModel.reward_token) == POINTS,
+        )
+    )
+    return float(total.scalar() or 0)
+
+
 async def create_campaign_for_user(db: AsyncSession, user: User, payload: CreateCampaignRequest) -> dict:
     """Cria a campanha para um usuário já resolvido — caminho único do HTTP e do chat."""
+    if _is_points(payload.reward_token):
+        if not can_create_points_campaigns(user):
+            raise HTTPException(status_code=403, detail="Points campaigns are limited to Xiaolee admins.")
+        pool = _validate_points_campaign(payload)
+        payload = payload.model_copy(update={"reward_token": POINTS})
+        return await _save_campaign(db, user, payload, pool)
     allowlist = {h.strip().lower().lstrip("@") for h in settings.campaign_creator_allowlist.split(",") if h.strip()}
     if not settings.arc_sandbox and allowlist:
         who = {str(user.twitter_user_id).lower(), str(user.twitter_handle or "").lower().lstrip("@")}
@@ -1110,7 +1185,10 @@ async def create_campaign_for_user(db: AsyncSession, user: User, payload: Create
     pool = _validate_campaign_limits(payload)
     if settings.campaign_require_funds:
         await _require_creator_funds(db, user, pool)
+    return await _save_campaign(db, user, payload, pool)
 
+
+async def _save_campaign(db: AsyncSession, user: User, payload: CreateCampaignRequest, pool: float) -> dict:
     new_campaign = CampaignModel(
         creator_twitter_user_id=user.twitter_user_id,
         name=payload.title,
@@ -1253,7 +1331,8 @@ async def verify_tasks(
         return {"success": False, "message": "You need to join this campaign first"}
 
     if participant.status in {"tasks_verified", "paid"}:
-        return {"success": True, "message": "Tasks already verified! You can now claim your reward.", "all_tasks_completed": True}
+        done = "You already earned your points." if _is_points(campaign.reward_token) else "You can now claim your reward."
+        return {"success": True, "message": f"Tasks already verified! {done}", "all_tasks_completed": True}
 
     # SEC-006: real task verification per campaign type
     from server.integrations.campaign_verifier import verify_trading, verify_referral
@@ -1284,6 +1363,12 @@ async def verify_tasks(
             reason += " The campaign creator can also approve your participation."
         return {"success": False, "message": reason, "all_tasks_completed": False}
 
+    if _is_points(campaign.reward_token):
+        points = await _award_points(db, campaign, participant)
+        await db.commit()
+        record_campaign_event("verify")
+        return {"success": True, "message": f"All tasks verified! You earned {points:g} points.",
+                "all_tasks_completed": True, "points": points}
     participant.status = "tasks_verified"
     participant.tasks_verified_at = datetime.now(timezone.utc)
     await db.commit()
@@ -1365,7 +1450,7 @@ async def approve_campaign_participant(
     authorization: Optional[str] = Header(default=None),
 ):
     """O criador confirma que o participante cumpriu as tarefas; libera o resgate (a carteira só é conhecida no claim)."""
-    await _creator_campaign(db, authorization, campaign_id)
+    _, campaign = await _creator_campaign(db, authorization, campaign_id)
     participant = (
         await db.execute(
             select(CampaignParticipant).where(
@@ -1376,8 +1461,11 @@ async def approve_campaign_participant(
     if not participant:
         raise HTTPException(status_code=404, detail="Participant not found in this campaign.")
     if participant.status == "enrolled":
-        participant.status = "tasks_verified"
-        participant.tasks_verified_at = datetime.now(timezone.utc)
+        if _is_points(campaign.reward_token):
+            await _award_points(db, campaign, participant)
+        else:
+            participant.status = "tasks_verified"
+            participant.tasks_verified_at = datetime.now(timezone.utc)
         await db.commit()
         record_campaign_event("verify")
     return {"success": True, "status": participant.status}

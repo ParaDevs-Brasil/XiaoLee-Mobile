@@ -85,6 +85,8 @@ const EMPTY_PROFILE: MyProfile = {
   social_links: {},
   interest_profile: [],
   onboarded: false,
+  points: 0,
+  can_create_points_campaigns: false,
 };
 
 type Busy = 'none' | ShareChannel | 'more';

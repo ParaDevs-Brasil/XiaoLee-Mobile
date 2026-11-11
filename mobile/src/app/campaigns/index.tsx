@@ -32,7 +32,7 @@ import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useBackendData } from '@/hooks/use-backend-data';
 import { useSession } from '@/hooks/use-session';
 import { ARC_NETWORK } from '@/lib/arc-network';
-import { formatTokenAmount } from '@/lib/format';
+import { formatReward } from '@/lib/format';
 
 /**
  * Tela de Campaigns — porta de `frontend/src/pages/CampanhasNew.tsx`.
@@ -503,7 +503,7 @@ export function ParticipationRow({ item }: { item: UserCampaignParticipation }) 
         </View>
       </View>
       <Text style={styles.rowSubtitle}>
-        {formatTokenAmount(item.reward_per_participant)} {item.reward_token}
+        {formatReward(item.reward_per_participant, item.reward_token)}
       </Text>
     </View>
   );
@@ -519,7 +519,7 @@ export function RewardRow({ item }: { item: UserCampaignParticipation }) {
           {item.name}
         </Text>
         <Text style={styles.rewardAmount}>
-          {formatTokenAmount(item.reward_per_participant)} {item.reward_token}
+          {formatReward(item.reward_per_participant, item.reward_token)}
         </Text>
       </View>
       {/* Nem toda participação antiga tem recibo — a coluna existe desde antes
