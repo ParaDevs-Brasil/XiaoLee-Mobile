@@ -135,20 +135,23 @@ você paga só o custo da fal e da ElevenLabs:
 
 | Tipo | Qualidade | Custo fal por s (US$) | Custo em 5 / 10 / 15 s | Preço ao usuário 5 / 10 / 15 s |
 |---|---|---|---|---|
-| Talk | Standard | 0,080 | 0,40 / 0,80 / 1,20 | 0,80 / 1,60 / 2,40 |
+| Talk | Standard | 0,0562 | 0,28 / 0,56 / 0,84 | 0,57 / 1,13 / 1,69 |
 | Talk | Pro | 0,140 | 0,70 / 1,40 / 2,10 | 1,40 / 2,80 / 4,20 |
-| Talk | Pro+ | 0,303 | 1,52 / 3,03 / 4,55 | 3,04 / 6,07 / 9,11 |
-| Mimic | Standard | 0,070 | 0,35 / 0,70 / 1,05 | 0,70 / 1,40 / 2,10 |
-| Mimic | Plus | 0,126 | 0,63 / 1,26 / 1,89 | 1,26 / 2,52 / 3,78 |
-| Mimic | Pro | 0,168 | 0,84 / 1,68 / 2,52 | 1,68 / 3,36 / 5,04 |
-| Replace | Plus | 0,126 | 0,63 / 1,26 / 1,89 | 1,26 / 2,52 / 3,78 |
-| Replace | Pro | 0,168 | 0,84 / 1,68 / 2,52 | 1,68 / 3,36 / 5,04 |
+| Talk | Pro+ | 0,160 | 0,80 / 1,60 / 2,40 | 1,60 / 3,20 / 4,80 |
+| Mimic | Standard | 0,100 | 0,50 / 1,00 / 1,50 | 1,00 / 2,00 / 3,00 |
+| Mimic | Plus | 0,200 | 1,00 / 2,00 / 3,00 | 2,00 / 4,00 / 6,00 |
+| Mimic | Pro | 0,400 | 2,00 / 4,00 / 6,00 | 4,00 / 8,00 / 12,00 |
+| Replace | Standard | 0,100 | 0,50 / 1,00 / 1,50 | 1,00 / 2,00 / 3,00 |
+| Replace | Plus | 0,200 | 1,00 / 2,00 / 3,00 | 2,00 / 4,00 / 6,00 |
+| Replace | Pro | 0,450 | 2,25 / 4,50 / 6,75 | 4,50 / 9,00 / 13,50 |
 
-**Roteiro mínimo de validação** (tudo com 5 s, menos de US$ 3 no total):
+Modelos: Talk = Kling Avatar v2 Standard / OmniHuman 1.5 1080p / H3 Max lip-sync 1080p. Mimic = Wan 3.0 em 480p / 720p / 1080p. Replace = Wan 3.0 480p / Wan 3.0 720p / H3 Max Recast 1080p. No Mimic e no Replace-Wan a fal cobra também os segundos do vídeo de referência, por isso o custo por segundo é o dobro da tarifa da página (480p 0,05; 720p 0,10; 1080p 0,20). Chaves da API: `swap` = Standard, `swap_plus` = Plus, `swap_pro` = Pro.
 
-1. Talk Standard (US$ 0,40): estados `queued → voice → video → done` e o vídeo pronto.
-2. Mimic Standard (US$ 0,35): upload do vídeo de movimento e estado final.
-3. Replace Plus (US$ 0,63; a prévia é grátis e limitada): prévia, aprovação e vídeo final.
+**Roteiro mínimo de validação** (tudo com 5 s, cerca de US$ 1,30 no total):
+
+1. Talk Standard (US$ 0,28): estados `queued → voice → video → done` e o vídeo pronto.
+2. Mimic Standard (US$ 0,50): upload do vídeo de movimento e estado final.
+3. Replace Standard (US$ 0,50; a prévia é grátis e limitada): prévia, aprovação e vídeo final.
 4. Um caso de falha (ex.: foto de pessoa real no Replace): mensagem e reembolso.
 
 O fluxo de pagamento de verdade (assinatura, saldo, relay) **não** é exercitado com o interruptor ligado. Quem valida

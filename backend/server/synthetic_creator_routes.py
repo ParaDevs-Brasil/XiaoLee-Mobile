@@ -553,9 +553,6 @@ async def get_video(video_id: int, authorization: Optional[str] = Header(default
 
 
 def _failure_message(quality: str) -> str:
-    if quality == "pro_seedance":
-        # A fal recusa no Seedance pessoa real e personagem com direitos; regra do provedor, não contornamos.
-        return "Pro+ doesn't accept real people or known characters. Try Standard or Pro. Your payment will be refunded."
     if sc.kind(quality) == "swap":
         return ("We couldn't make this video. It works best when the person you replace is clearly in view. "
                 "Your payment will be refunded.")
