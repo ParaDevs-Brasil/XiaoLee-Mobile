@@ -3,7 +3,7 @@ synthetic_creators.py — vídeo falado de uma persona: roteiro → voz (ElevenL
 
 Medido em 2026-10-18 com scripts/creator_cost_probe.py (ver docs/ARQUITETURA_CRIADORES_SINTETICOS.md).
 Preço = custo do provedor x2, cobrado em USDC no Arc antes de gastar na fal (ver synthetic_creator_routes.py).
-Persona pode ser o próprio rosto, personagem ou meme (termo de direitos aceito no app). O Seedance 2.0 na fal\nrecusa pessoa real e IP de terceiros — regra do provedor, não contornar; Fabric/OmniHuman aceitam.
+Persona pode ser o próprio rosto, personagem ou meme (termo de direitos aceito no app). O Seedance 2.0 (retirado do app) recusa pessoa real e IP de terceiros — regra do provedor, não contornar.
 """
 
 from __future__ import annotations
@@ -26,29 +26,40 @@ from server.settings import settings
 logger = logging.getLogger(__name__)
 
 PRICE_MULTIPLIER = 2
+WAN_MODEL = "alibaba/wan-3.0/reference-to-video"
 DURATIONS_S = (5, 10, 15)
 WORDS_PER_S = 2.6  # fala natural; o roteiro é cortado nesse teto para caber na duração paga
 
 # quality -> modelo na fal, custo por segundo (US$, página do modelo em 2026-10-20) e campos extras.
 QUALITIES: dict[str, dict] = {
-    "standard": {"label": "Standard", "hint": "480p", "model": "veed/fabric-1.0", "usd_per_s": 0.08,
-                 "extra": {"resolution": "480p"}},
-    "pro": {"label": "Pro", "hint": "Higher quality", "model": "fal-ai/bytedance/omnihuman", "usd_per_s": 0.14, "extra": {}},
-    "pro_seedance": {"label": "Pro+", "hint": "720p. No real people or known characters", "model": "bytedance/seedance-2.0/reference-to-video",
-                     "usd_per_s": 0.3034, "extra": {"resolution": "720p", "aspect_ratio": "9:16"}},
-    # Mimic (motion swap): o personagem da foto repete o movimento de um vídeo de referência. Sem voz sintética —
-    # o áudio do vídeo de referência é removido antes de ir à fal. Preços da página da fal em 2026-10-22.
-    "mimic": {"label": "Standard", "hint": "Lowest price", "kind": "mimic", "usd_per_s": 0.07, "extra": {},
-              "model": "fal-ai/kling-video/v2.6/standard/motion-control"},
-    "mimic_v3": {"label": "Plus", "hint": "Newer model", "kind": "mimic", "usd_per_s": 0.126, "extra": {},
-                 "model": "fal-ai/kling-video/v3/standard/motion-control"},
-    # Swap: o Kling O3 EDITA o vídeo do usuário (cena e pessoas ao redor ficam as do vídeo) trocando só o personagem.
-    "swap": {"label": "Plus", "hint": "Standard quality", "kind": "swap", "usd_per_s": 0.126, "extra": {},
-             "model": "fal-ai/kling-video/o3/standard/video-to-video/edit"},
-    "swap_pro": {"label": "Pro", "hint": "Top quality", "kind": "swap", "usd_per_s": 0.168, "extra": {},
-                 "model": "fal-ai/kling-video/o3/pro/video-to-video/edit"},
-    "mimic_v3_pro": {"label": "Pro", "hint": "Top quality", "kind": "mimic", "usd_per_s": 0.168, "extra": {},
-                     "model": "fal-ai/kling-video/v3/pro/motion-control"},
+    # Talk (imagem + voz -> vídeo falado). Standard: Kling Avatar v2 Standard (US$0,0562/s; humanos, animais, cartoons).
+    # Pro: OmniHuman 1.5, 1080p (US$0,14/s, áudio até 30 s). Preços da página da fal em 2026-11-10; sem geração real nossa.
+    "standard": {"label": "Standard", "hint": "Lowest price", "model": "fal-ai/kling-video/ai-avatar/v2/standard",
+                 "usd_per_s": 0.0562, "extra": {}},
+    "pro": {"label": "Pro", "hint": "1080p", "model": "fal-ai/bytedance/omnihuman/v1.5", "usd_per_s": 0.14,
+            "extra": {"resolution": "1080p"}},
+    # Pro+ (chave `pro_seedance` mantida p/ o app): H3 Max lip-sync, 1080p, US$0,16/s (página da fal, 2026-11-10). Substitui o
+    # Seedance 2.0, que recusa rosto real. Só sincroniza a boca; o vídeo sai com a duração do áudio (mín. 5 s).
+    "pro_seedance": {"label": "Pro+", "hint": "1080p", "model": "minimax/h3-max/lip-sync/image-to-video",
+                     "usd_per_s": 0.16, "extra": {"resolution": "1080P"}, "pad_audio": True},
+    # Mimic (motion swap) e Swap: motor padrão = Wan 3.0 reference-to-video (aprovado em teste real, 2026-11-10; relatório em
+    # reports/). A fal cobra a duração do vídeo de ENTRADA além da saída, então o custo por segundo pago é 2 x a tarifa
+    # da página (US$0,05 em 480p, US$0,10 em 720p). Os nomes das chaves seguem os do app; o app mostra label e hint.
+    "mimic": {"label": "Standard", "hint": "480p", "kind": "mimic", "engine": "wan", "usd_per_s": 0.10,
+              "extra": {"resolution": "480p"}, "model": WAN_MODEL},
+    "mimic_v3": {"label": "Plus", "hint": "720p", "kind": "mimic", "engine": "wan", "usd_per_s": 0.20,
+                 "extra": {"resolution": "720p"}, "model": WAN_MODEL},
+    "mimic_v3_pro": {"label": "Pro", "hint": "1080p", "kind": "mimic", "engine": "wan", "usd_per_s": 0.40,
+                     "extra": {"resolution": "1080p"}, "model": WAN_MODEL},
+    # Swap: a pessoa principal do vídeo vira o personagem; a cena do vídeo é recriada (Wan) ou editada (Recast).
+    "swap": {"label": "Standard", "hint": "480p", "kind": "swap", "engine": "wan", "usd_per_s": 0.10,
+             "extra": {"resolution": "480p"}, "model": WAN_MODEL},
+    "swap_plus": {"label": "Plus", "hint": "720p", "kind": "swap", "engine": "wan", "usd_per_s": 0.20,
+                  "extra": {"resolution": "720p"}, "model": WAN_MODEL},
+    # Pro: H3 Max Recast EDITA o vídeo real (cena, câmera, cortes e áudio ficam), troca até 4 pessoas por foto, 1080p,
+    # US$0,45/s (página da fal, 2026-11-10). Ainda sem geração real nossa; só pessoas (animal não confirmado).
+    "swap_pro": {"label": "Pro", "hint": "1080p", "kind": "swap", "engine": "recast", "usd_per_s": 0.45,
+                 "extra": {"resolution": "1080P", "enhance_realism": True}, "model": "minimax/h3-max/recast"},
 }
 
 AUDIO_MODES = ("none", "original", "voice")  # mimic: sem som | som do vídeo de referência | narração com a voz da persona
@@ -157,13 +168,15 @@ async def _tts(http: httpx.AsyncClient, voice_id: str, text: str) -> bytes:
     return r.content
 
 
-async def _trim_audio(audio: bytes, duration_s: int) -> bytes:
-    """Corta a voz na duração paga: Fabric/OmniHuman geram vídeo do tamanho do áudio e cobram por segundo."""
+async def _trim_audio(audio: bytes, duration_s: int, pad: bool = False) -> bytes:
+    """Corta a voz na duração paga: os modelos de avatar geram vídeo do tamanho do áudio e cobram por segundo.
+    `pad`: completa com silêncio até a duração paga (o H3 Max exige áudio de pelo menos 5 s)."""
     with tempfile.TemporaryDirectory() as tmp:
         src, dst = os.path.join(tmp, "in.mp3"), os.path.join(tmp, "out.mp3")
         with open(src, "wb") as f:
             f.write(audio)
-        await clipper.run_ffmpeg(["-i", src, "-t", str(duration_s), "-c:a", "libmp3lame", "-q:a", "3", "-y", dst],
+        af = ["-af", f"apad=whole_dur={duration_s}"] if pad else []
+        await clipper.run_ffmpeg(["-i", src, *af, "-t", str(duration_s), "-c:a", "libmp3lame", "-q:a", "3", "-y", dst],
                                  src, 60)
         with open(dst, "rb") as f:
             return f.read()
@@ -186,6 +199,47 @@ def mimic_input(image_url: str, video_url: str, prompt: str) -> dict:
             "prompt": prompt or MIMIC_DEFAULT_PROMPT}
 
 
+WAN_ASPECTS = {"16:9": 16 / 9, "4:3": 4 / 3, "1:1": 1.0, "3:4": 3 / 4, "9:16": 9 / 16}
+WAN_MIMIC_PROMPT = (
+    "Photorealistic social video. The character from Image 1, keeping its face, hair, clothes and identity exactly as in "
+    "Image 1, performs the same movement, gestures, facial expressions and timing as the person in Video 1, frame by frame. "
+    "{scene} Nothing from the original person's face or clothes remains."
+)
+WAN_SWAP_PROMPT = (
+    "Photorealistic social video recreating the scene of Video 1: same place, background, people around, camera, lighting "
+    "and timing. The main person in Video 1 (the one most in focus) is replaced by the character from Image 1, who keeps "
+    "its face, hair, clothes and identity exactly as in Image 1 and copies that person's movement, gestures, facial "
+    "expressions and speech timing frame by frame. Nothing from the original person's face or clothes remains."
+)
+
+
+def wan_aspect(width: int, height: int) -> str:
+    return min(WAN_ASPECTS, key=lambda k: abs(WAN_ASPECTS[k] - width / height))
+
+
+def wan_input(quality: str, prompt: str, image_urls: list[str], video_url: str, duration_s: int, aspect: str) -> dict:
+    # audio=False: o som original volta por ffmpeg (mux_audio), como nos outros motores.
+    return {"prompt": prompt, "reference_image_urls": image_urls, "reference_video_urls": [video_url], "duration": duration_s,
+            "aspect_ratio": aspect, "audio": False, "enable_prompt_expansion": True, "enable_safety_checker": True,
+            **QUALITIES[quality]["extra"]}
+
+
+def wan_mimic_prompt(scene: str = "") -> str:
+    scene = scene.strip()
+    return WAN_MIMIC_PROMPT.format(scene=f"Scene: {scene}." if scene else "It stays in the setting shown in Image 1.")
+
+
+def recast_prompt(extra: str = "") -> str:
+    extra = extra.strip()
+    return "Replace the main person in the video (the one most in focus) with the person in the reference photo." + (
+        f" Also: {extra}" if extra else "")
+
+
+def wan_swap_prompt(extra: str = "") -> str:
+    extra = extra.strip()
+    return WAN_SWAP_PROMPT + (f" Also: {extra}" if extra else "")
+
+
 async def probe_duration(url: str) -> float:
     """Duração do vídeo de referência (ffprobe lê pela URL pré-assinada, sem baixar tudo)."""
     def _run():
@@ -203,12 +257,6 @@ async def probe_duration(url: str) -> float:
 
 def fal_input(quality: str, image_url: str, audio_url: str, duration_s: int) -> dict:
     q = QUALITIES[quality]
-    if quality == "pro_seedance":
-        return {
-            "prompt": ("The person in @Image1 talks directly to the camera, saying the words in @Audio1 with "
-                       "accurate lip-sync, natural gestures, vertical social video."),
-            "image_urls": [image_url], "audio_urls": [audio_url], "duration": str(duration_s), **q["extra"],
-        }
     return {"image_url": image_url, "audio_url": audio_url, **q["extra"]}
 
 
@@ -249,7 +297,7 @@ async def render(*, quality: str, voice_id: str, script: str, duration_s: int,
 
     async with httpx.AsyncClient(timeout=120) as http:
         await step("voice")
-        audio = await _trim_audio(await _tts(http, voice_id, script), duration_s)
+        audio = await _trim_audio(await _tts(http, voice_id, script), duration_s, pad=QUALITIES[quality].get("pad_audio", False))
         await step("video")
         image = (await http.get(media_storage.presign_get(ref_image_key))).raise_for_status().content
         image_url = await _fal_upload(http, image, ref_content_type, "ref" + _ext(ref_content_type))
@@ -319,7 +367,12 @@ async def render_mimic(*, quality: str, prompt: str, duration_s: int, ref_image_
         cut, sound = await _motion_and_sound(http, motion, duration_s, audio, voice_id, script, start_s)
         image_url = await _fal_upload(http, image, ref_content_type, "ref" + _ext(ref_content_type))
         video_url = await _fal_upload(http, cut, "video/mp4", "motion.mp4")
-        url = await _fal_video(http, QUALITIES[quality]["model"], mimic_input(image_url, video_url, prompt))
+        if QUALITIES[quality].get("engine") == "wan":
+            width, height = await probe_size(video_url)
+            payload = wan_input(quality, wan_mimic_prompt(prompt), [image_url], video_url, duration_s, wan_aspect(width, height))
+        else:
+            payload = mimic_input(image_url, video_url, prompt)
+        url = await _fal_video(http, QUALITIES[quality]["model"], payload)
         video = (await http.get(url)).raise_for_status().content
     if sound:
         video = await mux_audio(video, sound)
@@ -520,15 +573,28 @@ async def render_swap(*, quality: str, instructions: str, duration_s: int, ref_i
     image = await read_object(ref_image_key)
     frame = await read_object(frame_key)
     cut = await _trim_with_audio(source, duration_s, start_s)
+    engine = QUALITIES[quality].get("engine")
     async with httpx.AsyncClient(timeout=180) as http:
-        video_url = await _fal_upload(http, cut, "video/mp4", "scene.mp4")
-        char_url = await _fal_upload(http, image, ref_content_type, "char" + _ext(ref_content_type))
-        frame_url = await _fal_upload(http, frame, "image/png", "frame.png")
-        angles = await _angles(http, char_url)
-        result = await _fal_run(http, QUALITIES[quality]["model"], {
-            "prompt": swap_prompt(instructions), "video_url": video_url, "image_urls": [frame_url],
-            "elements": [{"frontal_image_url": char_url, "reference_image_urls": angles}],
-        })
+        if engine == "recast":
+            # Recast: recebe o trecho COM áudio (ele o mantém) e a foto; uma foto = a pessoa principal do vídeo.
+            video_url = await _fal_upload(http, cut, "video/mp4", "scene.mp4")
+            char_url = await _fal_upload(http, image, ref_content_type, "char" + _ext(ref_content_type))
+            payload = {"video_url": video_url, "reference_image_urls": [char_url], "prompt": recast_prompt(instructions),
+                       **QUALITIES[quality]["extra"]}
+        elif engine == "wan":
+            # Wan: recebe o trecho SEM áudio e só o personagem (o quadro da prévia serve de trava/aprovação); o som volta abaixo.
+            video_url = await _fal_upload(http, await _strip_audio(cut), "video/mp4", "scene.mp4")
+            char_url = await _fal_upload(http, image, ref_content_type, "char" + _ext(ref_content_type))
+            width, height = await probe_size(video_url)
+            payload = wan_input(quality, wan_swap_prompt(instructions), [char_url], video_url, duration_s, wan_aspect(width, height))
+        else:
+            video_url = await _fal_upload(http, cut, "video/mp4", "scene.mp4")
+            char_url = await _fal_upload(http, image, ref_content_type, "char" + _ext(ref_content_type))
+            frame_url = await _fal_upload(http, frame, "image/png", "frame.png")
+            angles = await _angles(http, char_url)
+            payload = {"prompt": swap_prompt(instructions), "video_url": video_url, "image_urls": [frame_url],
+                       "elements": [{"frontal_image_url": char_url, "reference_image_urls": angles}]}
+        result = await _fal_run(http, QUALITIES[quality]["model"], payload)
         url = (result.get("video") or {}).get("url")
         if not url:
             raise RuntimeError(f"fal response without video.url ({str(result.get('detail', list(result)))[:300]})")

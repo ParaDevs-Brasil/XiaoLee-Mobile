@@ -11,9 +11,11 @@ from __future__ import annotations
 import dataclasses
 import importlib
 import os
+import subprocess
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 
+import httpx
 import pytest
 import pytest_asyncio
 from fastapi.testclient import TestClient
@@ -36,20 +38,37 @@ PAYER = "0x" + "a" * 40
 
 
 def test_price_is_cost_x2_rounded_up_to_the_cent():
-    assert sc.price_usdc("standard", 5) == 0.8
+    assert sc.price_usdc("standard", 5) == 0.57 and sc.price_usdc("standard", 15) == 1.69
     assert sc.price_usdc("pro", 5) == 1.4
-    assert sc.price_usdc("pro_seedance", 5) == 3.04
-    assert sc.price_usdc("pro_seedance", 15) == 9.11
+    assert sc.price_usdc("pro_seedance", 5) == 1.6
+    assert sc.price_usdc("pro_seedance", 15) == 4.8
 
 
 def test_script_is_cut_to_the_paid_duration():
     assert len(sc.clip_words("palavra " * 100, 5).split()) == sc.max_words(5) == 13
 
 
-def test_seedance_gets_reference_lists_and_duration():
-    body = sc.fal_input("pro_seedance", "img", "aud", 10)
-    assert body["image_urls"] == ["img"] and body["audio_urls"] == ["aud"] and body["duration"] == "10"
-    assert sc.fal_input("standard", "img", "aud", 5) == {"image_url": "img", "audio_url": "aud", "resolution": "480p"}
+@pytest.mark.asyncio
+async def test_pro_plus_audio_is_padded_to_the_paid_duration_others_are_not(tmp_path):
+    short = tmp_path / "short.mp3"
+    subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-f", "lavfi", "-i", "sine=d=1", "-y", str(short)], check=True)
+
+    def dur(b):
+        f = tmp_path / "o.mp3"
+        f.write_bytes(b)
+        return float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(f)],
+                                    capture_output=True, text=True).stdout)
+
+    assert sc.QUALITIES["pro_seedance"]["pad_audio"] and not sc.QUALITIES["pro"].get("pad_audio")
+    assert dur(await sc._trim_audio(short.read_bytes(), 5, pad=True)) >= 4.9
+    assert dur(await sc._trim_audio(short.read_bytes(), 5)) < 2
+
+
+def test_pro_plus_is_h3_max_lip_sync_1080p():
+    assert sc.QUALITIES["pro_seedance"]["model"] == "minimax/h3-max/lip-sync/image-to-video"
+    assert sc.fal_input("pro_seedance", "img", "aud", 10) == {"image_url": "img", "audio_url": "aud", "resolution": "1080P"}
+    assert sc.fal_input("standard", "img", "aud", 5) == {"image_url": "img", "audio_url": "aud"}
+    assert sc.fal_input("pro", "img", "aud", 5)["resolution"] == "1080p"
 
 
 @pytest_asyncio.fixture
@@ -105,15 +124,15 @@ async def test_pays_then_queues_the_video(db, monkeypatch):
     calls = []
     _relay_ok(monkeypatch, calls)
     r = client.post(f"/v1/creators/{cid}/videos", headers=h,
-                    json={"quality": "standard", "duration_s": 5, "script": "oi " * 50, "payment": _payment(800_000)})
+                    json={"quality": "standard", "duration_s": 5, "script": "oi " * 50, "payment": _payment(570_000)})
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "queued" and r.json()["payment_tx"] == "0xtx"
     assert len(r.json()["script"].split()) == sc.max_words(5)
-    assert calls[0]["value"] == 800_000
-    assert float((await db.execute(select(ArcTransfer))).scalars().one().amount_usdc) == pytest.approx(0.8)
+    assert calls[0]["value"] == 570_000
+    assert float((await db.execute(select(ArcTransfer))).scalars().one().amount_usdc) == pytest.approx(0.57)
 
     again = client.post(f"/v1/creators/{cid}/videos", headers=h,
-                        json={"quality": "standard", "duration_s": 5, "script": "oi", "payment": _payment(800_000)})
+                        json={"quality": "standard", "duration_s": 5, "script": "oi", "payment": _payment(570_000)})
     assert again.status_code == 409
 
 
@@ -122,7 +141,7 @@ async def test_dev_skip_payment_queues_without_relay_but_only_in_dev(db, monkeyp
     cid, h = await _persona(db)
     calls = []
     _relay_ok(monkeypatch, calls)
-    body = {"quality": "standard", "duration_s": 5, "script": "oi", "payment": _payment(800_000)}
+    body = {"quality": "standard", "duration_s": 5, "script": "oi", "payment": _payment(570_000)}
 
     # produção com o interruptor esquecido: ignora e cobra como sempre
     monkeypatch.setattr(routes, "settings", dataclasses.replace(routes.settings, creators_dev_skip_payment=True, environment="production"))
@@ -131,7 +150,7 @@ async def test_dev_skip_payment_queues_without_relay_but_only_in_dev(db, monkeyp
 
     # dev: pula o relay, ainda confere valor e destino, e não registra repasse
     monkeypatch.setattr(routes, "settings", dataclasses.replace(routes.settings, creators_dev_skip_payment=True, environment="dev"))
-    body["payment"] = _payment(800_000, nonce="0x" + "2" * 64)
+    body["payment"] = _payment(570_000, nonce="0x" + "2" * 64)
     r = client.post(f"/v1/creators/{cid}/videos", headers=h, json=body)
     assert r.status_code == 200 and r.json()["status"] == "queued" and r.json()["payment_tx"].startswith("dev-skip-")
     assert len(calls) == 1
@@ -244,9 +263,8 @@ async def test_complete_rejects_and_deletes_an_image_over_the_limit(db, monkeypa
     assert r.status_code == 413 and gone == [c.ref_image_key]
 
 
-def test_seedance_failure_points_to_the_models_that_accept_the_image():
-    assert "Standard or Pro" in routes._failure_message("pro_seedance")
-    assert "refunded" in routes._failure_message("standard")
+def test_failure_messages_promise_a_refund():
+    assert "refunded" in routes._failure_message("pro_seedance") and "refunded" in routes._failure_message("standard")
 
 
 # --- mimic (motion swap) -------------------------------------------------------------------------------------
@@ -254,7 +272,7 @@ def test_seedance_failure_points_to_the_models_that_accept_the_image():
 MOTION = "creators/1/motion/abc123"
 
 
-def _mimic_body(value=700_000, **over):
+def _mimic_body(value=1_000_000, **over):
     return {"quality": "mimic", "duration_s": 5, "payment": _payment(value), "motion_key": MOTION,
             "motion_rights_confirmed": True, **over}
 
@@ -271,9 +289,10 @@ def _motion_ok(monkeypatch, length=12.0):
 
 
 def test_mimic_prices_follow_the_fal_page_x2():
-    assert sc.price_usdc("mimic", 5) == 0.7 and sc.price_usdc("mimic", 15) == 2.1
-    assert sc.price_usdc("mimic_v3", 5) == 1.26
-    assert sc.price_usdc("mimic_v3_pro", 5) == 1.68
+    # Wan 3.0: a fal cobra entrada + saída (US$0,05/s em 480p, 0,10/s em 720p), então 5 s = (5+5) x tarifa x2
+    assert sc.price_usdc("mimic", 5) == 1.0 and sc.price_usdc("mimic", 15) == 3.0
+    assert sc.price_usdc("mimic_v3", 5) == 2.0
+    assert sc.price_usdc("mimic_v3_pro", 5) == 4.0 and sc.QUALITIES["mimic_v3_pro"]["extra"] == {"resolution": "1080p"}
     assert {q["quality"]: q["kind"] for q in sc.pricing()}["mimic_v3"] == "mimic"
     assert sc.kind("standard") == "speech"
 
@@ -292,9 +311,9 @@ async def test_mimic_pays_and_keeps_the_motion_and_the_rights_timestamp(db, monk
     _motion_ok(monkeypatch)
     r = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_mimic_body())
     assert r.status_code == 200, r.text
-    assert r.json()["status"] == "queued" and r.json()["script"] == "" and calls[0]["value"] == 700_000
+    assert r.json()["status"] == "queued" and r.json()["script"] == "" and calls[0]["value"] == 1_000_000
     v = (await db.execute(select(CreatorVideo))).scalars().one()
-    assert v.motion_key == MOTION and v.motion_rights_at is not None and v.model.endswith("v2.6/standard/motion-control")
+    assert v.motion_key == MOTION and v.motion_rights_at is not None and v.model == sc.WAN_MODEL
 
 
 @pytest.mark.asyncio
@@ -350,7 +369,7 @@ async def test_mimic_part_must_fit_after_its_start_and_the_start_is_kept(db, mon
 async def test_speech_still_needs_a_script(db, monkeypatch):
     cid, h = await _persona(db)
     r = client.post(f"/v1/creators/{cid}/videos", headers=h,
-                    json={"quality": "standard", "duration_s": 5, "payment": _payment(800_000)})
+                    json={"quality": "standard", "duration_s": 5, "payment": _payment(570_000)})
     assert r.status_code == 422
 
 
@@ -377,10 +396,10 @@ async def test_mimic_audio_choice_is_saved_and_voice_needs_a_script(db, monkeypa
     r = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_mimic_body(audio="original"))
     assert r.status_code == 200 and r.json()["audio"] == "original"
     no_script = client.post(f"/v1/creators/{cid}/videos", headers=h,
-                            json=_mimic_body(audio="voice", payment=_payment(700_000, nonce="0x" + "2" * 64)))
+                            json=_mimic_body(audio="voice", payment=_payment(1_000_000, nonce="0x" + "2" * 64)))
     assert no_script.status_code == 422
     ok = client.post(f"/v1/creators/{cid}/videos", headers=h,
-                     json=_mimic_body(audio="voice", script="oi " * 50, payment=_payment(700_000, nonce="0x" + "3" * 64)))
+                     json=_mimic_body(audio="voice", script="oi " * 50, payment=_payment(1_000_000, nonce="0x" + "3" * 64)))
     assert ok.status_code == 200 and ok.json()["audio"] == "voice"
     assert len(ok.json()["script"].split()) == sc.max_words(5)        # a narração cabe na duração paga
     bad = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_mimic_body(audio="loud"))
@@ -502,15 +521,88 @@ _real_run_preview = routes.run_preview
 
 
 def _swap_video_body(**over):
-    return {"quality": "swap", "duration_s": 5, "payment": _payment(1_260_000), "motion_key": MOTION,
+    return {"quality": "swap", "duration_s": 5, "payment": _payment(1_000_000), "motion_key": MOTION,
             "motion_rights_confirmed": True, **over}
 
 
-def test_swap_prices_follow_the_o3_edit_rates_x2():
-    assert sc.price_usdc("swap", 5) == 1.26 and sc.price_usdc("swap", 15) == 3.78
-    assert sc.price_usdc("swap_pro", 5) == 1.68 and sc.price_usdc("swap_pro", 15) == 5.04
+def test_swap_prices_follow_the_wan_rates_x2():
+    assert sc.price_usdc("swap", 5) == 1.0 and sc.price_usdc("swap", 15) == 3.0
+    assert sc.price_usdc("swap_plus", 5) == 2.0 and sc.price_usdc("swap_plus", 15) == 6.0
+    assert sc.price_usdc("swap_pro", 5) == 4.5 and sc.price_usdc("swap_pro", 15) == 13.5   # Recast 1080p: 0,45/s x2
     assert {q["quality"]: q["kind"] for q in sc.pricing()}["swap_pro"] == "swap"
-    assert sc.QUALITIES["swap"]["model"].endswith("o3/standard/video-to-video/edit")
+    assert sc.QUALITIES["swap"]["model"] == sc.WAN_MODEL and sc.QUALITIES["swap"]["extra"] == {"resolution": "480p"}
+
+
+def test_wan_input_sends_refs_silent_and_the_closest_aspect():
+    body = sc.wan_input("mimic_v3", "p", ["img"], "vid", 10, sc.wan_aspect(1080, 1920))
+    assert body["reference_image_urls"] == ["img"] and body["reference_video_urls"] == ["vid"]
+    assert body["resolution"] == "720p" and body["aspect_ratio"] == "9:16" and body["duration"] == 10 and body["audio"] is False
+    assert sc.wan_aspect(1920, 1080) == "16:9" and sc.wan_aspect(1000, 1000) == "1:1"
+
+
+def test_wan_prompts_name_the_inputs_and_take_the_users_request():
+    assert "Image 1" in sc.wan_mimic_prompt() and "setting shown in Image 1" in sc.wan_mimic_prompt()
+    assert "Scene: a beach." in sc.wan_mimic_prompt("a beach")
+    assert "Video 1" in sc.wan_swap_prompt() and sc.wan_swap_prompt("make it snow").endswith("Also: make it snow")
+
+
+@pytest.mark.asyncio
+async def test_render_mimic_and_swap_call_wan_with_the_character_and_a_silent_clip(monkeypatch):
+    sent, uploads = [], []
+
+    async def get(self, url, **kw):
+        return httpx.Response(200, content=b"x", request=httpx.Request("GET", url))
+
+    async def upload(http, data, mime, name):
+        uploads.append(name)
+        return f"https://fal/{name}"
+
+    async def video(http, model, payload):
+        sent.append((model, payload))
+        return "https://fal/out.mp4"
+
+    async def noop(*a, **k):
+        return b"a"
+
+    async def size(url):
+        return 1080, 1920
+
+    async def store(*a, **k):
+        return None
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", get)
+    monkeypatch.setattr(sc, "_fal_upload", upload)
+    monkeypatch.setattr(sc, "_fal_video", video)
+    monkeypatch.setattr(sc, "probe_size", size)
+    monkeypatch.setattr(sc, "_motion_and_sound", lambda *a, **k: _async((b"cut", None)))
+    monkeypatch.setattr(sc, "read_object", noop)
+    monkeypatch.setattr(sc, "_trim_with_audio", noop)
+    monkeypatch.setattr(sc, "_strip_audio", noop)
+    monkeypatch.setattr(sc, "_has_audio", lambda v: _async(True))
+    def fal_run(http, model, payload, timeout_s=0):
+        sent.append((model, payload))
+        return _async({"video": {"url": "https://fal/o.mp4"}})
+
+    monkeypatch.setattr(sc, "_fal_run", fal_run)
+    monkeypatch.setattr(sc.media_storage, "presign_get", lambda k: "https://r2/" + k)
+    monkeypatch.setattr(sc.media_storage, "upload_file", store)
+
+    common = dict(duration_s=5, ref_image_key="i", ref_content_type="image/png", motion_key="m", video_key="v")
+    await sc.render_mimic(quality="mimic", prompt="", **common)
+    model, body = sent[0]
+    assert model == sc.WAN_MODEL and body["reference_image_urls"] == ["https://fal/ref.png"] and body["resolution"] == "480p"
+    await sc.render_swap(quality="swap_plus", instructions="", frame_key="f", **common)
+    model, body = sent[1]
+    assert model == sc.WAN_MODEL and body["resolution"] == "720p" and body["reference_video_urls"] == ["https://fal/scene.mp4"]
+    assert body["prompt"] == sc.wan_swap_prompt() and "frame.png" not in uploads
+    await sc.render_swap(quality="swap_pro", instructions="make it snow", frame_key="f", **common)
+    model, body = sent[2]
+    assert model == "minimax/h3-max/recast" and body["resolution"] == "1080P" and body["enhance_realism"] is True
+    assert body["reference_image_urls"] == ["https://fal/char.png"] and body["prompt"].endswith("Also: make it snow")
+
+
+async def _async(value):
+    return value
 
 
 def test_swap_prompt_keeps_the_scene_and_appends_the_users_request():
@@ -541,7 +633,7 @@ async def test_swap_video_needs_a_ready_preview_of_the_same_character_and_video(
     ok = client.post(f"/v1/creators/{cid}/videos", headers=h, json=_swap_video_body(preview_id=ready.id))
     assert ok.status_code == 200, ok.text
     v = (await db.execute(select(CreatorVideo))).scalars().one()
-    assert v.preview_id == ready.id and v.quality == "swap" and v.model.endswith("o3/standard/video-to-video/edit")
+    assert v.preview_id == ready.id and v.quality == "swap" and v.model == sc.WAN_MODEL
 
 
 @pytest.mark.asyncio
