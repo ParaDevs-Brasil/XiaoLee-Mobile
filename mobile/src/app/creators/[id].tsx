@@ -28,6 +28,7 @@ import { PressableScale } from '@/components/touch-motion';
 import { SwapPreview } from '@/components/swap-preview';
 import { VideoAction } from '@/components/video-action';
 import { MotionPicker } from '@/components/motion-picker';
+import { VoiceSheet } from '@/components/voice-sheet';
 import { EmptyState } from '@/components/feedback';
 import {
   IconArrowRight,
@@ -70,7 +71,7 @@ const SOUNDS: { id: 'none' | 'original' | 'voice'; label: string; hint: string }
  * confere valor/destino, faz o relay e só então gera.
  */
 export default function CreatorScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, format: formatParam, with: withParam } = useLocalSearchParams<{ id: string; format?: string; with?: string }>();
   const creatorId = Number(id);
   const colors = useTheme();
   const styles = useStyles();
@@ -81,6 +82,7 @@ export default function CreatorScreen() {
   const scrollY = useRef(0);
   const [viewingPhoto, setViewingPhoto] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(false);
   const wallet = usePrivyWallet();
 
   const [catalog, setCatalog] = useState<CreatorCatalog | null>(null);
@@ -91,7 +93,12 @@ export default function CreatorScreen() {
   const [topic, setTopic] = useState('');
   const [script, setScript] = useState('');
   const [writing, setWriting] = useState(false);
-  const [format, setFormat] = useState<CreatorFormat>('speech');
+  const [format, setFormat] = useState<CreatorFormat>(
+    formatParam === 'mimic' || formatParam === 'swap' ? formatParam : 'speech',
+  );
+  // Mais pessoas no vídeo: os outros personagens escolhidos em `creators/new-video`, na ordem das pessoas.
+  const extraIds = (withParam ?? '').split(',').filter(Boolean).map(Number);
+  const [everyone, setEveryone] = useState<SyntheticCreator[]>([]);
   const [motion, setMotion] = useState<PickedMotion | null>(null);
   const [motionRights, setMotionRights] = useState(false);
   const [motionKey, setMotionKey] = useState<string | null>(null);
@@ -114,6 +121,7 @@ export default function CreatorScreen() {
         .then(([cat, list, vids]) => {
           setCatalog(cat);
           setCreator(list.find((c) => c.id === creatorId) ?? null);
+          setEveryone(list);
           setVideos(vids);
         })
         .catch(fail);
@@ -237,9 +245,12 @@ export default function CreatorScreen() {
             }
           : {}),
         ...(swap && preview ? { preview_id: preview.id } : {}),
+        ...(moves && extraIds.length ? { extra_creator_ids: extraIds } : {}),
       });
       setVideos((list) => [video, ...list]);
       setConfirming(false);
+      // O andamento (pago → gerando → pronto) está em "Your videos", na aba AI Creators: leva a pessoa para lá.
+      router.navigate('/studio');
       setScript('');
       setTopic('');
       setScene('');
@@ -283,7 +294,44 @@ export default function CreatorScreen() {
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
       >
-        {creator?.image_url ? (
+        {moves && extraIds.length > 0 ? (
+          <View style={styles.heroTall}>
+            <View style={styles.heroRow}>
+              {[creatorId, ...extraIds].map((cid, i) => {
+                const person = everyone.find((c) => c.id === cid);
+                return (
+                  <View key={cid} style={styles.heroPane}>
+                    {person?.image_url ? (
+                      <Image source={{ uri: person.image_url }} style={StyleSheet.absoluteFill} contentFit="cover" contentPosition={{ top: '12%' }} transition={200} />
+                    ) : null}
+                    <View style={styles.heroNum}>
+                      <Text style={styles.heroNumText}>{i + 1}</Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+            <Svg style={styles.heroFade} width="100%" height="100%" preserveAspectRatio="none" pointerEvents="none">
+              <Defs>
+                <LinearGradient id="heroFadeMany" x1="0" y1="0" x2="0" y2="1">
+                  <Stop offset="0" stopColor="#1a1714" stopOpacity="0" />
+                  <Stop offset="1" stopColor="#1a1714" stopOpacity="0.82" />
+                </LinearGradient>
+              </Defs>
+              <Rect x="0" y="0" width="100%" height="100%" fill="url(#heroFadeMany)" />
+            </Svg>
+            {router.canGoBack() ? (
+              <Pressable onPress={() => router.back()} style={styles.heroBack} accessibilityRole="button" accessibilityLabel="Back">
+                <IconChevronLeft size={20} sw={2.2} color={colors.ink} />
+              </Pressable>
+            ) : null}
+            <View style={styles.heroFoot}>
+              <Text style={styles.heroName} numberOfLines={1}>
+                {[creatorId, ...extraIds].map((cid) => everyone.find((c) => c.id === cid)?.name ?? 'Person').join(' · ')}
+              </Text>
+            </View>
+          </View>
+        ) : creator?.image_url ? (
           <View style={styles.heroTall}>
             <Image source={{ uri: creator.image_url }} style={StyleSheet.absoluteFill} contentFit="cover" contentPosition={{ top: '12%' }} transition={200} />
             {/* Fade suave do pé da foto: o nome e a voz ficam legíveis sem uma faixa dura cortando a imagem. */}
@@ -333,14 +381,44 @@ export default function CreatorScreen() {
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
-        <CreatorFormatPicker value={format} onChange={(f) => { setFormat(f); setConfirming(false); }} />
+        {/* Quem chegou pelos cards já escolheu o formato: repetir o seletor só confunde. */}
+        {formatParam ? null : <CreatorFormatPicker value={format} onChange={(f) => { setFormat(f); setConfirming(false); }} />}
+
+        {moves ? (
+          <SectionCard
+            title={extraIds.length ? 'People in this video' : 'Who is in this video'}
+            subtitle={extraIds.length ? 'In the order they appear, from left to right.' : 'Add more characters for a video with several people.'}
+          >
+            <View style={styles.chips}>
+              {[creatorId, ...extraIds].map((cid, i) => (
+                <View key={cid} style={[styles.chip, styles.chipActive]}>
+                  <Text style={[styles.chipText, styles.chipTextActive]}>
+                    {i + 1} · {everyone.find((c) => c.id === cid)?.name ?? 'Character'}
+                  </Text>
+                </View>
+              ))}
+            </View>
+            <Pressable
+              onPress={() =>
+                router.replace({ pathname: '/creators/new-video', params: { format, pick: [creatorId, ...extraIds].join(',') } })
+              }
+              style={styles.rowTop}
+              accessibilityRole="button"
+              accessibilityLabel="Change who is in this video"
+            >
+              <Text style={[styles.desc, { color: colors.accent }]}>Change who is in this video</Text>
+            </Pressable>
+          </SectionCard>
+        ) : null}
 
         {moves ? (
           <SectionCard
             title={swap ? 'Video' : 'Movement'}
             subtitle={
               swap
-                ? 'Your video stays as it is. Your character takes the place of the person in it.'
+                ? extraIds.length
+                  ? 'Your video stays as it is. Your characters take the place of the people in it.'
+                  : 'Your video stays as it is. Your character takes the place of the person in it.'
                 : 'Your character copies the moves from a video. The scene comes from the character’s photo.'
             }
           >
@@ -351,8 +429,12 @@ export default function CreatorScreen() {
               onStart={pickStart}
               hint={
                 swap
-                  ? 'The person you want to replace should be clearly in view.'
-                  : 'One person, full body, staying in place, steady camera.'
+                  ? extraIds.length
+                    ? 'The people you want to replace should be clearly in view.'
+                    : 'The person you want to replace should be clearly in view.'
+                  : extraIds.length
+                    ? 'One person in view for each character, staying in place, steady camera.'
+                    : 'One person, full body, staying in place, steady camera.'
               }
             />
             <Text style={styles.label}>Sound</Text>
@@ -370,11 +452,24 @@ export default function CreatorScreen() {
               ))}
             </View>
             <Text style={styles.desc}>{SOUNDS.find((o) => o.id === audio)?.hint}</Text>
+            {audio === 'voice' ? (
+              <Pressable
+                onPress={() => setVoiceOpen(true)}
+                style={styles.rowTop}
+                accessibilityRole="button"
+                accessibilityLabel="Change the voice"
+              >
+                <IconMic size={16} color={colors.accent} />
+                <Text style={[styles.desc, { color: colors.accent }]}>
+                  Voice: {catalog?.voices.find((v) => v.id === creator?.voice_id)?.name ?? 'Choose'} · Change
+                </Text>
+              </Pressable>
+            ) : null}
             {audio !== 'voice' ? (
               <TextInput
                 value={scene}
                 onChangeText={setScene}
-                placeholder={swap ? 'Anything else to change? (optional)' : 'Describe the scene (optional)'}
+                placeholder={swap ? 'Who replaces who? e.g. man on the left = person 1 (optional)' : 'Describe the scene (optional)'}
                 placeholderTextColor={colors.ink3}
                 maxLength={300}
                 style={styles.input}
@@ -402,6 +497,8 @@ export default function CreatorScreen() {
         {swap ? (
           <SwapPreview
             creatorId={creatorId}
+            extraIds={extraIds}
+            note={scene}
             motion={motion}
             windowS={duration}
             rights={motionRights}
@@ -609,6 +706,14 @@ export default function CreatorScreen() {
             setCreator(await updateCreator(creator.id, patch));
           }}
           onClose={() => setEditing(false)}
+        />
+      ) : null}
+      {voiceOpen && creator ? (
+        <VoiceSheet
+          voices={catalog?.voices ?? []}
+          value={creator.voice_id}
+          onConfirm={async (voiceId) => setCreator(await updateCreator(creator.id, { voice_id: voiceId }))}
+          onClose={() => setVoiceOpen(false)}
         />
       ) : null}
       {viewingPhoto && creator?.image_url ? <PhotoViewer uri={creator.image_url} onClose={() => setViewingPhoto(false)} /> : null}

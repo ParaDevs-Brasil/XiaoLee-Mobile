@@ -93,6 +93,22 @@ export const useCreatorStyles = makeStyles((colors) => ({
   heroTall: { height: 380, borderRadius: Radius.xl, overflow: 'hidden', justifyContent: 'flex-end', backgroundColor: colors.media },
   heroFade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 200 },
   heroActions: { position: 'absolute', top: 12, right: 12, gap: 8 },
+  // Mais de uma pessoa: o mesmo painel da capa, em colunas (uma foto por pessoa).
+  heroRow: { ...StyleSheet.absoluteFill, flexDirection: 'row', gap: 2 },
+  heroPane: { flex: 1, overflow: 'hidden', backgroundColor: colors.media },
+  heroNum: {
+    position: 'absolute',
+    top: 12,
+    right: 10,
+    minWidth: 26,
+    height: 26,
+    paddingHorizontal: 6,
+    borderRadius: 13,
+    backgroundColor: colors.accentFill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroNumText: { fontFamily: Fonts.bold, fontSize: 13, color: colors.onAccent },
   heroBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.card, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   heroBack: {
     position: 'absolute',

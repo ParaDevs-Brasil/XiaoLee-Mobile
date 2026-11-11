@@ -87,7 +87,7 @@ async def db(db_session, monkeypatch):
     app_module.app.dependency_overrides.pop(get_db_session, None)
 
 
-async def _noop(video_id):
+async def _noop(*args):
     return None
 
 
@@ -384,6 +384,37 @@ async def test_motion_upload_takes_only_videos_under_the_cap(db, monkeypatch):
                        json={"content_type": "video/mp4", "size_bytes": sc.MAX_MOTION_BYTES + 1}).status_code == 413
 
 
+@pytest.mark.asyncio
+async def test_mimic_with_more_than_one_character_keeps_the_order_and_validates_the_extras(db, monkeypatch):
+    cid, h = await _persona(db)
+    bob = SyntheticCreator(user_id=1, name="Bob", voice_id=sc.VOICES[0]["id"], ref_image_key="creators/1/x/bob.jpg",
+                           ref_content_type="image/jpeg", status="ready", rights_confirmed_at=datetime.utcnow())
+    db.add(bob)
+    await db.commit()
+    _relay_ok(monkeypatch, [])
+    _motion_ok(monkeypatch)
+    url = f"/v1/creators/{cid}/videos"
+    assert client.post(url, headers=h, json=_mimic_body(extra_creator_ids=[cid])).status_code == 422      # repetido
+    assert client.post(url, headers=h, json=_mimic_body(extra_creator_ids=[9999])).status_code == 404      # não é seu
+    talk = {"quality": "standard", "duration_s": 5, "script": "oi", "payment": _payment(570_000), "extra_creator_ids": [bob.id]}
+    assert client.post(url, headers=h, json=talk).status_code == 422                                      # Talk é 1 pessoa
+    r = client.post(url, headers=h, json=_mimic_body(extra_creator_ids=[bob.id]))
+    assert r.status_code == 200 and r.json()["extra_creator_ids"] == [bob.id]
+
+
+def test_frame_prompt_carries_the_users_note_and_never_asks_for_photorealism():
+    base = sc.frame_prompt(2)
+    assert "Photorealistic" not in base and "must not appear" in base
+    assert sc.frame_prompt(2, "  left man = person 1  ").endswith("Extra instructions from the user: left man = person 1")
+    assert sc.frame_prompt(1) == sc.FRAME_PROMPT and "Extra instructions" not in sc.frame_prompt(1, "   ")
+
+
+def test_prompts_for_several_characters_name_every_image_in_order():
+    assert "Image 1 to Image 3" in sc.wan_mimic_prompt("", 3) and "Image 1 to Image 2" in sc.wan_swap_prompt("", 2)
+    assert "3 reference photos" in sc.recast_prompt("", 3) and "2 characters from the following images" in sc.FRAME_PROMPT_MANY.format(n=2)
+    assert sc.wan_mimic_prompt("") == sc.wan_mimic_prompt("", 1)               # um personagem: texto de sempre
+
+
 def test_mimic_failure_tells_what_the_reference_needs():
     assert "full view" in routes._failure_message("mimic_v3") and "refunded" in routes._failure_message("mimic")
 
@@ -425,17 +456,13 @@ async def test_mux_puts_the_audio_track_on_a_silent_video(tmp_path):
     assert sorted(kinds) == ["audio", "video"]
 
 
-# --- swap: prévia do quadro + trava de foto real ---------------------------------------------------------------
+# --- swap: prévia do quadro ---------------------------------------------------------------
 
-def _swap_env(monkeypatch, kind="character"):
+def _swap_env(monkeypatch):
     async def read(key):
         return b"img"
 
-    async def image_kind(image, content_type):
-        return kind
-
     monkeypatch.setattr(routes.sc, "read_object", read)
-    monkeypatch.setattr(routes.sc, "image_kind", image_kind)
     monkeypatch.setattr(routes, "run_preview", _noop)
     _motion_ok(monkeypatch)
 
@@ -461,16 +488,6 @@ async def test_preview_is_created_for_a_character_and_needs_the_rights_term(db, 
     assert p.motion_key == MOTION and p.creator_id == cid
     no_term = client.post(f"/v1/creators/{cid}/previews", headers=h, json=_preview_body(motion_rights_confirmed=False))
     assert no_term.status_code == 422
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("kind,msg", [("real_person_photo", "real people"), ("unsure", "couldn't check")])
-async def test_preview_gate_blocks_real_people_and_fails_closed(db, monkeypatch, kind, msg):
-    cid, h = await _persona(db)
-    _swap_env(monkeypatch, kind=kind)
-    r = client.post(f"/v1/creators/{cid}/previews", headers=h, json=_preview_body())
-    assert r.status_code == 422 and msg in r.json()["detail"]
-    assert (await db.execute(select(CreatorPreview))).scalars().all() == []
 
 
 @pytest.mark.asyncio

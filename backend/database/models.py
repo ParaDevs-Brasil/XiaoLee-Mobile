@@ -472,6 +472,10 @@ class CreatorVideo(Base):
     preview_id: Mapped[Optional[int]] = mapped_column(nullable=True, index=True)
     # Mimic/Swap: segundo do vídeo de referência onde o trecho de `duration_s` começa (0 = do início).
     motion_start_s: Mapped[float] = mapped_column(Float, default=0.0, server_default='0')
+    # Quadro do vídeo pronto (JPEG no bucket) para a lista; `None` = ainda não gerado.
+    thumb_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Mimic/Swap com mais de uma pessoa: ids (JSON, na ordem das pessoas do vídeo) dos outros personagens; `creator_id` é o 1º.
+    extra_creator_ids: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 class CreatorPreview(Base):
@@ -484,6 +488,7 @@ class CreatorPreview(Base):
     motion_key: Mapped[str] = mapped_column(Text)
     motion_start_s: Mapped[float] = mapped_column(Float, default=0.0, server_default='0')
     frame_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    extra_creator_ids: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # ver CreatorVideo
     status: Mapped[str] = mapped_column(String(20), default='working')
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 

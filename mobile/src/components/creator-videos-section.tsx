@@ -11,10 +11,16 @@ import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useVideoActions } from '@/hooks/use-video-actions';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { canSaveClips, canShareClips } from '@/lib/clip-share';
-import { isVideoPending, videoStatusLabel } from '@/lib/creators-core';
+import { isVideoPending, VIDEO_STAGES, videoKindLabel, videoStage, videoStatusLabel } from '@/lib/creators-core';
 import { timeAgo } from '@/lib/format';
 
 const POLL_MS = 5000;
+
+/** O que é este vídeo: o formato e, com mais de uma pessoa, quantas. */
+function describe(video: CreatorVideo): string {
+  const people = 1 + (video.extra_creator_ids?.length ?? 0);
+  return `${videoKindLabel(video.quality)}${people > 1 ? ` · ${people} people` : ''}`;
+}
 const PREVIEW_COUNT = 4;
 
 type Item = { video: CreatorVideo; creator: SyntheticCreator };
@@ -86,7 +92,9 @@ export function CreatorVideosSection({ creators }: { creators: SyntheticCreator[
               accessibilityLabel={ready ? `Play video with ${creator.name}, ${video.duration_s} seconds` : `${creator.name}, ${videoStatusLabel(video.status)}`}
             >
               <View style={styles.avatar}>
-                {creator.image_url ? (
+                {video.thumbnail_url ? (
+                  <Image source={{ uri: video.thumbnail_url }} style={styles.avatarImg} contentFit="cover" />
+                ) : creator.image_url ? (
                   <Image source={{ uri: creator.image_url }} style={styles.avatarImg} contentFit="cover" contentPosition={{ top: '12%' }} />
                 ) : (
                   <IconUser size={20} color={colors.onMedia} />
@@ -102,12 +110,22 @@ export function CreatorVideosSection({ creators }: { creators: SyntheticCreator[
                   {creator.name}
                 </Text>
                 <Text style={styles.script} numberOfLines={1}>
-                  {video.script || 'Video'}
+                  {video.script || describe(video)}
                 </Text>
                 <Text style={styles.meta} numberOfLines={1}>
-                  {ready ? `${video.duration_s}s` : videoStatusLabel(video.status)}
+                  {ready ? (video.script ? `${describe(video)} · ${video.duration_s}s` : `${video.duration_s}s`) : videoStatusLabel(video.status)}
                   {video.created_at ? ` · ${timeAgo(video.created_at)}` : ''}
                 </Text>
+                {isVideoPending(video.status) ? (
+                  <View style={styles.stages} accessibilityLabel={`Step ${videoStage(video.status) + 1} of ${VIDEO_STAGES.length}`}>
+                    {VIDEO_STAGES.map((label, i) => (
+                      <View key={label} style={styles.stage}>
+                        <View style={[styles.stageDot, i <= videoStage(video.status) && styles.stageDotOn]} />
+                        <Text style={[styles.stageText, i === videoStage(video.status) && styles.stageTextOn]}>{label}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
               </View>
               {isVideoPending(video.status) ? <ActivityIndicator color={colors.accent} /> : null}
             </Pressable>
@@ -194,6 +212,12 @@ const useStyles = makeStyles((colors) => ({
   name: { fontFamily: Fonts.bold, fontSize: 14, lineHeight: 20, color: colors.ink },
   script: { fontFamily: Fonts.sans, fontSize: 13, lineHeight: 18, color: colors.ink2 },
   meta: { fontFamily: Fonts.medium, fontSize: 12, lineHeight: 16, color: colors.ink3 },
+  stages: { flexDirection: 'row', gap: Spacing.three - 4, marginTop: 4 },
+  stage: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  stageDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.border },
+  stageDotOn: { backgroundColor: colors.accentFill },
+  stageText: { fontFamily: Fonts.medium, fontSize: 11, color: colors.ink3 },
+  stageTextOn: { fontFamily: Fonts.bold, color: colors.ink },
   actions: { flexDirection: 'row', gap: Spacing.two },
   more: { alignSelf: 'center', paddingVertical: Spacing.two, paddingHorizontal: Spacing.three, minHeight: 44, justifyContent: 'center' },
   moreText: { fontFamily: Fonts.bold, fontSize: 14, color: colors.accent },

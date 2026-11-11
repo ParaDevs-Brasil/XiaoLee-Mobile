@@ -1191,6 +1191,10 @@ export interface CreatorVideo {
   refund_due: boolean;
   payment_tx: string | null;
   audio: 'none' | 'original' | 'voice';
+  /** Quadro do vídeo pronto, para a lista. URL temporária; `null` até o backend gerar. */
+  thumbnail_url: string | null;
+  /** Mimic/Swap com mais de uma pessoa: os outros personagens, na ordem das pessoas do vídeo. */
+  extra_creator_ids: number[];
   video_url: string | null;
   created_at: string | null;
 }
@@ -1256,6 +1260,8 @@ export function createCreatorVideo(
     preview_id?: number;
     /** Só no `mimic`/Swap: o trecho usado começa neste segundo do vídeo. */
     motion_start_s?: number;
+    /** Só no `mimic`/Swap com mais de uma pessoa: os outros personagens, na ordem das pessoas do vídeo (o do caminho é o 1º). */
+    extra_creator_ids?: number[];
   },
 ): Promise<CreatorVideo> {
   return apiFetch<CreatorVideo>(`/v1/creators/${creatorId}/videos`, { method: 'POST', json: request });
@@ -1272,7 +1278,7 @@ export interface CreatorPreview {
 /** Swap: quadro de prévia (personagem no lugar da pessoa do vídeo). Grátis, com limite diário. */
 export function createSwapPreview(
   creatorId: number,
-  request: { motion_key: string; motion_rights_confirmed: boolean; motion_start_s?: number },
+  request: { motion_key: string; motion_rights_confirmed: boolean; motion_start_s?: number; extra_creator_ids?: number[]; note?: string },
 ): Promise<CreatorPreview> {
   return apiFetch<CreatorPreview>(`/v1/creators/${creatorId}/previews`, { method: 'POST', json: request });
 }

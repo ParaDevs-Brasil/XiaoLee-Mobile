@@ -20,6 +20,7 @@ O dono vem SEMPRE do Bearer emitido pelo backend (strict), nunca de URL/corpo.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import tempfile
@@ -117,10 +118,17 @@ class MotionUpload(BaseModel):
     upload_headers: dict[str, str]
 
 
+MAX_EXTRA_CHARACTERS = 3  # + o 1º = até 4 pessoas por vídeo (o Wan aceita até 10 imagens)
+
+
 class PreviewCreate(BaseModel):
     motion_key: str
+    # Mais pessoas no vídeo: os outros personagens, na ordem das pessoas (da esquerda para a direita).
+    extra_creator_ids: list[int] = Field(default_factory=list, max_length=MAX_EXTRA_CHARACTERS)
     motion_start_s: float = Field(default=0, ge=0, le=36000)
     motion_rights_confirmed: bool = False
+    # O que o usuário escreveu (quem troca com quem); só orienta o quadro de prévia.
+    note: str = Field(default="", max_length=500)
 
 
 class PreviewOut(BaseModel):
@@ -145,6 +153,8 @@ class VideoCreate(BaseModel):
     preview_id: Optional[int] = None
     # mimic/swap: o trecho usado começa neste segundo do vídeo de referência.
     motion_start_s: float = Field(default=0, ge=0, le=36000)
+    # mimic/swap com mais de uma pessoa: os outros personagens, na ordem das pessoas do vídeo (o do caminho é o 1º).
+    extra_creator_ids: list[int] = Field(default_factory=list, max_length=MAX_EXTRA_CHARACTERS)
 
 
 class VideoOut(BaseModel):
@@ -159,6 +169,9 @@ class VideoOut(BaseModel):
     refund_due: bool = False
     payment_tx: Optional[str] = None
     video_url: Optional[str] = None
+    extra_creator_ids: list[int] = Field(default_factory=list)
+    # Quadro do vídeo pronto para a lista (URL temporária); `None` até existir.
+    thumbnail_url: Optional[str] = None
     audio: str = "none"
     created_at: Optional[str] = None
 
@@ -179,6 +192,50 @@ def _creator_out(c: SyntheticCreator) -> CreatorOut:
                       created_at=to_utc_iso(c.created_at))
 
 
+def _ids(text: Optional[str]) -> list[int]:
+    return json.loads(text) if text else []
+
+
+async def _extras(db: AsyncSession, user_id: int, primary_id: int, ids: list[int]) -> list[SyntheticCreator]:
+    """Os outros personagens do vídeo: sem repetir, do usuário e prontos. Mantém a ordem pedida."""
+    if len(set(ids)) != len(ids) or primary_id in ids:
+        raise HTTPException(422, "Pick each character only once.")
+    out = [await _owned_creator(db, user_id, i) for i in ids]
+    if any(c.status != "ready" for c in out):
+        raise HTTPException(409, "One of the characters isn't ready yet.")
+    return out
+
+
+def _refs(creators: list[SyntheticCreator]) -> list[tuple[str, str]]:
+    return [(c.ref_image_key, c.ref_content_type) for c in creators]
+
+
+def _thumb_url(key: Optional[str]) -> Optional[str]:
+    if not key:
+        return None
+    try:
+        return media_storage.presign_get(key)
+    except media_storage.StorageNotConfigured:
+        return None
+
+
+async def _make_thumb(v: CreatorVideo) -> Optional[str]:
+    """Quadro a ~1 s do vídeo pronto (o 1º costuma ser preto). Enfeite: falha vira `None`, nunca derruba o vídeo."""
+    from server.media_routes import _store_thumbnail
+    return await _store_thumbnail(media_storage.presign_get(v.video_key),
+                                  f"creators/{v.user_id}/thumbs/{v.id}-{uuid.uuid4().hex[:8]}.jpg", 1.0, 480)
+
+
+async def backfill_thumbs(video_ids: list[int]) -> None:
+    """Vídeos prontos de antes das miniaturas existirem. Aparecem na próxima abertura da lista."""
+    async with _dbmod.SessionLocal() as db:
+        for vid in video_ids:
+            v = await db.get(CreatorVideo, vid)
+            if v and v.video_key and not v.thumb_key:
+                v.thumb_key = await _make_thumb(v)
+                await db.commit()
+
+
 def _video_out(v: CreatorVideo) -> VideoOut:
     url = None
     if v.status == "done" and v.video_key:
@@ -188,7 +245,7 @@ def _video_out(v: CreatorVideo) -> VideoOut:
             pass
     return VideoOut(id=v.id, creator_id=v.creator_id, quality=v.quality, duration_s=v.duration_s, script=v.script,
                     price_usdc=float(v.price_usdc), status=v.status, error=v.error, refund_due=v.refund_due,
-                    payment_tx=v.payment_tx, video_url=url, audio=v.audio,
+                    payment_tx=v.payment_tx, video_url=url, extra_creator_ids=_ids(v.extra_creator_ids), thumbnail_url=_thumb_url(v.thumb_key), audio=v.audio,
                     created_at=to_utc_iso(v.created_at))
 
 
@@ -364,6 +421,9 @@ async def create_video(creator_id: int, body: VideoCreate, background: Backgroun
     c = await _owned_creator(db, user.id, creator_id)
     if c.status != "ready":
         raise HTTPException(409, "This character isn't ready yet.")
+    if body.extra_creator_ids and not mimic:
+        raise HTTPException(422, "More than one character is only for Mimic and Replace.")
+    extras = await _extras(db, user.id, c.id, body.extra_creator_ids)
     preview = None
     if mimic:
         await _check_motion(user.id, body)
@@ -375,6 +435,7 @@ async def create_video(creator_id: int, body: VideoCreate, background: Backgroun
             preview = (await db.execute(select(CreatorPreview).where(
                 CreatorPreview.id == body.preview_id, CreatorPreview.user_id == user.id))).scalars().first()
             if not preview or preview.creator_id != c.id or preview.motion_key != body.motion_key \
+                    or _ids(preview.extra_creator_ids) != [e.id for e in extras] \
                     or abs(preview.motion_start_s - body.motion_start_s) > 0.05:
                 raise HTTPException(422, "That preview doesn't match this video. Make a new preview.")
             if preview.status != "ready" or not preview.frame_key:
@@ -403,6 +464,7 @@ async def create_video(creator_id: int, body: VideoCreate, background: Backgroun
                      motion_key=body.motion_key if mimic else None,
                      motion_start_s=body.motion_start_s if mimic else 0.0, audio=body.audio if mimic else "none",
                      preview_id=preview.id if preview else None,
+                     extra_creator_ids=json.dumps([e.id for e in extras]) if extras else None,
                      motion_rights_at=datetime.utcnow() if mimic else None)
     db.add(v)
     try:
@@ -500,22 +562,13 @@ async def create_preview(creator_id: int, body: PreviewCreate, background: Backg
     if today >= settings.creators_daily_previews_per_user:
         raise HTTPException(429, "You've reached today's preview limit. Try again tomorrow.")
 
-    # Trava: foto de gente de verdade não entra no Swap até existir consentimento verificado (cameo). Falha fechada.
-    try:
-        image = await sc.read_object(c.ref_image_key)
-    except Exception:
-        raise HTTPException(503, "We couldn't check the photo right now. Try again.")
-    kind = await sc.image_kind(image, c.ref_content_type)
-    if kind == "real_person_photo":
-        raise HTTPException(422, "Replace doesn't accept photos of real people yet. Use an illustrated or 3D character.")
-    if kind != "character":
-        raise HTTPException(422, "We couldn't check this photo. Try again, or use another image.")
-
+    extras = await _extras(db, user.id, c.id, body.extra_creator_ids)
     p = CreatorPreview(user_id=user.id, creator_id=c.id, motion_key=body.motion_key,
-                      motion_start_s=body.motion_start_s, status="working")
+                      motion_start_s=body.motion_start_s, status="working",
+                      extra_creator_ids=json.dumps([e.id for e in extras]) if extras else None)
     db.add(p)
     await db.commit()
-    background.add_task(run_preview, p.id)
+    background.add_task(run_preview, p.id, body.note)
     return _preview_out(p)
 
 
@@ -531,13 +584,16 @@ async def get_preview(preview_id: int, authorization: Optional[str] = Header(def
 
 
 @router.get("/videos", response_model=list[VideoOut])
-async def list_videos(creator_id: Optional[int] = None, authorization: Optional[str] = Header(default=None),
+async def list_videos(background: BackgroundTasks, creator_id: Optional[int] = None, authorization: Optional[str] = Header(default=None),
                       db: AsyncSession = Depends(get_db_session)):
     user = await _resolve_user(db, authorization, strict=True)
     q = select(CreatorVideo).where(CreatorVideo.user_id == user.id)
     if creator_id is not None:
         q = q.where(CreatorVideo.creator_id == creator_id)
     rows = (await db.execute(q.order_by(CreatorVideo.id.desc()).limit(50))).scalars().all()
+    missing = [v.id for v in rows if v.status == "done" and v.video_key and not v.thumb_key]
+    if missing:
+        background.add_task(backfill_thumbs, missing)
     return [_video_out(v) for v in rows]
 
 
@@ -568,6 +624,7 @@ async def run_video(video_id: int) -> None:
     async with _dbmod.SessionLocal() as db:
         v = await db.get(CreatorVideo, video_id)
         c = await db.get(SyntheticCreator, v.creator_id)
+        extra_refs = _refs([await db.get(SyntheticCreator, i) for i in _ids(v.extra_creator_ids)])
 
         async def on_step(name: str) -> None:
             v.status = name
@@ -582,13 +639,13 @@ async def run_video(video_id: int) -> None:
                                          duration_s=v.duration_s, ref_image_key=c.ref_image_key,
                                          ref_content_type=c.ref_content_type, frame_key=preview.frame_key,
                                          motion_key=v.motion_key, start_s=v.motion_start_s, video_key=key,
-                                         audio=v.audio, voice_id=c.voice_id, script=v.script, on_step=on_step)
+                                         audio=v.audio, voice_id=c.voice_id, script=v.script, extra_refs=extra_refs, on_step=on_step)
                 else:
                     await sc.render_mimic(quality=v.quality, prompt="" if v.audio == "voice" else v.script,
                                           duration_s=v.duration_s, ref_image_key=c.ref_image_key,
                                           ref_content_type=c.ref_content_type, motion_key=v.motion_key, start_s=v.motion_start_s,
                                           video_key=key, audio=v.audio, voice_id=c.voice_id, script=v.script,
-                                          on_step=on_step)
+                                          extra_refs=extra_refs, on_step=on_step)
             else:
                 await sc.render(quality=v.quality, voice_id=c.voice_id, script=v.script, duration_s=v.duration_s,
                                 ref_image_key=c.ref_image_key, ref_content_type=c.ref_content_type, video_key=key,
@@ -601,15 +658,18 @@ async def run_video(video_id: int) -> None:
             return
         v.status, v.video_key = "done", key
         await db.commit()
+        v.thumb_key = await _make_thumb(v)
+        await db.commit()
 
 
-async def run_preview(preview_id: int) -> None:
+async def run_preview(preview_id: int, note: str = "") -> None:
     async with _dbmod.SessionLocal() as db:
         p = await db.get(CreatorPreview, preview_id)
         c = await db.get(SyntheticCreator, p.creator_id)
+        extra_refs = _refs([await db.get(SyntheticCreator, i) for i in _ids(p.extra_creator_ids)])
         try:
             png = await sc.compose_frame(motion_key=p.motion_key, start_s=p.motion_start_s, ref_image_key=c.ref_image_key,
-                                         ref_content_type=c.ref_content_type)
+                                         ref_content_type=c.ref_content_type, extra_refs=extra_refs, note=note)
             key = f"creators/{p.user_id}/previews/{p.id}-{uuid.uuid4().hex[:8]}.png"
             with tempfile.NamedTemporaryFile(suffix=".png") as f:
                 f.write(png)

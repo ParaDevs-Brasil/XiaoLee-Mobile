@@ -19,6 +19,8 @@ const POLL_MS = 3000;
  */
 export function SwapPreview({
   creatorId,
+  extraIds,
+  note,
   motion,
   windowS,
   rights,
@@ -29,6 +31,10 @@ export function SwapPreview({
   onError,
 }: {
   creatorId: number;
+  /** Mais pessoas no vídeo: os outros personagens, na ordem das pessoas. */
+  extraIds?: number[];
+  /** Texto do usuário (quem troca com quem): orienta o quadro de prévia. */
+  note?: string;
   motion: PickedMotion | null;
   /** Duração escolhida: o trecho do vídeo que o preview mostra começa no corte e dura isso. */
   windowS: number;
@@ -63,6 +69,8 @@ export function SwapPreview({
           motion_key: key,
           motion_rights_confirmed: true,
           motion_start_s: clampStart(motion.startS, motion.seconds, windowS),
+          ...(extraIds?.length ? { extra_creator_ids: extraIds } : {}),
+          ...(note?.trim() ? { note: note.trim() } : {}),
         }));
     } catch (e) {
       onError(e instanceof ApiError || e instanceof Error ? e : new Error('Something went wrong. Try again.'));
