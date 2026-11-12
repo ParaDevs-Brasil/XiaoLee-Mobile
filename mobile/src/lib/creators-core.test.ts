@@ -4,7 +4,7 @@
  */
 import assert from 'node:assert/strict';
 
-import { clampStart, isVideoPending, maxWords, motionDurations, videoStatusLabel, wordCount } from './creators-core.ts';
+import { clampStart, isVideoPending, maxWords, motionDurations, videoKindLabel, videoStage, videoStatusLabel, wordCount } from './creators-core.ts';
 
 function test(name: string, fn: () => void) {
   fn();
@@ -39,4 +39,12 @@ test('the picked part never runs past the end of the video', () => {
   assert.equal(clampStart(48, 50, 5), 45);
   assert.equal(clampStart(-3, 50, 5), 0);
   assert.equal(clampStart(10, 4, 5), 0);
+});
+
+test('the video kind comes from the quality key', () => {
+  assert.deepEqual(['standard', 'pro_seedance', 'mimic_v3', 'swap_pro'].map(videoKindLabel), ['Talk', 'Talk', 'Mimic', 'Replace']);
+});
+
+test('a video in progress moves paid, making, ready', () => {
+  assert.deepEqual(['paying', 'queued', 'voice', 'video', 'charging', 'done'].map(videoStage), [0, 0, 1, 1, 1, 2]);
 });

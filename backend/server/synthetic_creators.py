@@ -9,7 +9,6 @@ Persona pode ser o próprio rosto, personagem ou meme (termo de direitos aceito 
 from __future__ import annotations
 
 import asyncio
-import base64
 import json
 import logging
 import math
@@ -224,20 +223,45 @@ def wan_input(quality: str, prompt: str, image_urls: list[str], video_url: str, 
             **QUALITIES[quality]["extra"]}
 
 
-def wan_mimic_prompt(scene: str = "") -> str:
+WAN_MIMIC_PROMPT_MANY = (
+    "Photorealistic social video. The {n} characters from Image 1 to Image {n}, matching the {n} people in Video 1 from "
+    "left to right, each keeping its own face, hair, clothes and identity exactly as in its image, perform the same "
+    "movement, gestures, facial expressions and timing as the person it replaces in Video 1, frame by frame. {scene} "
+    "Nothing from the original people's faces or clothes remains."
+)
+WAN_SWAP_PROMPT_MANY = (
+    "Photorealistic social video recreating the scene of Video 1: same place, background, other people around, camera, "
+    "lighting and timing. The {n} main people in Video 1 (the ones most in focus), from left to right, are replaced by the "
+    "{n} characters from Image 1 to Image {n}, in that order. Each keeps its own face, hair, clothes and identity exactly "
+    "as in its image and copies the movement, gestures, facial expressions and speech timing of the person it replaces, "
+    "frame by frame. Nothing from the original people's faces or clothes remains."
+)
+FRAME_PROMPT_MANY = (
+    "Replace the {n} main people in the first image, from left to right, with the {n} characters from the following "
+    "images, in that order. Keep the background, the lighting, the camera framing, the body poses and everything else in "
+    "the first image exactly as it is. Each character keeps its own face, hair, clothes and look (a drawn character stays "
+    "drawn). The original people must not appear: the result has to be visibly different from the first image."
+)
+
+
+def wan_mimic_prompt(scene: str = "", n: int = 1) -> str:
     scene = scene.strip()
+    if n > 1:
+        return WAN_MIMIC_PROMPT_MANY.format(n=n, scene=f"Scene: {scene}." if scene else "")
     return WAN_MIMIC_PROMPT.format(scene=f"Scene: {scene}." if scene else "It stays in the setting shown in Image 1.")
 
 
-def recast_prompt(extra: str = "") -> str:
+def recast_prompt(extra: str = "", n: int = 1) -> str:
     extra = extra.strip()
-    return "Replace the main person in the video (the one most in focus) with the person in the reference photo." + (
-        f" Also: {extra}" if extra else "")
+    who = ("Replace the main person in the video (the one most in focus) with the person in the reference photo." if n == 1
+           else f"Replace the {n} main people in the video, from left to right, with the people in the {n} reference "
+                "photos, in that order.")
+    return who + (f" Also: {extra}" if extra else "")
 
 
-def wan_swap_prompt(extra: str = "") -> str:
+def wan_swap_prompt(extra: str = "", n: int = 1) -> str:
     extra = extra.strip()
-    return WAN_SWAP_PROMPT + (f" Also: {extra}" if extra else "")
+    return (WAN_SWAP_PROMPT if n == 1 else WAN_SWAP_PROMPT_MANY.format(n=n)) + (f" Also: {extra}" if extra else "")
 
 
 async def probe_duration(url: str) -> float:
@@ -355,8 +379,8 @@ async def _motion_and_sound(http: httpx.AsyncClient, motion: bytes, duration_s: 
 
 async def render_mimic(*, quality: str, prompt: str, duration_s: int, ref_image_key: str, ref_content_type: str,
                        motion_key: str, video_key: str, start_s: float = 0.0, audio: str = "none", voice_id: str = "",
-                       script: str = "", on_step=None) -> None:
-    """Persona + vídeo de movimento → vídeo. A fal recebe o movimento cortado na duração paga e SEM áudio (`-an`):
+                       script: str = "", extra_refs: list[tuple[str, str]] | None = None, on_step=None) -> None:
+    """Persona + vídeo de movimento → vídeo. `extra_refs`: (chave, content-type) dos outros personagens, na ordem das pessoas do vídeo. A fal recebe o movimento cortado na duração paga e SEM áudio (`-an`):
     a música ou a voz do vídeo de referência só voltam se o usuário escolheu `audio="original"`, e voltam por aqui
     (ffmpeg), não pelo modelo. `audio="voice"` narra `script` com a voz da persona."""
     if on_step:
@@ -366,10 +390,12 @@ async def render_mimic(*, quality: str, prompt: str, duration_s: int, ref_image_
         motion = (await http.get(media_storage.presign_get(motion_key))).raise_for_status().content
         cut, sound = await _motion_and_sound(http, motion, duration_s, audio, voice_id, script, start_s)
         image_url = await _fal_upload(http, image, ref_content_type, "ref" + _ext(ref_content_type))
+        extra_urls = [await _fal_upload(http, await read_object(k), ct, "ref" + _ext(ct)) for k, ct in extra_refs or []]
         video_url = await _fal_upload(http, cut, "video/mp4", "motion.mp4")
         if QUALITIES[quality].get("engine") == "wan":
             width, height = await probe_size(video_url)
-            payload = wan_input(quality, wan_mimic_prompt(prompt), [image_url], video_url, duration_s, wan_aspect(width, height))
+            payload = wan_input(quality, wan_mimic_prompt(prompt, 1 + len(extra_urls)), [image_url, *extra_urls], video_url,
+                                duration_s, wan_aspect(width, height))
         else:
             payload = mimic_input(image_url, video_url, prompt)
         url = await _fal_video(http, QUALITIES[quality]["model"], payload)
@@ -387,12 +413,22 @@ async def render_mimic(*, quality: str, prompt: str, duration_s: int, ref_image_
 # Como o Mimic 2 do Creathoon: um modelo de imagem compõe o personagem no lugar da pessoa do primeiro quadro do vídeo;
 # o usuário aprova esse quadro e só então o vídeo é gerado (Kling) a partir dele, com o cenário já certo.
 
-FRAME_MODEL = "fal-ai/nano-banana/edit"
+# O Nano Banana comum não trocou duas pessoas (devolvia o quadro quase igual ou só acrescentava o personagem); o Pro troca,
+# mantém pose e cenário e aceita a descrição do usuário. Custa mais por prévia, por isso o limite diário.
+FRAME_MODEL = "fal-ai/nano-banana-pro/edit"
 FRAME_ASPECTS = {"21:9": 21 / 9, "16:9": 16 / 9, "3:2": 3 / 2, "4:3": 4 / 3, "5:4": 5 / 4, "1:1": 1.0, "4:5": 4 / 5,
                  "3:4": 3 / 4, "2:3": 2 / 3, "9:16": 9 / 16}
 FRAME_PROMPT = ("Replace the person in the center of the first image with the character from the second image. Keep the "
                 "background, the lighting, the camera framing, the body pose and everything else in the first image "
-                "exactly as it is. The character keeps its own face, hair, clothes and style. Photorealistic result.")
+                "exactly as it is. The character keeps its own face, hair, clothes and look (a drawn character stays drawn). "
+                "The original person must not appear: the result has to be visibly different from the first image.")
+
+
+def frame_prompt(n: int, note: str = "") -> str:
+    """Prompt do quadro de prévia; `note` é o que o usuário escreveu (quem troca com quem), vem depois do padrão."""
+    base = FRAME_PROMPT if n == 1 else FRAME_PROMPT_MANY.format(n=n)
+    note = note.strip()[:500]
+    return f"{base} Extra instructions from the user: {note}" if note else base
 
 
 def closest_aspect(width: int, height: int) -> str:
@@ -421,7 +457,8 @@ async def probe_size(url: str) -> tuple[int, int]:
         raise ValueError("could not read the reference video")
 
 
-async def compose_frame(*, motion_key: str, start_s: float = 0.0, ref_image_key: str, ref_content_type: str) -> bytes:
+async def compose_frame(*, motion_key: str, start_s: float = 0.0, ref_image_key: str, ref_content_type: str,
+                        extra_refs: list[tuple[str, str]] | None = None, note: str = "") -> bytes:
     """PNG do primeiro quadro do vídeo com o personagem no lugar da pessoa. O ffmpeg lê o vídeo pela URL pré-assinada
     (só o começo; nada de baixar 100 MB)."""
     video_url = media_storage.presign_get(motion_key)
@@ -435,52 +472,18 @@ async def compose_frame(*, motion_key: str, start_s: float = 0.0, ref_image_key:
     async with httpx.AsyncClient(timeout=120) as http:
         frame_url = await _fal_upload(http, frame_png, "image/png", "frame.png")
         char_url = await _fal_upload(http, image, ref_content_type, "char" + _ext(ref_content_type))
+        extra_urls = [await _fal_upload(http, await read_object(k), ct, "char" + _ext(ct)) for k, ct in extra_refs or []]
+        n = 1 + len(extra_urls)
         result = await _fal_run(http, FRAME_MODEL, {
-            "prompt": FRAME_PROMPT, "image_urls": [frame_url, char_url], "output_format": "png", "num_images": 1,
+            "prompt": frame_prompt(n, note), "image_urls": [frame_url, char_url, *extra_urls], "output_format": "png", "num_images": 1,
             "aspect_ratio": closest_aspect(width, height),
         }, timeout_s=180)
         images = result.get("images") or []
+        # O que o modelo diz sobre o quadro (recusa, aviso): só vai para o log, ajuda a entender uma troca que não aconteceu.
+        logger.info("frame model (%s images in) said: %s", n + 1, str(result.get("description") or "-")[:400])
         if not images:
             raise RuntimeError(f"fal response without images ({str(result.get('detail', list(result)))[:300]})")
         return (await http.get(images[0]["url"])).raise_for_status().content
-
-
-_KIND_SYSTEM = (
-    "You are a content-safety filter. Look at ONE image and say what kind it is. Never try to identify who anyone is. "
-    "'real_person_photo': a photograph, or a photorealistic image, of a real human being (selfie, portrait, event photo, "
-    "screenshot of a real person). 'character': an illustration, cartoon, anime, mascot, or a 3D / game / film render of a "
-    "fictional character. 'unsure': you cannot tell."
-)
-_KIND_TOOL = {
-    "name": "report_kind",
-    "description": "Report the kind of image.",
-    "input_schema": {"type": "object", "properties": {"kind": {"type": "string", "enum": ["real_person_photo", "character", "unsure"]}},
-                     "required": ["kind"]},
-}
-
-
-async def image_kind(image: bytes, content_type: str) -> str:
-    """`real_person_photo` | `character` | `unsure`. Sem chave ou com falha devolve `unsure`: quem chama bloqueia (a trava
-    falha fechada). Não identifica ninguém; só separa foto de gente de personagem."""
-    import anthropic
-
-    if not settings.anthropic_api_key:
-        return "unsure"
-    try:
-        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=30, max_retries=1)
-        msg = await client.messages.create(
-            model=settings.anthropic_model, max_tokens=100, system=_KIND_SYSTEM, tools=[_KIND_TOOL],
-            tool_choice={"type": "tool", "name": "report_kind"},
-            messages=[{"role": "user", "content": [
-                {"type": "image", "source": {"type": "base64", "media_type": content_type, "data": base64.b64encode(image).decode()}},
-                {"type": "text", "text": "What kind of image is this?"}]}],
-        )
-        block = next((b for b in msg.content if b.type == "tool_use"), None)
-        kind_ = block.input.get("kind") if block else None
-        return kind_ if kind_ in ("real_person_photo", "character", "unsure") else "unsure"
-    except Exception as exc:
-        logger.warning("image kind check failed: %s", type(exc).__name__)
-        return "unsure"
 
 
 # --- Swap: Kling O3 Edit --------------------------------------------------------------------------------------------
@@ -563,7 +566,7 @@ async def _source_audio(source: bytes, duration_s: int, start_s: float = 0.0) ->
 
 async def render_swap(*, quality: str, instructions: str, duration_s: int, ref_image_key: str, ref_content_type: str,
                       frame_key: str, motion_key: str, video_key: str, start_s: float = 0.0, audio: str = "original", voice_id: str = "",
-                      script: str = "", on_step=None) -> None:
+                      script: str = "", extra_refs: list[tuple[str, str]] | None = None, on_step=None) -> None:
     """Edita o vídeo do usuário trocando a pessoa principal pelo personagem (Kling O3 Edit). O personagem vai como
     `element` (a imagem + ângulos extras gerados) e o quadro aprovado na prévia guia a aparência na cena. Som: `original`
     fica o do vídeo (o modelo o mantém; se não vier, religamos o do trecho), `none` tira, `voice` narra `script`."""
@@ -575,18 +578,21 @@ async def render_swap(*, quality: str, instructions: str, duration_s: int, ref_i
     cut = await _trim_with_audio(source, duration_s, start_s)
     engine = QUALITIES[quality].get("engine")
     async with httpx.AsyncClient(timeout=180) as http:
+        extra_urls = [await _fal_upload(http, await read_object(k), ct, "char" + _ext(ct)) for k, ct in extra_refs or []]
+        n = 1 + len(extra_urls)
         if engine == "recast":
             # Recast: recebe o trecho COM áudio (ele o mantém) e a foto; uma foto = a pessoa principal do vídeo.
             video_url = await _fal_upload(http, cut, "video/mp4", "scene.mp4")
             char_url = await _fal_upload(http, image, ref_content_type, "char" + _ext(ref_content_type))
-            payload = {"video_url": video_url, "reference_image_urls": [char_url], "prompt": recast_prompt(instructions),
+            payload = {"video_url": video_url, "reference_image_urls": [char_url, *extra_urls], "prompt": recast_prompt(instructions, n),
                        **QUALITIES[quality]["extra"]}
         elif engine == "wan":
             # Wan: recebe o trecho SEM áudio e só o personagem (o quadro da prévia serve de trava/aprovação); o som volta abaixo.
             video_url = await _fal_upload(http, await _strip_audio(cut), "video/mp4", "scene.mp4")
             char_url = await _fal_upload(http, image, ref_content_type, "char" + _ext(ref_content_type))
             width, height = await probe_size(video_url)
-            payload = wan_input(quality, wan_swap_prompt(instructions), [char_url], video_url, duration_s, wan_aspect(width, height))
+            payload = wan_input(quality, wan_swap_prompt(instructions, n), [char_url, *extra_urls], video_url, duration_s,
+                                wan_aspect(width, height))
         else:
             video_url = await _fal_upload(http, cut, "video/mp4", "scene.mp4")
             char_url = await _fal_upload(http, image, ref_content_type, "char" + _ext(ref_content_type))

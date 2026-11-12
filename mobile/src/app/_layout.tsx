@@ -124,6 +124,7 @@ function RootNavigator() {
         <Stack.Screen name="marketplace" options={{ headerShown: false }} />
         <Stack.Screen name="creators/index" options={{ headerShown: false }} />
         <Stack.Screen name="creators/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="creators/new-video" options={{ headerShown: false }} />
         <Stack.Screen name="accounts" options={{ headerShown: false }} />
         {/* Retorno do login do X: transparente e sem animação, a Accounts que abriu o login segue visível por baixo. */}
         <Stack.Screen

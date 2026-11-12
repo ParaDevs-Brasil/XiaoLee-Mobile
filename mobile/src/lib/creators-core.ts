@@ -11,9 +11,10 @@ export function maxWords(durationS: number, wordsPerS: number): number {
 
 const STATUS_LABEL: Record<string, string> = {
   paying: 'Confirming your payment…',
-  queued: 'Waiting to start…',
+  queued: 'Starting…',
   voice: 'Recording the voice…',
   video: 'Making your video… this takes a few minutes',
+  charging: 'Finishing up…',
   done: 'Ready',
   failed: 'Couldn’t make this video',
 };
@@ -41,4 +42,19 @@ export function motionDurations(durations: number[], seconds: number): number[] 
 export function clampStart(startS: number, totalS: number, windowS: number): number {
   const max = Math.max(0, totalS - windowS);
   return Math.min(Math.max(0, startS), max);
+}
+
+/** Mais pessoas num vídeo: o 1º personagem + até 3 (espelha `MAX_EXTRA_CHARACTERS` do backend). */
+export const MAX_CHARACTERS = 4;
+
+/** O formato de um vídeo, a partir da faixa (`standard`/`pro…` = Talk, `mimic…`, `swap…`). */
+export function videoKindLabel(quality: string): 'Talk' | 'Mimic' | 'Replace' {
+  return quality.startsWith('mimic') ? 'Mimic' : quality.startsWith('swap') ? 'Replace' : 'Talk';
+}
+
+/** Etapas visíveis de um vídeo em andamento: começou → gerando → pronto. Não há "pago": a cobrança só acontece quando o vídeo
+ *  fica pronto (`charging` é o instante final). Devolve a etapa em curso (0 a 2). */
+export const VIDEO_STAGES = ['Started', 'Making', 'Ready'] as const;
+export function videoStage(status: string): number {
+  return status === 'done' ? 2 : status === 'voice' || status === 'video' || status === 'charging' ? 1 : 0;
 }

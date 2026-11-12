@@ -445,8 +445,10 @@ class SyntheticCreator(Base):
 
 
 class CreatorVideo(Base):
-    """Vídeo falado de uma persona. Gravado ANTES do relay do pagamento (intent log; `payment_nonce` único
-    = anti-replay). status: paying → queued → voice → video → done | failed (`refund_due` se já pago)."""
+    """Vídeo falado de uma persona. Gravado ANTES de qualquer cobrança (intent log; `payment_nonce` único = anti-replay).
+    O usuário assina a autorização EIP-3009 no pedido; o backend a guarda (`payment_signature`...) e só a envia depois
+    que o vídeo está pronto (`charging`). Falhou antes disso = nada cobrado. status: queued → voice → video →
+    charging → done | failed. `refund_due` é legado (vídeos antigos, cobrados antes de gerar)."""
     __tablename__ = 'creator_videos'
 
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
@@ -459,7 +461,14 @@ class CreatorVideo(Base):
     payment_from: Mapped[str] = mapped_column(String(64))
     payment_nonce: Mapped[str] = mapped_column(String(80), unique=True)
     payment_tx: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    status: Mapped[str] = mapped_column(String(20), default='paying', index=True)
+    # Autorização assinada pelo usuário, enviada só após o vídeo ficar pronto. Vale para este valor, este destino e
+    # este nonce, uma vez; vazar não desvia nada. Zerada (None) depois de usada.
+    payment_signature: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    payment_to: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    payment_value: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    payment_valid_after: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    payment_valid_before: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default='queued', index=True)
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     refund_due: Mapped[bool] = mapped_column(Boolean, default=False)
     video_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -472,6 +481,10 @@ class CreatorVideo(Base):
     preview_id: Mapped[Optional[int]] = mapped_column(nullable=True, index=True)
     # Mimic/Swap: segundo do vídeo de referência onde o trecho de `duration_s` começa (0 = do início).
     motion_start_s: Mapped[float] = mapped_column(Float, default=0.0, server_default='0')
+    # Quadro do vídeo pronto (JPEG no bucket) para a lista; `None` = ainda não gerado.
+    thumb_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Mimic/Swap com mais de uma pessoa: ids (JSON, na ordem das pessoas do vídeo) dos outros personagens; `creator_id` é o 1º.
+    extra_creator_ids: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 class CreatorPreview(Base):
@@ -484,6 +497,7 @@ class CreatorPreview(Base):
     motion_key: Mapped[str] = mapped_column(Text)
     motion_start_s: Mapped[float] = mapped_column(Float, default=0.0, server_default='0')
     frame_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    extra_creator_ids: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # ver CreatorVideo
     status: Mapped[str] = mapped_column(String(20), default='working')
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
