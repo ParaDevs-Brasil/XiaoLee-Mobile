@@ -1340,7 +1340,10 @@ async def verify_tasks(
     campaign_type = campaign.campaign_type
     strict = not settings.arc_sandbox  # dinheiro real: nada de "aceito de boa fé"
 
-    if campaign_type == "social":
+    # Campanha de pontos de qualquer tipo "de participação" (airdrop, engagement...) usa a checagem social: confere o
+    # perfil/tweet pelo X conectado se houver, e sem tarefa nenhuma vale ao tocar em verificar. Sem isto, em produção só o
+    # criador conseguiria liberar os pontos, e o app não tem tela de aprovação.
+    if campaign_type == "social" or (_is_points(campaign.reward_token) and campaign_type not in {"trading", "referral"}):
         ok, reason = await _verify_social_tasks(db, user, campaign, strict)
     elif campaign_type == "trading":
         wallet_res = await db.execute(select(Wallet).where(Wallet.user_id == user.id))

@@ -154,6 +154,45 @@ class TestEarning:
         assert client.get("/user/me/profile", headers=fan).json()["points"] == 25
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("ctype", ["airdrop", "engagement", "custom"])
+    async def test_production_strict_mode_credits_participation_campaigns_without_tasks(self, db, monkeypatch, ctype):
+        # `arc_sandbox=False` é produção: "tipo desconhecido" deixa de valer de boa fé
+        _settings(monkeypatch, campaign_points_admins="privy_owner", arc_sandbox=False)
+        owner = await _login(db, "owner")
+        client.post("/campaigns/create", json=_body(campaign_type=ctype, max_participants=10, reward_per_participant=25), headers=owner)
+        cid = (await db.execute(select(Campaign).where(Campaign.name == "Engage and earn"))).scalars().one().id
+        fan = await _login(db, "fan")
+        client.post("/campaigns/join", json=_act(cid), headers=fan)
+        r = client.post("/campaigns/verify", json=_act(cid), headers=fan).json()
+        assert r["success"] is True and r["points"] == 25
+
+    @pytest.mark.asyncio
+    async def test_production_still_requires_the_x_tasks_when_the_campaign_has_them(self, db, monkeypatch):
+        _settings(monkeypatch, campaign_points_admins="privy_owner", arc_sandbox=False)
+        owner = await _login(db, "owner")
+        client.post("/campaigns/create", json=_body(campaign_type="engagement", profile_to_follow="xiaolee_official",
+                                                    max_participants=10, reward_per_participant=25), headers=owner)
+        cid = (await db.execute(select(Campaign).where(Campaign.name == "Engage and earn"))).scalars().one().id
+        fan = await _login(db, "fan")  # sem X conectado: não dá para conferir o follow
+        client.post("/campaigns/join", json=_act(cid), headers=fan)
+        r = client.post("/campaigns/verify", json=_act(cid), headers=fan).json()
+        assert r["success"] is False and "points" not in r
+        assert client.get("/user/me/profile", headers=fan).json()["points"] == 0
+
+    @pytest.mark.asyncio
+    async def test_usdc_campaigns_are_still_not_auto_verified_in_production(self, db, monkeypatch):
+        # a regra nova é só para pontos: uma campanha de USDC "engagement" continua pedindo aprovação do criador
+        _settings(monkeypatch, campaign_points_admins="privy_owner", arc_sandbox=False, campaign_require_funds=False)
+        owner = await _login(db, "owner")
+        r = client.post("/campaigns/create", json=_body(campaign_type="engagement", reward_token="USDC",
+                                                        max_participants=2, reward_per_participant=1), headers=owner)
+        assert r.status_code == 200, r.text
+        cid = (await db.execute(select(Campaign).where(Campaign.name == "Engage and earn"))).scalars().one().id
+        fan = await _login(db, "fan")
+        client.post("/campaigns/join", json=_act(cid), headers=fan)
+        assert client.post("/campaigns/verify", json=_act(cid), headers=fan).json()["success"] is False
+
+    @pytest.mark.asyncio
     async def test_creator_approval_credits_points(self, db):
         cid = await self._campaign(db)
         fan = await _login(db, "fan")
