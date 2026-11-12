@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { UserCampaignParticipation } from '@/api/backend';
 import { ConnectWalletButton, ErrorState, Skeleton } from '@/components/feedback';
-import { IconChevronRight, IconUser } from '@/components/icons';
+import { IconChevronRight, IconSpark, IconUser } from '@/components/icons';
 import { NetworkBadge, NetworkMismatchCard } from '@/components/network-badge';
 import { ReceiptRow } from '@/components/receipt-row';
 import { ReceiveSheet } from '@/components/receive-sheet';
@@ -25,7 +25,7 @@ import { makeStyles, useTheme } from '@/hooks/use-theme';
 import type { CreatorWallet } from '@/hooks/use-creator-wallet';
 import { ARC_NETWORK } from '@/lib/arc-network';
 import { hasKnownSource, type WalletReceipt } from '@/lib/creator-wallet';
-import { formatTokenAmount } from '@/lib/format';
+import { formatTokenAmount, isPoints } from '@/lib/format';
 
 /**
  * Corpo da tela de Wallet — a carteira do creator na Arc (rota em
@@ -337,13 +337,21 @@ function CampaignRewards({
 }
 
 function TokenRow({ tally }: { tally: TokenTally }) {
+  const colors = useTheme();
   const styles = useStyles();
   const total = tally.claimed + tally.claimable + tally.pending;
 
   return (
     <View style={styles.tokenRow}>
       <View style={styles.tokenMark}>
-        <Text style={styles.tokenMarkText}>{tally.token.slice(0, 4)}</Text>
+        {isPoints(tally.token) ? (
+          // A faísca ocupa a metade de cima do quadro do ícone: desce para ficar no centro do selo.
+          <View style={{ marginTop: 5 }}>
+            <IconSpark size={20} color={colors.accent} />
+          </View>
+        ) : (
+          <Text style={styles.tokenMarkText}>{tally.token.slice(0, 4)}</Text>
+        )}
       </View>
 
       <View style={styles.flex}>
