@@ -26,12 +26,13 @@ import {
   IconRefresh,
   IconTarget,
 } from '@/components/icons';
-import { PageHeading, ScreenShell } from '@/components/screen-shell';
+import { FAB_CLEARANCE, PageHeading, ScreenShell } from '@/components/screen-shell';
 import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useBackendData } from '@/hooks/use-backend-data';
 import { useSession } from '@/hooks/use-session';
-import { formatTokenAmount } from '@/lib/format';
+import { ARC_NETWORK } from '@/lib/arc-network';
+import { formatReward } from '@/lib/format';
 
 /**
  * Tela de Campaigns — porta de `frontend/src/pages/CampanhasNew.tsx`.
@@ -57,7 +58,7 @@ import { formatTokenAmount } from '@/lib/format';
  * Sem sessão não há participação a buscar — a rota responderia lista vazia de
  * qualquer forma, e pedir isso no estado de convidado só gastaria round-trip.
  */
-async function fetchCampaignsAndParticipation() {
+export async function fetchCampaignsAndParticipation() {
   const [catalog, mine] = await Promise.all([
     listCampaigns(),
     listMyCampaigns().catch(() => [] as UserCampaignParticipation[]),
@@ -72,6 +73,11 @@ const CARD_GAP = Spacing.three - 4;
 type Tab = 'explore' | 'mine' | 'rewards';
 
 export default function CampaignsScreen() {
+  return <CampaignsView />;
+}
+
+/** O corpo da tela de Campaigns; `embedded` o encaixa dentro de outra tela (o Grow), sem moldura, rolagem, título nem o botão de criar (o Grow tem o seu). */
+export function CampaignsView({ embedded = false }: { embedded?: boolean }) {
   const colors = useTheme();
   const styles = useStyles();
   // Barra de gestos do Android come o fim da lista sem este inset.
@@ -98,7 +104,8 @@ export default function CampaignsScreen() {
   // botões já dependem daqui.
   const { hasSession } = useSession();
 
-  const cardWidth = width - H_PADDING * 2;
+  // Dentro de outra tela (o Grow) a margem é a dela, não a da tela de Campaigns.
+  const cardWidth = width - (embedded ? Spacing.three : H_PADDING) * 2;
   const step = cardWidth + CARD_GAP;
 
   /**
@@ -119,26 +126,17 @@ export default function CampaignsScreen() {
     setScrolledTo(clamped);
   };
 
-  return (
-    <ScreenShell>
-      <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: Spacing.four + insets.bottom }]}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={reload}
-            tintColor={colors.accent}
-            colors={[colors.accent]}
-          />
-        }
-      >
-        <PageHeading
+  const body = (
+      <>
+        {embedded ? null : (
+          <PageHeading
           title="Campaigns"
-          subtitle="Join campaigns on Arc Testnet and earn real rewards."
+          subtitle={`Join campaigns on ${ARC_NETWORK.name} and earn real rewards.`}
         />
+        )}
 
-        <SessionBanner hasSession={hasSession} />
+        {/* Com a carteira conectada o aviso verde não diz nada de novo; só o convidado precisa dele, pelo botão de conectar. */}
+        {hasSession ? null : <SessionBanner hasSession={false} />}
 
         <TabBar
           tab={tab}
@@ -147,6 +145,7 @@ export default function CampaignsScreen() {
           mineCount={mine.length}
           rewardsCount={claimed.length}
           hasSession={hasSession}
+          embedded={embedded}
         />
 
         <HowItWorks open={howOpen} onToggle={() => setHowOpen((v) => !v)} />
@@ -277,6 +276,33 @@ export default function CampaignsScreen() {
             </View>
           )
         ) : null}
+      </>
+  );
+
+  if (embedded) {
+    return (
+      <>
+        <View style={styles.embedded}>{body}</View>
+        
+      </>
+    );
+  }
+
+  return (
+    <ScreenShell>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: FAB_CLEARANCE + insets.bottom }]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={reload}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
+          />
+        }
+      >
+        {body}
       </ScrollView>
     </ScreenShell>
   );
@@ -333,6 +359,7 @@ function TabBar({
   mineCount,
   rewardsCount,
   hasSession,
+  embedded,
 }: {
   tab: Tab;
   onChange: (next: Tab) => void;
@@ -340,6 +367,7 @@ function TabBar({
   mineCount: number;
   rewardsCount: number;
   hasSession: boolean;
+  embedded: boolean;
 }) {
   const colors = useTheme();
   const styles = useStyles();
@@ -384,6 +412,7 @@ function TabBar({
       {/* Criar campanha exige sessão — a rota resolve o criador pelo Bearer.
           Sem sessão o botão leva ao chat, que é onde a autenticação acontece,
           igual ao "Login" do banner; com sessão, abre o formulário. */}
+      {embedded ? null : (
       <Pressable
         onPress={() => router.push(hasSession ? '/campaigns/new' : '/')}
         style={({ pressed }) => [styles.createButton, pressed && styles.pressed]}
@@ -392,6 +421,7 @@ function TabBar({
       >
         <IconPlus size={16} sw={2.2} color={colors.onAccent} />
       </Pressable>
+      )}
     </View>
   );
 }
@@ -415,7 +445,7 @@ function HowItWorks({ open, onToggle }: { open: boolean; onToggle: () => void })
         accessibilityState={{ expanded: open }}
       >
         <IconTarget size={16} color={colors.accent} />
-        <Text style={styles.howTitle}>How it works — Testnet</Text>
+        <Text style={styles.howTitle}>How it works</Text>
         {/* A rotação vai no wrapper: `IconProps` não expõe `style`, e abrir
             esse contrato para um único uso espalharia estilo por todos os
             ícones do app. */}
@@ -458,7 +488,7 @@ function stageLabel(item: UserCampaignParticipation): string {
 }
 
 /** Uma linha por participação, na aba "My Campaigns". */
-function ParticipationRow({ item }: { item: UserCampaignParticipation }) {
+export function ParticipationRow({ item }: { item: UserCampaignParticipation }) {
   const styles = useStyles();
   return (
     <View style={styles.row}>
@@ -473,14 +503,14 @@ function ParticipationRow({ item }: { item: UserCampaignParticipation }) {
         </View>
       </View>
       <Text style={styles.rowSubtitle}>
-        {formatTokenAmount(item.reward_per_participant)} {item.reward_token}
+        {formatReward(item.reward_per_participant, item.reward_token)}
       </Text>
     </View>
   );
 }
 
 /** Uma linha por recompensa já resgatada, na aba "Rewards". */
-function RewardRow({ item }: { item: UserCampaignParticipation }) {
+export function RewardRow({ item }: { item: UserCampaignParticipation }) {
   const styles = useStyles();
   return (
     <View style={styles.row}>
@@ -489,7 +519,7 @@ function RewardRow({ item }: { item: UserCampaignParticipation }) {
           {item.name}
         </Text>
         <Text style={styles.rewardAmount}>
-          {formatTokenAmount(item.reward_per_participant)} {item.reward_token}
+          {formatReward(item.reward_per_participant, item.reward_token)}
         </Text>
       </View>
       {/* Nem toda participação antiga tem recibo — a coluna existe desde antes
@@ -707,6 +737,7 @@ const useStyles = makeStyles((colors) => ({
   skeleton: { gap: Spacing.three - 4 },
   skeletonDots: { alignSelf: 'center' },
   carousel: { gap: CARD_GAP },
+  embedded: { gap: Spacing.three - 4 },
   dots: { flexDirection: 'row', justifyContent: 'center', gap: Spacing.two - 2 },
   dot: { width: 8, height: 8, borderRadius: Radius.pill, backgroundColor: colors.border },
   dotActive: { width: 22, backgroundColor: colors.accentFill },

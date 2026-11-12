@@ -1,17 +1,17 @@
-import { usePathname, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import type { ReactNode } from 'react';
-import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useEffect, useState } from 'react';
+import { InteractionManager, Text, View } from 'react-native';
 
 import { ConnectWalletSheet } from '@/components/connect-wallet-sheet';
+import { Skeleton } from '@/components/feedback';
 import { HeaderBar } from '@/components/header-bar';
-import { IconChat } from '@/components/icons';
-import { NavMenu } from '@/components/nav-menu';
+import { Reveal } from '@/components/motion';
+import { BottomNav } from '@/components/bottom-nav';
 import { ProfileMenu } from '@/components/profile-menu';
-import { ShareProfileSheet } from '@/components/share-profile-sheet';
-import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
-import { makeStyles, useTheme } from '@/hooks/use-theme';
+import { Fonts, Spacing } from '@/constants/theme';
+import { makeStyles } from '@/hooks/use-theme';
+import { usePoints } from '@/hooks/use-points';
 import { useUnreadNotificationsCount } from '@/hooks/use-unread-notifications';
 import { useWallet } from '@/hooks/use-wallet';
 
@@ -26,19 +26,52 @@ import { useWallet } from '@/hooks/use-wallet';
  * ligue em todas as telas.
  */
 
-/** Qual painel do header está aberto — só um por vez, como no Figma. */
-type OpenPanel = 'none' | 'menu' | 'profile';
+/**
+ * Folga no fim das listas. A barra inferior fica no fluxo (o conteúdo já termina acima dela), então sobra só um respiro;
+ * o nome vem do atalho flutuante que a barra substituiu e as telas seguem somando isto ao `paddingBottom`.
+ */
+export const FAB_CLEARANCE = Spacing.four;
 
-export function ScreenShell({ children }: { children: ReactNode }) {
+/** Qual painel do header está aberto — só um por vez, como no Figma. */
+type OpenPanel = 'none' | 'profile';
+
+/**
+ * Esqueleto do conteúdo de uma aba: título, linha de apoio, o controle de seções e três cartões. Aparece no mesmo
+ * quadro do toque na barra de baixo, enquanto a tela de verdade monta.
+ */
+function ContentSkeleton() {
+  return (
+    <View style={{ paddingHorizontal: Spacing.three, paddingTop: 20, gap: Spacing.three }}>
+      <View style={{ gap: Spacing.two }}>
+        <Skeleton height={30} width="45%" />
+        <Skeleton height={14} width="70%" />
+      </View>
+      <Skeleton height={44} radius={22} />
+      <Skeleton height={120} radius={20} />
+      <Skeleton height={120} radius={20} />
+      <Skeleton height={120} radius={20} />
+    </View>
+  );
+}
+
+export function ScreenShell({ children, deferContent = false }: { children: ReactNode; deferContent?: boolean }) {
   const styles = useStyles();
+  // Com `deferContent` o cabeçalho e a barra de baixo respondem já; o conteúdo entra depois do primeiro quadro (e da
+  // transição), em vez de segurar o toque até a tela inteira montar.
+  const [ready, setReady] = useState(!deferContent);
+  useEffect(() => {
+    if (!deferContent) return;
+    const task = InteractionManager.runAfterInteractions(() => setReady(true));
+    return () => task.cancel();
+  }, [deferContent]);
   const [panel, setPanel] = useState<OpenPanel>('none');
   const [walletSheet, setWalletSheet] = useState(false);
-  const [shareSheet, setShareSheet] = useState(false);
   const router = useRouter();
   // A carteira É a identidade do app (`lib/wallet.tsx` grava a sessão
   // ao conectar) — não há mais um login separado dela para esperar aqui.
   const { address: wallet } = useWallet();
   const unreadCount = useUnreadNotificationsCount();
+  const points = usePoints();
 
   const close = () => setPanel('none');
   /** Tocar no mesmo ícone fecha; nos dois painéis, abrir um fecha o outro. */
@@ -55,8 +88,6 @@ export function ScreenShell({ children }: { children: ReactNode }) {
           close();
           router.push('/notifications');
         }}
-        onPressMenu={() => toggle('menu')}
-        menuOpen={panel === 'menu'}
         profileOpen={panel === 'profile'}
         onPressProfile={() => toggle('profile')}
         // `navigate` e não `push`: o chat é a raiz da pilha, então empilhar
@@ -64,11 +95,17 @@ export function ScreenShell({ children }: { children: ReactNode }) {
         // vaivém entre dois chats idênticos.
         onPressLogo={() => router.navigate('/')}
         unreadCount={unreadCount}
+        points={points}
       />
 
-      {children}
+      {ready ? (
+        deferContent ? <Reveal style={{ flex: 1 }}>{children}</Reveal> : children
+      ) : (
+        <ContentSkeleton />
+      )}
 
-      <NavMenu visible={panel === 'menu'} onDismiss={close} />
+      <BottomNav />
+
       <ProfileMenu
         visible={panel === 'profile'}
         onDismiss={close}
@@ -77,58 +114,9 @@ export function ScreenShell({ children }: { children: ReactNode }) {
           close();
           setWalletSheet(true);
         }}
-        onShareProfile={() => {
-          close();
-          setShareSheet(true);
-        }}
       />
       <ConnectWalletSheet visible={walletSheet} onClose={() => setWalletSheet(false)} />
-      <ShareProfileSheet visible={shareSheet} onClose={() => setShareSheet(false)} />
-
-      <BackToChat />
     </View>
-  );
-}
-
-/**
- * Atalho flutuante para o chat.
- *
- * O wordmark do header já leva para lá, mas ninguém descobre isso sozinho — a
- * conversa é a tela principal do produto e precisa de uma porta visível de
- * qualquer lugar.
- *
- * Vive aqui, e não em cada tela, porque o `ScreenShell` é justamente o que todas
- * compartilham: uma cópia por tela seria oito lugares para esquecer de mexer.
- */
-function BackToChat() {
-  const colors = useTheme();
-  const styles = useStyles();
-  const router = useRouter();
-  const pathname = usePathname();
-  // A barra de gestos do Android comeria o botão sem este inset.
-  const insets = useSafeAreaInsets();
-
-  // No próprio chat o atalho não faz sentido — e o `ScreenShell` também embrulha
-  // a tela inicial.
-  if (pathname === '/') return null;
-
-  return (
-    <Pressable
-      // `navigate` e não `push`: o chat é a raiz da pilha, e empilhar uma
-      // segunda cópia dele prenderia o voltar do Android num vaivém entre dois
-      // chats idênticos — mesma escolha do wordmark no header.
-      onPress={() => router.navigate('/')}
-      style={({ pressed }) => [
-        styles.backToChat,
-        { bottom: Spacing.three + insets.bottom },
-        pressed && styles.backToChatPressed,
-      ]}
-      accessibilityRole="button"
-      accessibilityLabel="Voltar para o chat"
-    >
-      <IconChat size={17} color={colors.onAccent} />
-      <Text style={styles.backToChatText}>Chat</Text>
-    </Pressable>
   );
 }
 
@@ -148,22 +136,6 @@ export function PageHeading({ title, subtitle }: { title: string; subtitle: stri
 
 const useStyles = makeStyles((colors) => ({
   screen: { flex: 1, backgroundColor: colors.bg },
-  backToChat: {
-    ...CardShadow,
-    position: 'absolute',
-    // À esquerda de propósito: o dev client da Expo põe a própria bolha no
-    // canto direito, e sobrepor as duas deixa o botão inalcançável em dev.
-    left: Spacing.three,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two - 2,
-    paddingHorizontal: Spacing.three,
-    height: 44,
-    borderRadius: Radius.pill,
-    backgroundColor: colors.accentFill,
-  },
-  backToChatPressed: { opacity: 0.85 },
-  backToChatText: { fontFamily: Fonts.bold, fontSize: 14, color: colors.onAccent },
   heading: { alignItems: 'center', gap: Spacing.two - 2 },
   title: { fontFamily: Fonts.bold, fontSize: 24, color: colors.ink },
   subtitle: {

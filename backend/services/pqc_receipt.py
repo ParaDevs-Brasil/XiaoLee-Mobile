@@ -67,6 +67,17 @@ def _b64e(b: bytes) -> str:
     return base64.b64encode(b).decode()
 
 
+def require_persistent_key() -> bool:
+    """Serviços que cobram dinheiro real ligam isto: sem par permanente, não sobe (fail-closed)."""
+    return os.getenv("PQC_REQUIRE_PERSISTENT_KEY", "").strip().lower() in ("1", "true", "yes")
+
+
+def assert_ready() -> None:
+    """Chamado no boot: com PQC_REQUIRE_PERSISTENT_KEY, falha antes de aceitar qualquer pagamento."""
+    if require_persistent_key():
+        _load_keypair()
+
+
 @lru_cache(maxsize=1)
 def _load_keypair() -> tuple[bytes, bytes]:
     """
@@ -87,8 +98,23 @@ def _load_keypair() -> tuple[bytes, bytes]:
     if sk_b64 and pk_b64:
         sk = _b64d(sk_b64)
         pk = _b64d(pk_b64)
+        if require_persistent_key():
+            # par que não casa = recibos que ninguém consegue verificar; melhor falhar no boot
+            probe = b"pqc-key-selfcheck"
+            try:
+                ok = ML_DSA_87.verify(pk, probe, ML_DSA_87.sign(sk, probe))
+            except Exception as exc:  # chave truncada/corrompida
+                raise RuntimeError(f"PQC keypair inválido: {exc}") from exc
+            if not ok:
+                raise RuntimeError("PQC_PUBLIC_KEY não corresponde a PQC_SECRET_KEY")
         LOG.info("[pqc] ML-DSA-87 keys loaded from env pk_len=%d sk_len=%d", len(pk), len(sk))
         return pk, sk
+
+    if require_persistent_key():
+        raise RuntimeError(
+            "PQC_REQUIRE_PERSISTENT_KEY=true mas PQC_SECRET_KEY/PQC_PUBLIC_KEY não estão ambos definidos "
+            "(recusando keypair efêmero: recibos não seriam verificáveis após restart)"
+        )
 
     if sk_b64 and not pk_b64:
         # Deriva pk do sk não é diretamente suportado — regenera o par é seguro aqui

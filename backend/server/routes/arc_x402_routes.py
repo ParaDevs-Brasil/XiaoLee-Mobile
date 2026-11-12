@@ -152,7 +152,11 @@ async def _verify_payment_arc(x_payment: str, arc: ArcClient) -> tuple[bool, str
         pay_to = _arc_x402_wallet()
         min_amount = _arc_x402_price_usdc()
 
-        if result.to and pay_to and result.to.lower() != pay_to.lower():
+        if not pay_to:  # fail-closed: sem destino configurado nao ha o que validar
+            LOG.error("[arc-x402] ARC_X402_WALLET_ADDRESS not set; refusing payment circle_id=%s", circle_id)
+            return False, circle_id
+
+        if result.to and result.to.lower() != pay_to.lower():
             LOG.warning(
                 "[arc-x402] payment to wrong address: got=%s expected=%s",
                 result.to, pay_to,

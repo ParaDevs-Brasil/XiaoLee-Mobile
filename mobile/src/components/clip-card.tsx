@@ -1,4 +1,5 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { PressableScale } from '@/components/touch-motion';
 
 import type { MediaClip } from '@/api/backend';
 import type { IconProps } from '@/components/icons';
@@ -131,14 +132,15 @@ function Poster({ clip, onPlay }: { clip: MediaClip; onPlay?: () => void }) {
     );
   }
   return (
-    <Pressable
+    <PressableScale
       onPress={onPlay}
-      style={({ pressed }) => [styles.poster, pressed && styles.pressed]}
+      scaleTo={0.96}
+      style={styles.poster}
       accessibilityRole="button"
       accessibilityLabel={`Play clip ${clip.rank}: ${clip.title}`}
     >
       {content}
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -234,21 +236,17 @@ function IconAction({
   const styles = useStyles();
   const color = done ? colors.success : colors.ink;
   return (
-    <Pressable
+    <PressableScale
       onPress={onPress}
       disabled={disabled}
-      style={({ pressed }) => [
-        styles.iconAction,
-        done && styles.iconActionDone,
-        disabled && !busy && !done && styles.disabled,
-        pressed && styles.pressed,
-      ]}
+      scaleTo={0.88}
+      style={[styles.iconAction, done && styles.iconActionDone, disabled && !busy && !done && styles.disabled]}
       accessibilityRole="button"
       accessibilityLabel={a11yLabel}
       accessibilityState={{ busy, disabled }}
     >
       {busy ? <ActivityIndicator size="small" color={colors.accent} /> : <Icon size={18} sw={2} color={color} />}
-    </Pressable>
+    </PressableScale>
   );
 }
 

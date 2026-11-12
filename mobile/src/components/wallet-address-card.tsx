@@ -73,6 +73,26 @@ export function ChunkedAddress({
   );
 }
 
+/** Endereço curto (`0x4f3a…91c2`) que copia ao toque — o formato do cartão de saldo. Inteiro e com QR: Receive. */
+export function AddressChip({ address }: { address: string }) {
+  const colors = useTheme();
+  const styles = useStyles();
+  const { copied, copy } = useCopyAddress(address);
+  return (
+    <Pressable
+      onPress={copy}
+      style={({ pressed }) => [styles.chip, copied && styles.actionDone, pressed && styles.pressed]}
+      accessibilityRole="button"
+      accessibilityLabel={copied ? 'Address copied' : `Copy address ${address}`}
+    >
+      <Text style={[styles.chipText, copied && styles.actionTextDone]}>
+        {copied ? 'Copied' : `${address.slice(0, 6)}…${address.slice(-4)}`}
+      </Text>
+      {copied ? <IconCheck size={14} sw={2.2} color={colors.success} /> : <IconCopy size={14} color={colors.ink3} />}
+    </Pressable>
+  );
+}
+
 export function WalletAddressCard({ address, onShowQr }: { address: string; onShowQr: () => void }) {
   const colors = useTheme();
   const styles = useStyles();
@@ -157,5 +177,18 @@ const useStyles = makeStyles((colors) => ({
   actionDone: { backgroundColor: colors.successSoft, borderColor: colors.successBorder },
   actionText: { fontFamily: Fonts.bold, fontSize: 13, color: colors.ink },
   actionTextDone: { color: colors.success },
+  chip: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two - 2,
+    height: 32,
+    paddingHorizontal: Spacing.three - 2,
+    borderRadius: Radius.pill,
+    backgroundColor: colors.bg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+  },
+  chipText: { fontFamily: Fonts.mono, fontSize: 13, color: colors.ink2 },
   pressed: { opacity: 0.7 },
 }));

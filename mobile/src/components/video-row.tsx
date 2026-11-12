@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Pressable, Text, View } from 'react-native';
 
 import type { MediaAsset } from '@/api/backend';
 import type { IconProps } from '@/components/icons';
@@ -58,7 +58,7 @@ export function VideoRow({ item, onPress, onMenu }: { item: MediaAsset; onPress:
         </Text>
 
         <View style={[styles.chip, { backgroundColor: tone.bg }]}>
-          {tone.Icon ? <tone.Icon size={12} sw={2.6} color={tone.fg} /> : null}
+          <View style={[styles.dot, { backgroundColor: tone.fg }]} />
           <Text style={[styles.chipText, { color: tone.fg }]}>{label}</Text>
         </View>
 
@@ -145,8 +145,8 @@ function IndeterminateBar({ color }: { color: string }) {
   );
 }
 
-const THUMB_W = 84;
-const THUMB_H = 60;
+const THUMB_W = 60;
+const THUMB_H = 80;
 
 const useStyles = makeStyles((colors) => ({
   pressed: { opacity: 0.7 },
@@ -155,16 +155,16 @@ const useStyles = makeStyles((colors) => ({
     alignItems: 'center',
     gap: Spacing.three - 4,
     padding: Spacing.two + 4,
-    borderRadius: Radius.lg,
+    borderRadius: 20,
     backgroundColor: colors.card,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
     borderColor: colors.border,
     ...CardShadow,
   },
   thumb: {
     width: THUMB_W,
     height: THUMB_H,
-    borderRadius: Radius.md,
+    borderRadius: 14,
     backgroundColor: colors.media,
     alignItems: 'center',
     justifyContent: 'center',
@@ -181,14 +181,14 @@ const useStyles = makeStyles((colors) => ({
   },
   duration: {
     position: 'absolute',
-    right: Spacing.one + 2,
-    bottom: Spacing.one + 2,
+    left: 6,
+    bottom: 6,
     paddingHorizontal: Spacing.one + 1,
     paddingVertical: 1,
     borderRadius: Radius.sm / 2,
     backgroundColor: 'rgba(26, 25, 23, 0.72)',
   },
-  durationText: { fontFamily: Fonts.bold, fontSize: 10, color: colors.onMedia },
+  durationText: { fontFamily: Fonts.bold, fontSize: 11, color: colors.onMedia },
   main: { flex: 1, gap: 2 },
   menu: { width: 36, height: 44, marginRight: -Spacing.one, alignItems: 'center', justifyContent: 'center' },
   title: { fontFamily: Fonts.bold, fontSize: 14, lineHeight: 20, color: colors.ink },
@@ -197,13 +197,15 @@ const useStyles = makeStyles((colors) => ({
     alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.one + 1,
+    gap: 4,
     marginTop: Spacing.one,
-    paddingHorizontal: Spacing.two,
+    paddingLeft: Spacing.two,
+    paddingRight: 10,
     paddingVertical: 3,
     borderRadius: Radius.pill,
   },
-  chipText: { fontFamily: Fonts.bold, fontSize: 11, letterSpacing: 0.2 },
+  chipText: { fontFamily: Fonts.bold, fontSize: 12 },
+  dot: { width: 6, height: 6, borderRadius: 3 },
   track: {
     height: 3,
     marginTop: Spacing.one + 2,

@@ -9,6 +9,7 @@ import { NETWORK_LABEL, NetworkMismatchCard } from '@/components/network-badge';
 import { SOURCE_META } from '@/components/receipt-row';
 import { SectionCard } from '@/components/section-card';
 import { WalletMockSwitcher } from '@/components/wallet-mock-switcher';
+import { FAB_CLEARANCE } from '@/components/screen-shell';
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
 import type { CreatorWallet } from '@/hooks/use-creator-wallet';
@@ -88,7 +89,7 @@ export function WalletBreakdownView({
 
   return (
     <ScrollView
-      contentContainerStyle={[styles.content, { paddingBottom: Spacing.six + insets.bottom }]}
+      contentContainerStyle={[styles.content, { paddingBottom: FAB_CLEARANCE + insets.bottom }]}
       showsVerticalScrollIndicator={false}
       refreshControl={
         <RefreshControl

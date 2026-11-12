@@ -42,10 +42,13 @@ def _guess_language(text: str) -> str:
 
 
 class GeminiClient:
-    def __init__(self, api_key: str, model: str):
+    def __init__(self, api_key: str, model: str, anthropic_api_key: str = "", anthropic_model: str = ""):
         self.api_key = api_key
         # model = the premium model configured via GEMINI_MODEL env var
         self.model = model
+        # Last resort for generate_reply when Gemini is down or out of credit (402 seen in prod).
+        self.anthropic_api_key = anthropic_api_key
+        self.anthropic_model = anthropic_model
 
     @property
     def enabled(self) -> bool:
@@ -54,7 +57,7 @@ class GeminiClient:
     def _api_url(self, model: str) -> str:
         return (
             "https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{model}:generateContent?key={self.api_key}"
+            f"{model}:generateContent"
         )
 
     _ERROR_PHRASES = frozenset([
@@ -86,7 +89,10 @@ class GeminiClient:
     async def _call(self, payload: Dict, model: str, timeout: float = 25) -> Dict:
         """Single HTTP call to a given Gemini model."""
         async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.post(self._api_url(model), json=payload)
+            # Key in a header, not the URL: httpx logs request URLs, which leaked it to prod logs.
+            resp = await client.post(
+                self._api_url(model), json=payload, headers={"x-goog-api-key": self.api_key}
+            )
             resp.raise_for_status()
             return resp.json()
 
@@ -108,6 +114,23 @@ class GeminiClient:
                 print(f"[GeminiClient] {self.model} failed ({type(e).__name__}) — falling back to {_REPLY_FALLBACK}")
 
         return await self._call(payload, _REPLY_FALLBACK, timeout=25)
+
+    async def _claude_reply(self, system_text: str, contents: List[Dict]) -> str:
+        import anthropic
+
+        messages: List[Dict] = []
+        for c in contents:
+            role = "assistant" if c["role"] == "model" else "user"
+            text = c["parts"][0]["text"]
+            if messages and messages[-1]["role"] == role:
+                messages[-1]["content"] += "\n\n" + text
+            elif messages or role == "user":
+                messages.append({"role": role, "content": text})
+        client = anthropic.AsyncAnthropic(api_key=self.anthropic_api_key, timeout=25, max_retries=1)
+        resp = await client.messages.create(
+            model=self.anthropic_model, max_tokens=1024, system=system_text, messages=messages
+        )
+        return "".join(b.text for b in resp.content if b.type == "text")
 
     # ------------------------------------------------------------------
     # Public interface
@@ -202,7 +225,12 @@ class GeminiClient:
         try:
             body = await self._call_with_fallback(payload)
         except Exception as e:
-            print(f"Gemini generate_reply error: {e}")
+            print(f"Gemini generate_reply error: {type(e).__name__}")
+            if self.anthropic_api_key:
+                try:
+                    return await self._claude_reply(system_text, contents)
+                except Exception as ce:
+                    print(f"Claude reply fallback error: {type(ce).__name__}")
             return "Não consegui responder agora. Tenta de novo em um instante! 🌸"
 
         return (

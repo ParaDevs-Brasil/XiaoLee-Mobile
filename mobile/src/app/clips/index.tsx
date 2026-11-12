@@ -3,15 +3,15 @@ import { useEffect, useState } from 'react';
 import { Animated, Easing, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { deleteMedia, listMedia, renameMedia, type MediaAsset } from '@/api/backend';
+import { deleteMedia, getGlossary, listMedia, renameMedia, type MediaAsset } from '@/api/backend';
 import { EmptyState, ErrorState, Skeleton } from '@/components/feedback';
 import { FormatIdeasCard } from '@/components/format-ideas-card';
 import { GlossaryCard } from '@/components/glossary-card';
-import { IconScissors, IconUpload } from '@/components/icons';
+import { IconChevronRight, IconPlay, IconScissors, IconSpark, IconUpload } from '@/components/icons';
 import { ItemMenu } from '@/components/item-menu';
 import { PipelineSteps } from '@/components/pipeline-steps';
 import { RenameSheet } from '@/components/rename-sheet';
-import { PageHeading, ScreenShell } from '@/components/screen-shell';
+import { FAB_CLEARANCE, PageHeading, ScreenShell } from '@/components/screen-shell';
 import { VideoRow } from '@/components/video-row';
 import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
@@ -43,6 +43,11 @@ const FILTERS: { value: MediaFilter; label: string }[] = [
  * continuou com o app fechado.
  */
 export default function ClipsScreen() {
+  return <ClipsView />;
+}
+
+/** O corpo da tela de Clips; `embedded` o encaixa dentro de outra tela (o Studio), sem moldura, rolagem nem título. */
+export function ClipsView({ embedded = false }: { embedded?: boolean }) {
   const colors = useTheme();
   const styles = useStyles();
   const insets = useSafeAreaInsets();
@@ -78,26 +83,14 @@ export default function ClipsScreen() {
     openMedia(asset.id);
   };
 
-  return (
-    <ScreenShell>
-      <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: FAB_CLEARANCE + (keyboard.visible ? keyboard.height : insets.bottom) }]}
-        showsVerticalScrollIndicator={false}
-        // Com o teclado aberto no "Words to get right", tocar num chip ou no Undo precisa valer no primeiro toque.
-        keyboardShouldPersistTaps="handled"
-        refreshControl={
-          <RefreshControl
-            refreshing={media.refreshing}
-            onRefresh={media.reload}
-            tintColor={colors.accent}
-            colors={[colors.accent]}
-          />
-        }
-      >
-        <PageHeading
+  const body = (
+      <>
+        {embedded ? null : (
+          <PageHeading
           title="Clips"
           subtitle="Turn a long video into 3 vertical clips with captions."
         />
+        )}
 
         <UploadCard state={upload.state} onPick={pickAndUpload} onCancel={upload.cancel} />
 
@@ -105,9 +98,7 @@ export default function ClipsScreen() {
           <ErrorState title="Upload failed" message={upload.state.message} onRetry={pickAndUpload} />
         ) : null}
 
-        <GlossaryCard />
-
-        <FormatIdeasCard />
+        <ToolTiles />
 
         <View style={styles.sectionHead}>
           <Text style={styles.sectionTitle}>Your videos</Text>
@@ -172,8 +163,69 @@ export default function ClipsScreen() {
             ))}
           </View>
         ) : null}
-      </ScrollView>
+      </>
+  );
+  const sheets = (
+      <>
+      {menuFor ? (
+        <ItemMenu
+          heading={menuFor.title}
+          kind="video"
+          consequence={
+            menuFor.clips_total
+              ? `This removes the video file, its ${menuFor.clips_total} ${menuFor.clips_total === 1 ? 'clip' : 'clips'} and the transcript.`
+              : 'This removes the video file and its transcript.'
+          }
+          onRename={() => setRenaming(menuFor)}
+          onDelete={async () => {
+            await deleteMedia(menuFor.id);
+            media.reload();
+          }}
+          onClose={() => setMenuFor(null)}
+        />
+      ) : null}
 
+      {renaming ? (
+        <RenameSheet
+          heading="Rename video"
+          initial={renaming.title}
+          onSave={async (title) => {
+            const updated = await renameMedia(renaming.id, title);
+            media.replace(videos.map((m) => (m.id === updated.id ? { ...m, title: updated.title } : m)));
+          }}
+          onClose={() => setRenaming(null)}
+        />
+      ) : null}
+      </>
+  );
+
+  if (embedded) {
+    return (
+      <>
+        <View style={styles.embedded}>{body}</View>
+        {sheets}
+      </>
+    );
+  }
+
+  return (
+    <ScreenShell>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: FAB_CLEARANCE + (keyboard.visible ? keyboard.height : insets.bottom) }]}
+        showsVerticalScrollIndicator={false}
+        // Com o teclado aberto no "Words to get right", tocar num chip ou no Undo precisa valer no primeiro toque.
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={media.refreshing}
+            onRefresh={media.reload}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
+          />
+        }
+      >
+        {body}
+      </ScrollView>
       {menuFor ? (
         <ItemMenu
           heading={menuFor.title}
@@ -221,15 +273,17 @@ function UploadCard({
   if (state.phase === 'uploading') return <UploadingCard state={state} onCancel={onCancel} />;
 
   return (
-    <View style={styles.card}>
-      <View style={styles.cardHead}>
-        <View style={styles.iconTile}>
-          <IconScissors size={24} sw={2} color={colors.accent} />
-        </View>
+    <View style={styles.hero}>
+      <View style={styles.heroTop}>
         <View style={styles.flex}>
-          <Text style={styles.cardTitle}>Create clips</Text>
-          <Text style={styles.hint}>A podcast, live or talk, up to 2 GB.</Text>
+          <View style={styles.eyebrowRow}>
+            <IconScissors size={14} sw={2.2} color={colors.accent} />
+            <Text style={styles.eyebrow}>CLIPS</Text>
+          </View>
+          <Text style={styles.heroTitle}>Turn one long video into 3 vertical clips</Text>
+          <Text style={styles.heroHint}>A podcast, live or talk, up to 2 GB.</Text>
         </View>
+        <ClipFan />
       </View>
       <Pressable
         onPress={onPick}
@@ -237,10 +291,93 @@ function UploadCard({
         accessibilityRole="button"
         accessibilityLabel="Choose a video to turn into clips"
       >
-        <IconUpload size={18} sw={2.2} color={colors.onAccent} />
+        <IconUpload size={20} sw={2.2} color={colors.onAccent} />
         <Text style={styles.pickText}>Choose a video</Text>
       </Pressable>
+      <Text style={styles.heroSteps} accessibilityLabel="Upload, then transcribe, find moments, cut">
+        Upload › Transcribe › Find moments › Cut
+      </Text>
     </View>
+  );
+}
+
+/** Três cortes verticais em leque: o que o creator vai receber, desenhado em vez de explicado. */
+function ClipFan() {
+  const colors = useTheme();
+  const styles = useStyles();
+  const card = (rotate: string, style: object) => (
+    <View style={[styles.fanCard, { transform: [{ rotate }] }, style]}>
+      <View style={styles.fanDisc}>
+        <IconPlay size={9} sw={2.4} color={colors.onMedia} />
+      </View>
+      <View style={[styles.fanLine, { width: 26 }]} />
+      <View style={[styles.fanLine, { width: 16 }]} />
+    </View>
+  );
+  return (
+    <View style={styles.fan} accessible={false} importantForAccessibility="no-hide-descendants">
+      {card('-8deg', { left: 2, top: 16 })}
+      {card('8deg', { left: 48, top: 6 })}
+      {card('0deg', { left: 30, top: 10, zIndex: 1 })}
+    </View>
+  );
+}
+
+/**
+ * Os dois atalhos sob o cartão principal: "Words to get right" e "Format ideas". Lado a lado não cabe abrir cada um no
+ * lugar, então tocar abre o conteúdo (o mesmo cartão de antes, sem o cabeçalho) logo abaixo; tocar de novo recolhe.
+ */
+function ToolTiles() {
+  const colors = useTheme();
+  const styles = useStyles();
+  const glossary = useBackendData(getGlossary);
+  const [open, setOpen] = useState<'words' | 'formats' | null>(null);
+  const words = glossary.data?.length ?? 0;
+  const tiles = [
+    {
+      id: 'words' as const,
+      title: 'Words to get right',
+      sub: words ? `${words} ${words === 1 ? 'word' : 'words'} saved` : 'Names and slang for captions',
+      Icon: IconSpark,
+    },
+    { id: 'formats' as const, title: 'Format ideas', sub: 'Ideas from your videos', Icon: IconScissors },
+  ];
+  return (
+    <>
+      <View style={styles.tiles}>
+        {tiles.map(({ id, title, sub, Icon }) => {
+          const selected = open === id;
+          return (
+            <Pressable
+              key={id}
+              onPress={() => setOpen(selected ? null : id)}
+              style={({ pressed }) => [styles.tile, selected && styles.tileSelected, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: selected }}
+              accessibilityLabel={title}
+              accessibilityHint={selected ? 'Closes it' : 'Opens it below'}
+            >
+              <View style={styles.tileTop}>
+                <View style={styles.tileIcon}>
+                  <Icon size={20} sw={2} color={colors.accent} />
+                </View>
+                <View style={selected ? styles.chevronOpen : undefined}>
+                  <IconChevronRight size={18} sw={2.2} color={colors.ink3} />
+                </View>
+              </View>
+              <View>
+                <Text style={styles.tileTitle}>{title}</Text>
+                <Text style={styles.tileSub} numberOfLines={1}>
+                  {sub}
+                </Text>
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+      {open === 'words' ? <GlossaryCard bare /> : null}
+      {open === 'formats' ? <FormatIdeasCard bare /> : null}
+    </>
   );
 }
 
@@ -319,11 +456,11 @@ function UploadingCard({
 }
 
 /** Altura do atalho "Chat" flutuante (44) + a margem dele (16) + respiro: a última linha não pode ficar debaixo dele. */
-const FAB_CLEARANCE = 44 + Spacing.three + Spacing.four;
 
 const useStyles = makeStyles((colors) => ({
   flex: { flex: 1 },
   content: { paddingHorizontal: Spacing.three - 4, paddingTop: Spacing.three, gap: Spacing.three - 4 },
+  embedded: { gap: Spacing.three - 4 },
   pressed: { opacity: 0.7 },
   card: {
     gap: Spacing.three,
@@ -334,15 +471,65 @@ const useStyles = makeStyles((colors) => ({
     borderColor: colors.border,
     ...CardShadow,
   },
-  cardHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three - 4 },
-  iconTile: {
-    width: 52,
-    height: 52,
-    borderRadius: Radius.lg,
+  hero: {
+    gap: Spacing.three,
+    padding: 20,
+    borderRadius: Radius.xl,
+    backgroundColor: colors.accentSoft,
+    borderWidth: 1,
+    borderColor: colors.accent,
+  },
+  heroTop: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  eyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+  eyebrow: { fontFamily: Fonts.bold, fontSize: 12, letterSpacing: 1, color: colors.accent },
+  heroTitle: { fontFamily: Fonts.bold, fontSize: 18, lineHeight: 24, color: colors.ink },
+  heroHint: { fontFamily: Fonts.medium, fontSize: 12, lineHeight: 16, color: colors.ink2, marginTop: 6 },
+  heroSteps: { fontFamily: Fonts.semibold, fontSize: 12, lineHeight: 16, color: colors.ink2, textAlign: 'center' },
+  fan: { width: 104, height: 92 },
+  fanCard: {
+    position: 'absolute',
+    width: 44,
+    height: 72,
+    borderRadius: Radius.sm,
+    backgroundColor: colors.media,
+    alignItems: 'center',
+    paddingTop: 16,
+    gap: 4,
+  },
+  fanDisc: {
+    width: 18,
+    height: 18,
+    borderRadius: Radius.pill,
+    backgroundColor: colors.accentFill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  fanLine: { height: 4, borderRadius: 2, backgroundColor: colors.onMedia, opacity: 0.85 },
+  tiles: { flexDirection: 'row', gap: 12 },
+  tile: {
+    flex: 1,
+    gap: 12,
+    padding: Spacing.three,
+    borderRadius: 20,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...CardShadow,
+  },
+  tileSelected: { borderColor: colors.accent },
+  tileTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  tileIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.md,
     backgroundColor: colors.accentSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  chevronOpen: { transform: [{ rotate: '90deg' }] },
+  tileTitle: { fontFamily: Fonts.bold, fontSize: 14, lineHeight: 19, color: colors.ink },
+  tileSub: { fontFamily: Fonts.medium, fontSize: 12, lineHeight: 16, color: colors.ink2 },
   cardTitle: { fontFamily: Fonts.bold, fontSize: 18, lineHeight: 24, color: colors.ink },
   hint: { fontFamily: Fonts.sans, fontSize: 13, lineHeight: 19, color: colors.ink2 },
   pick: {
@@ -350,8 +537,8 @@ const useStyles = makeStyles((colors) => ({
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.two,
-    minHeight: 52,
-    borderRadius: Radius.pill,
+    height: 52,
+    borderRadius: Radius.lg,
     backgroundColor: colors.accentFill,
   },
   pickText: { fontFamily: Fonts.bold, fontSize: 15, color: colors.onAccent },
@@ -387,8 +574,8 @@ const useStyles = makeStyles((colors) => ({
     paddingHorizontal: Spacing.one,
     marginTop: Spacing.three,
   },
-  sectionTitle: { fontFamily: Fonts.bold, fontSize: 18, color: colors.ink },
-  sectionCount: { fontFamily: Fonts.medium, fontSize: 13, color: colors.ink3 },
+  sectionTitle: { fontFamily: Fonts.bold, fontSize: 18, lineHeight: 24, color: colors.ink },
+  sectionCount: { fontFamily: Fonts.semibold, fontSize: 12, color: colors.ink3 },
   filters: { gap: Spacing.two, paddingHorizontal: Spacing.one },
   filter: {
     minHeight: 36,

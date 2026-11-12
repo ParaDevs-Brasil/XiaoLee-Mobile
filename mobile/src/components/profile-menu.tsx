@@ -6,12 +6,13 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppearancePicker } from '@/components/appearance-picker';
 import { DropdownPanel, PanelRow, type PanelItem } from '@/components/dropdown-panel';
 import {
+  IconBarChart,
   IconCheck,
+  IconDollar,
   IconClipboard,
   IconClock,
   IconDownload,
   IconLogOut,
-  IconShare,
   IconUpload,
   IconUser,
   IconWallet,
@@ -37,8 +38,6 @@ interface ProfileMenuProps {
   /** Endereço da carteira conectada, quando há. */
   walletAddress?: string;
   onConnectWallet: () => void;
-  /** Abre o sheet de compartilhar perfil (`ShareProfileSheet`). */
-  onShareProfile: () => void;
 }
 
 /** Abrevia o endereço como no web: início e fim, meio elidido. */
@@ -50,7 +49,7 @@ function short(address: string): string {
  * As seis ações do frame. As três primeiras e o `connect` já têm destino;
  * `withdraw` e `deposit` continuam inertes porque ainda não têm tela.
  */
-const ACTIONS: (PanelItem & { href?: '/wallet' | '/transactions' | '/history' })[] = [
+const ACTIONS: (PanelItem & { href?: '/wallet' | '/transactions' | '/history' | '/dashboard' | '/traction' })[] = [
   {
     key: 'edit-profile',
     Icon: IconUser,
@@ -72,6 +71,8 @@ const ACTIONS: (PanelItem & { href?: '/wallet' | '/transactions' | '/history' })
     subtitle: 'View conversations and activities',
     href: '/history',
   },
+  { key: 'dashboard', Icon: IconBarChart, title: 'Dashboard', subtitle: 'The economy at a glance', href: '/dashboard' },
+  { key: 'traction', Icon: IconDollar, title: 'Traction', subtitle: 'Live payments on Arc', href: '/traction' },
   {
     key: 'connect',
     Icon: IconClipboard,
@@ -87,7 +88,6 @@ export function ProfileMenu({
   onDismiss,
   walletAddress,
   onConnectWallet,
-  onShareProfile,
 }: ProfileMenuProps) {
   const colors = useTheme();
   const styles = useStyles();
@@ -147,22 +147,6 @@ export function ProfileMenu({
           }}
         />
       ))}
-
-      {walletAddress ? (
-        // Só com sessão: o card é montado do `GET /user/me/profile`.
-        <PanelRow
-          item={{
-            key: 'share-profile',
-            Icon: IconShare,
-            title: 'Share profile',
-            subtitle: 'Post your Xiaolee card',
-            onPress: () => {
-              onDismiss();
-              onShareProfile();
-            },
-          }}
-        />
-      ) : null}
 
       {/* Preferência do app, não da conta — fica no fim, logo antes de sair,
           onde ficam as preferências na maioria dos apps. */}

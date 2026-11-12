@@ -11,11 +11,15 @@ import asyncio
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from datetime import datetime, timedelta, timezone
+
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.database import get_db_session
+from database.models import PaymentIntent
 from database.repository import DatabaseRepository
 from server.integrations.arc_client import ArcClient
 from server.settings import settings
@@ -243,26 +247,66 @@ async def _run_agent_task(
 # ---------------------------------------------------------------------------
 
 
+async def _caller_id(db: AsyncSession, authorization: Optional[str]) -> str:
+    """twitter_user_id do Bearer, só se o backend o emitiu (o id público não vale)."""
+    from server.campaigns_routes import resolve_twitter_identity  # lazy: evita import circular
+
+    return (await resolve_twitter_identity(db, authorization, strict=True))[0]
+
+
+async def _enforce_agent_money_guards(db: AsyncSession, campaign, budget_usdc: float) -> None:
+    """Travas de dinheiro real do agente: kill switch, teto por pool e teto diário (24h).
+
+    ponytail: o teto diário do agente soma só `payment_intents`; o dos claims soma
+    `campaign_participants.paid_at`. Cada um respeita `PAYOUT_DAILY_BUDGET_USDC` sozinho,
+    então o gasto total pode chegar a 2x — unificar num contador se o volume crescer.
+    """
+    if not settings.payouts_enabled:
+        raise HTTPException(status_code=503, detail="Payouts are paused right now.")
+    if budget_usdc > float(campaign.reward_pool):
+        raise HTTPException(status_code=400, detail="budget_usdc exceeds the campaign reward pool.")
+    spent = await db.execute(
+        select(func.coalesce(func.sum(PaymentIntent.amount_usdc), 0)).where(
+            PaymentIntent.status != "failed",
+            PaymentIntent.created_at >= datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=24),
+        )
+    )
+    # Reserva o orçamento inteiro do run, não só o que ele já gastou: o agente pode pagar tudo.
+    if float(spent.scalar() or 0) + budget_usdc > settings.payout_daily_budget_usdc:
+        raise HTTPException(status_code=400, detail="The daily payout budget would be exceeded.")
+
+
 @router.post("/run-campaign", response_model=RunCampaignResponse)
 async def run_campaign(
     payload: RunCampaignRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db_session),
+    authorization: Optional[str] = Header(default=None),
 ):
     """
     Dispara o agente de campanha em background.
     Retorna imediatamente com agent_run_id para polling de status.
+
+    O agente paga da tesouraria, então só o criador da campanha (token emitido pelo
+    backend) dispara — e, fora do sandbox, com as mesmas travas dos claims.
     """
     if payload.budget_usdc <= 0:
         raise HTTPException(status_code=400, detail="budget_usdc must be positive")
     if payload.campaign_id <= 0:
         raise HTTPException(status_code=400, detail="campaign_id must be positive")
 
+    from server.campaigns_routes import _creator_campaign  # lazy: evita import circular
+
+    user, campaign = await _creator_campaign(db, authorization, payload.campaign_id)
+    if not settings.arc_sandbox:
+        await _enforce_agent_money_guards(db, campaign, payload.budget_usdc)
+
     from database.database import SessionLocal  # lazy to avoid circular
     import uuid as _uuid
 
     run_id = str(_uuid.uuid4())
     _RUNS[run_id] = {
+        "owner": user.twitter_user_id,
         "status": "pending",
         "campaign_id": payload.campaign_id,
         "budget_usdc": payload.budget_usdc,
@@ -299,9 +343,16 @@ async def run_campaign(
 
 
 @router.get("/run-campaign/{run_id}/status", response_model=AgentStatusResponse)
-async def get_run_status(run_id: str):
-    """Consulta o status de um run do agente."""
+async def get_run_status(
+    run_id: str,
+    db: AsyncSession = Depends(get_db_session),
+    authorization: Optional[str] = Header(default=None),
+):
+    """Consulta o status de um run do agente — só quem o disparou (traz destinatários e txs)."""
+    owner = await _caller_id(db, authorization)
     run = _RUNS.get(run_id)
+    if run and run.get("owner") != owner:
+        run = None  # mesmo 404 de run inexistente: não confirma que o id existe
     if not run:
         raise HTTPException(
             status_code=404,
@@ -323,8 +374,12 @@ async def get_run_status(run_id: str):
 
 
 @router.get("/runs")
-async def list_runs():
-    """Lista todos os runs ativos (debug)."""
+async def list_runs(
+    db: AsyncSession = Depends(get_db_session),
+    authorization: Optional[str] = Header(default=None),
+):
+    """Lista os runs ativos do chamador (debug)."""
+    owner = await _caller_id(db, authorization)
     return {
         "runs": [
             {
@@ -335,5 +390,6 @@ async def list_runs():
                 "total_paid_usdc": data.get("total_paid_usdc", 0.0),
             }
             for run_id, data in _RUNS.items()
+            if data.get("owner") == owner
         ]
     }

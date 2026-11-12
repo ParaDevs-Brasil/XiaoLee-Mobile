@@ -34,7 +34,7 @@ import { IconChevronLeft, IconMore, IconRefresh, IconScissors, IconZap } from '@
 import { ItemMenu } from '@/components/item-menu';
 import { PipelineSteps } from '@/components/pipeline-steps';
 import { RenameSheet } from '@/components/rename-sheet';
-import { ScreenShell } from '@/components/screen-shell';
+import { FAB_CLEARANCE, ScreenShell } from '@/components/screen-shell';
 import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useBackendData } from '@/hooks/use-backend-data';
@@ -681,7 +681,6 @@ function DetailSkeleton() {
 }
 
 /** Altura do atalho "Chat" flutuante (44) + a margem dele (16) + respiro: o último card não pode ficar debaixo dele. */
-const FAB_CLEARANCE = 44 + Spacing.three + Spacing.four;
 
 const useStyles = makeStyles((colors) => ({
   flex: { flex: 1 },

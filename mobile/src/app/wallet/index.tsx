@@ -43,7 +43,7 @@ function WalletHome({ address, addressLoading }: { address: string | undefined; 
   const rewards = useBackendData(fetchRewards);
 
   return (
-    <ScreenShell>
+    <ScreenShell deferContent>
       <WalletHomeView
         wallet={wallet}
         hasSession={hasSession}
@@ -51,6 +51,7 @@ function WalletHome({ address, addressLoading }: { address: string | undefined; 
         isConnected={isConnected}
         onSignOut={disconnect}
         onSeeAllReceipts={() => router.push('/wallet/receipts')}
+        onSeeActivity={() => router.push('/wallet/activity')}
         onOpenBreakdown={() => router.push('/wallet/breakdown')}
       />
     </ScreenShell>

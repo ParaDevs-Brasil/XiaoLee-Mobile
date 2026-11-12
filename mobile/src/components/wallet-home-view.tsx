@@ -6,21 +6,26 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { UserCampaignParticipation } from '@/api/backend';
 import { ConnectWalletButton, ErrorState, Skeleton } from '@/components/feedback';
-import { IconChevronRight, IconUser } from '@/components/icons';
-import { NetworkMismatchCard } from '@/components/network-badge';
+import { IconChevronRight, IconSpark, IconUser } from '@/components/icons';
+import { NetworkBadge, NetworkMismatchCard } from '@/components/network-badge';
 import { ReceiptRow } from '@/components/receipt-row';
 import { ReceiveSheet } from '@/components/receive-sheet';
-import { PageHeading } from '@/components/screen-shell';
+import { AddMoneySheet } from '@/components/add-money-sheet';
+import { WithdrawSheet } from '@/components/withdraw-sheet';
+import { getOnoffConfig } from '@/api/backend';
+import { useBackendData } from '@/hooks/use-backend-data';
+import { FAB_CLEARANCE } from '@/components/screen-shell';
 import { SectionCard } from '@/components/section-card';
-import { WalletAddressCard } from '@/components/wallet-address-card';
-import { WalletBalanceCard } from '@/components/wallet-balance-card';
+import { WalletActions } from '@/components/wallet-actions';
+import { AddressChip } from '@/components/wallet-address-card';
+import { InflowRibbon, WalletBalanceCard } from '@/components/wallet-balance-card';
 import { WalletMockSwitcher } from '@/components/wallet-mock-switcher';
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
 import type { CreatorWallet } from '@/hooks/use-creator-wallet';
 import { ARC_NETWORK } from '@/lib/arc-network';
 import { hasKnownSource, type WalletReceipt } from '@/lib/creator-wallet';
-import { formatTokenAmount } from '@/lib/format';
+import { formatTokenAmount, isPoints } from '@/lib/format';
 
 /**
  * Corpo da tela de Wallet — a carteira do creator na Arc (rota em
@@ -53,6 +58,7 @@ export interface WalletHomeViewProps {
   isConnected: boolean;
   onSignOut: () => void;
   onSeeAllReceipts: () => void;
+  onSeeActivity: () => void;
   onOpenBreakdown: () => void;
 }
 
@@ -106,6 +112,7 @@ export function WalletHomeView({
   isConnected,
   onSignOut,
   onSeeAllReceipts,
+  onSeeActivity,
   onOpenBreakdown,
 }: WalletHomeViewProps) {
   const colors = useTheme();
@@ -113,6 +120,12 @@ export function WalletHomeView({
   // Barra de gestos do Android come o fim da lista sem este inset.
   const insets = useSafeAreaInsets();
   const [receiveOpen, setReceiveOpen] = useState(false);
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  // Saque só aparece com o on/off-ramp ligado no backend (ONOFF_ENABLED); falha de rede = esconde, nunca quebra a tela.
+  const onoff = useBackendData(() => getOnoffConfig().catch(() => null));
+  const canDeposit = hasSession && wallet.status === 'ready' && onoff.data?.deposit_enabled === true;
+  const canWithdraw = hasSession && wallet.status === 'ready' && onoff.data?.withdraw_enabled === true;
 
   const showGuest = !hasSession && !wallet.isMock;
   // Saldo e recompensas vêm do mesmo backend: quando um cai, o outro quase
@@ -125,7 +138,7 @@ export function WalletHomeView({
   return (
     <>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: Spacing.six + insets.bottom }]}
+        contentContainerStyle={[styles.content, { paddingBottom: FAB_CLEARANCE + insets.bottom }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -139,7 +152,10 @@ export function WalletHomeView({
           />
         }
       >
-        <PageHeading title="Wallet" subtitle="Your USDC on Arc, and where it came from." />
+        <View style={styles.head}>
+          <Text style={styles.title}>Wallet</Text>
+          <NetworkBadge />
+        </View>
 
         <WalletMockSwitcher />
 
@@ -177,12 +193,26 @@ export function WalletHomeView({
                 receipts={wallet.receipts}
                 isMock={wallet.isMock}
                 onReceive={() => setReceiveOpen(true)}
-                // Sem origem conhecida não há o que detalhar — ver `wallet-breakdown-view`.
-                onDetails={wallet.receipts && hasKnownSource(wallet.receipts) ? onOpenBreakdown : undefined}
-              />
+              >
+                <AddressChip address={wallet.address} />
+                <WalletActions
+                  canAdd={canDeposit}
+                  canWithdraw={canWithdraw}
+                  onAdd={() => setAddOpen(true)}
+                  onWithdraw={() => setWithdrawOpen(true)}
+                  onReceive={() => setReceiveOpen(true)}
+                  onActivity={onSeeActivity}
+                />
+              </WalletBalanceCard>
             ) : null}
 
-            <WalletAddressCard address={wallet.address} onShowQr={() => setReceiveOpen(true)} />
+            {wallet.status === 'ready' && wallet.receipts ? (
+              <InflowRibbon
+                receipts={wallet.receipts}
+                // Sem origem conhecida não há o que detalhar — ver `wallet-breakdown-view`.
+                onDetails={hasKnownSource(wallet.receipts) ? onOpenBreakdown : undefined}
+              />
+            ) : null}
 
             {!ARC_NETWORK.isMainnet && !wallet.isMock ? <FaucetButton address={wallet.address} /> : null}
 
@@ -210,6 +240,11 @@ export function WalletHomeView({
         <WalletFooter isConnected={isConnected} onSignOut={onSignOut} />
       </ScrollView>
 
+      {addOpen && onoff.data ? (
+        <AddMoneySheet config={onoff.data} onReceive={() => setReceiveOpen(true)} onClose={() => setAddOpen(false)} />
+      ) : null}
+      {withdrawOpen ? <WithdrawSheet maxUsdc={wallet.balanceUsdc ?? null} onClose={() => setWithdrawOpen(false)} /> : null}
+
       {wallet.address ? (
         <ReceiveSheet visible={receiveOpen} address={wallet.address} onClose={() => setReceiveOpen(false)} />
       ) : null}
@@ -225,7 +260,7 @@ function RecentReceipts({ receipts, onSeeAll }: { receipts: WalletReceipt[] | nu
 
   return (
     <SectionCard
-      title="Recent payments"
+      title="Recent receipts"
       action={
         receipts && receipts.length > 0 ? (
           <Pressable
@@ -233,7 +268,7 @@ function RecentReceipts({ receipts, onSeeAll }: { receipts: WalletReceipt[] | nu
             hitSlop={Spacing.two}
             style={({ pressed }) => [styles.seeAll, pressed && styles.pressed]}
             accessibilityRole="button"
-            accessibilityLabel="See all payments"
+            accessibilityLabel="See all receipts"
           >
             <Text style={styles.seeAllText}>See all</Text>
             <IconChevronRight size={14} sw={2.2} color={colors.ink2} />
@@ -302,13 +337,21 @@ function CampaignRewards({
 }
 
 function TokenRow({ tally }: { tally: TokenTally }) {
+  const colors = useTheme();
   const styles = useStyles();
   const total = tally.claimed + tally.claimable + tally.pending;
 
   return (
     <View style={styles.tokenRow}>
       <View style={styles.tokenMark}>
-        <Text style={styles.tokenMarkText}>{tally.token.slice(0, 4)}</Text>
+        {isPoints(tally.token) ? (
+          // A faísca ocupa a metade de cima do quadro do ícone: desce para ficar no centro do selo.
+          <View style={{ marginTop: 5 }}>
+            <IconSpark size={20} color={colors.accent} />
+          </View>
+        ) : (
+          <Text style={styles.tokenMarkText}>{tally.token.slice(0, 4)}</Text>
+        )}
       </View>
 
       <View style={styles.flex}>
@@ -441,6 +484,8 @@ const useStyles = makeStyles((colors) => ({
     paddingTop: Spacing.four,
     gap: Spacing.three - 4,
   },
+  head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  title: { fontFamily: Fonts.bold, fontSize: 24, lineHeight: 30, color: colors.ink },
   pressed: { opacity: 0.7 },
   quiet: { fontFamily: Fonts.medium, fontSize: 13, color: colors.ink3, paddingVertical: Spacing.two },
   stale: {

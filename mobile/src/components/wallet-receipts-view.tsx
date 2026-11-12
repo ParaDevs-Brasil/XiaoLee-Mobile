@@ -7,6 +7,7 @@ import { IconBag, IconChevronLeft, IconGift, IconInbox, type IconProps } from '@
 import { NETWORK_LABEL, NetworkMismatchCard } from '@/components/network-badge';
 import { ReceiptRow } from '@/components/receipt-row';
 import { WalletMockSwitcher } from '@/components/wallet-mock-switcher';
+import { FAB_CLEARANCE } from '@/components/screen-shell';
 import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
 import type { CreatorWallet } from '@/hooks/use-creator-wallet';
@@ -80,7 +81,7 @@ export function WalletReceiptsView({
   return (
     <>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: Spacing.six + insets.bottom }]}
+        contentContainerStyle={[styles.content, { paddingBottom: FAB_CLEARANCE + insets.bottom }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl

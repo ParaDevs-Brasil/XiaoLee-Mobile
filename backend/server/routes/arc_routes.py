@@ -315,6 +315,8 @@ async def relay_usdc_authorization(
         limit=settings.arc_relay_rate_limit_per_hour,
         window_seconds=3600,
     )
+    if settings.arc_relay_global_per_hour > 0:
+        await limiter.check(key="arc_relay:global", limit=settings.arc_relay_global_per_hour, window_seconds=3600)
 
     try:
         result = await _arc_native().relay_transfer_authorization(

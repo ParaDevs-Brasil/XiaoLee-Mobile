@@ -1,16 +1,17 @@
 import { useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { EmptyState, Skeleton } from '@/components/feedback';
 import { IconInbox, IconSpark, IconUser } from '@/components/icons';
-import { PageHeading, ScreenShell } from '@/components/screen-shell';
+import { RichText } from '@/components/rich-text';
+import { FAB_CLEARANCE, PageHeading, ScreenShell } from '@/components/screen-shell';
 import { SectionCard } from '@/components/section-card';
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useBackendData } from '@/hooks/use-backend-data';
 import { loadChatHistory, type StoredMessage } from '@/lib/chat-history';
-import { shortHash, timeAgo } from '@/lib/format';
+import { parseTimestamp, shortHash, timeAgo } from '@/lib/format';
 
 /**
  * Tela de History — terceiro destino do `ProfileMenu`.
@@ -29,13 +30,33 @@ import { shortHash, timeAgo } from '@/lib/format';
  * `sessionId` muda — entrar ou sair troca qual gaveta esta tela lê, sem
  * precisar de nada especial aqui.
  *
- * A ordem de leitura é a de uma conversa, não a de um extrato: mais antiga
- * primeiro, como o web (`Historico.tsx` ordena por `timestamp` crescente) e ao
- * contrário de Traction, Notifications e Transactions, que lideram com o mais
- * novo. Inverter aqui faria a resposta aparecer acima da pergunta.
+ * Ordem: as trocas mais recentes em cima, como Traction, Notifications e Transactions. Dentro de cada troca a pergunta
+ * continua acima da resposta (ver `newestFirst`): inverter mensagem a mensagem poria a resposta antes da pergunta.
  */
 
 type Filter = StoredMessage['role'] | 'all';
+
+/** Inverte a ordem das trocas, preservando a ordem de dentro de cada uma (pergunta → resposta). */
+function newestFirst(chrono: StoredMessage[]): StoredMessage[] {
+  const turns: StoredMessage[][] = [];
+  for (const message of chrono) {
+    if (message.role === 'user' || turns.length === 0) turns.push([message]);
+    else turns[turns.length - 1].push(message);
+  }
+  return turns.reverse().flat();
+}
+
+const dayKey = (iso: string) => new Date(parseTimestamp(iso)).toDateString();
+
+/** "Today", "Yesterday" ou "Oct 6": o dia da mensagem, para a lista longa ter por onde ser percorrida. */
+function dayLabel(iso: string, now: number): string {
+  const at = parseTimestamp(iso);
+  if (Number.isNaN(at)) return '';
+  const days = Math.round((new Date(now).setHours(0, 0, 0, 0) - new Date(at).setHours(0, 0, 0, 0)) / 86_400_000);
+  if (days <= 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  return new Date(at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
 
 const FILTERS: { id: Filter; label: string }[] = [
   { id: 'all', label: 'All' },
@@ -52,20 +73,28 @@ export default function HistoryScreen() {
   // vazia dentro dela —, então não há bloco de erro nesta tela.
   const { data, loading, refreshing, reload } = useBackendData(loadChatHistory);
   const [filter, setFilter] = useState<Filter>('all');
+  const [search, setSearch] = useState('');
+  // Relógio lido uma vez: o React Compiler trata `Date.now()` no render como impuro.
+  const [now] = useState(() => Date.now());
 
-  const messages = data ?? [];
+  // Mais recente primeiro. O que chega é cronológico; vira uma lista de trocas (uma pergunta e as respostas dela) e só as
+  // trocas se invertem, então a resposta continua abaixo da pergunta que a gerou.
+  const messages = newestFirst(data ?? []);
   const counts = {
     all: messages.length,
     user: messages.filter((item) => item.role === 'user').length,
     assistant: messages.filter((item) => item.role === 'assistant').length,
   };
 
-  const visible = filter === 'all' ? messages : messages.filter((item) => item.role === filter);
+  const term = search.trim().toLowerCase();
+  const byRole = filter === 'all' ? messages : messages.filter((item) => item.role === filter);
+  const visible = term ? byRole.filter((item) => item.content.toLowerCase().includes(term)) : byRole;
 
   return (
     <ScreenShell>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: Spacing.four + insets.bottom }]}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={[styles.content, { paddingBottom: FAB_CLEARANCE + insets.bottom }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -84,11 +113,24 @@ export default function HistoryScreen() {
         {loading && !data ? <HistorySkeleton /> : null}
 
         {data && messages.length > 0 ? (
-          <FilterBar current={filter} counts={counts} onChange={setFilter} />
+          <>
+            <TextInput
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Search your messages"
+              placeholderTextColor={colors.ink3}
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="search"
+              style={styles.search}
+              accessibilityLabel="Search your messages"
+            />
+            <FilterBar current={filter} counts={counts} onChange={setFilter} />
+          </>
         ) : null}
 
         {data ? (
-          <SectionCard title="Conversation" subtitle="Oldest first">
+          <SectionCard title="Conversation" subtitle={term ? `${visible.length} found` : 'Newest first'}>
             {/* Só um vazio, para a lista inteira — não um por aba como em
                 Transactions. Um filtro sem mensagem fica desabilitado no chip
                 acima, então não há como entrar numa aba vazia para precisar de
@@ -103,7 +145,12 @@ export default function HistoryScreen() {
               visible.map((message, index) => (
                 // Sem id próprio no histórico local — a posição é estável
                 // porque a lista só cresce no fim (`appendChatMessage`).
-                <MessageRow key={index} message={message} />
+                <View key={index}>
+                  {index === 0 || dayKey(visible[index - 1].at) !== dayKey(message.at) ? (
+                    <Text style={styles.day}>{dayLabel(message.at, now)}</Text>
+                  ) : null}
+                  <MessageRow message={message} />
+                </View>
               ))
             )}
           </SectionCard>
@@ -181,7 +228,11 @@ function MessageRow({ message }: { message: StoredMessage }) {
 
       {/* Sem `numberOfLines`: é o único lugar do app onde a mensagem inteira
           é o ponto — cortar o texto derrotaria a tela. */}
-      <Text style={styles.rowContent}>{message.content}</Text>
+      {mine ? (
+        <Text style={styles.rowContent}>{message.content}</Text>
+      ) : (
+        <RichText text={message.content} style={styles.rowContent} />
+      )}
       {/* Comprovante do card de ação — só texto, o visual fino é do frontend. */}
       {message.txHash ? <Text style={styles.rowContent}>Sent · {shortHash(message.txHash)}</Text> : null}
       {message.claimReceiptId ? <Text style={styles.rowContent}>Claimed · {message.claimReceiptId}</Text> : null}
@@ -215,6 +266,26 @@ const useStyles = makeStyles((colors) => ({
 
   // ── Filtros ────────────────────────────────────────────────────────────
   filters: { flexDirection: 'row', gap: Spacing.two - 2 },
+  search: {
+    paddingHorizontal: Spacing.three,
+    height: 44,
+    borderRadius: Radius.pill,
+    backgroundColor: colors.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    fontFamily: Fonts.sans,
+    fontSize: 14,
+    color: colors.ink,
+  },
+  day: {
+    fontFamily: Fonts.bold,
+    fontSize: 11,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: colors.ink3,
+    paddingTop: Spacing.three - 4,
+    paddingBottom: Spacing.one,
+  },
   chip: {
     flex: 1,
     flexDirection: 'row',

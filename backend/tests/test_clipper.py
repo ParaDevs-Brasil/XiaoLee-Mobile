@@ -133,9 +133,61 @@ def test_groq_provider_without_key_fails_clearly(monkeypatch):
 
 
 def test_pick_highlights_without_key_fails_clearly(monkeypatch):
-    monkeypatch.setattr(clipper, "settings", replace(clipper.settings, highlights_provider="anthropic", anthropic_api_key=""))
+    monkeypatch.setattr(clipper, "settings", replace(
+        clipper.settings, highlights_provider="anthropic", anthropic_api_key="", groq_api_key=""))
     with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
         asyncio.run(clipper.pick_highlights(SEGS))
+
+
+class _ApiError(Exception):
+    def __init__(self, status_code, msg):
+        super().__init__(msg)
+        self.status_code = status_code
+
+
+def _claude_fails_groq_answers(monkeypatch, exc, groq_key):
+    calls = {"groq": 0}
+
+    class _Msgs:
+        async def create(self, **kw):
+            raise exc
+
+    class _Completions:
+        async def create(self, **kw):
+            calls["groq"] += 1
+            args = json.dumps({"highlights": [_h(0, 30, "Gancho")]})
+            call = SimpleNamespace(function=SimpleNamespace(name="report_highlights", arguments=args))
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(tool_calls=[call]))])
+
+    monkeypatch.setattr(clipper, "settings", replace(
+        clipper.settings, highlights_provider="anthropic", anthropic_api_key="k", groq_api_key=groq_key))
+    import anthropic
+    import openai
+
+    monkeypatch.setattr(anthropic, "AsyncAnthropic", lambda **kw: SimpleNamespace(messages=_Msgs()))
+    monkeypatch.setattr(openai, "AsyncOpenAI", lambda **kw: SimpleNamespace(chat=SimpleNamespace(completions=_Completions())))
+    return calls
+
+
+def test_claude_out_of_credit_falls_back_to_groq(monkeypatch):
+    calls = _claude_fails_groq_answers(monkeypatch, _ApiError(400, "Your credit balance is too low"), "g")
+    out = asyncio.run(clipper.pick_highlights(SEGS))
+    assert [(h.title, h.start, h.end) for h in out] == [("Gancho", 0.0, 30.0)]
+    assert calls["groq"] == 1
+
+
+def test_claude_down_without_groq_key_still_raises_unavailable(monkeypatch):
+    calls = _claude_fails_groq_answers(monkeypatch, _ApiError(529, "overloaded"), "")
+    with pytest.raises(clipper.ProviderUnavailable):
+        asyncio.run(clipper.pick_highlights(SEGS))
+    assert calls["groq"] == 0
+
+
+def test_claude_request_error_does_not_fall_back(monkeypatch):
+    calls = _claude_fails_groq_answers(monkeypatch, _ApiError(400, "prompt is malformed"), "g")
+    with pytest.raises(_ApiError):  # erro do pedido não é culpa do provedor: trocar de modelo só esconderia o bug
+        asyncio.run(clipper.pick_highlights(SEGS))
+    assert calls["groq"] == 0
 
 
 def _w(text, a, b):
@@ -307,7 +359,7 @@ def test_split_chunks_keeps_short_media_whole_and_cuts_long_at_segment_edges():
 def test_long_media_asks_per_chunk_and_lets_the_model_rank(monkeypatch):
     calls = []
 
-    async def fake_ask(segs, language=None, n=clipper.N_CLIPS):
+    async def fake_ask(segs, language=None, n=clipper.N_CLIPS, min_s=clipper.MIN_LEN_S, max_s=clipper.MAX_LEN_S):
         calls.append((segs[0]["start"], n))
         b = segs[0]["start"] + 100
         return [_h(b, b + 40, f"bloco {segs[0]['start']:.0f}")]
@@ -325,7 +377,7 @@ def test_long_media_asks_per_chunk_and_lets_the_model_rank(monkeypatch):
 
 
 def test_long_media_survives_a_failed_chunk_and_a_failed_ranking(monkeypatch):
-    async def fake_ask(segs, language=None, n=clipper.N_CLIPS):
+    async def fake_ask(segs, language=None, n=clipper.N_CLIPS, min_s=clipper.MIN_LEN_S, max_s=clipper.MAX_LEN_S):
         if segs[0]["start"] == 1200.0:
             raise ValueError("boom")
         b = segs[0]["start"] + 100
@@ -441,3 +493,124 @@ def test_groq_rate_limit_is_provider_unavailable(monkeypatch):
     with pytest.raises(clipper.ProviderUnavailable):
         asyncio.run(clipper.pick_highlights(SEGS))
 
+
+
+# ── controles do creator: quantidade, duração e janela que ficou curta por pouco ──
+
+def test_near_miss_window_is_extended_to_the_minimum_with_whole_segments():
+    segs = [{"start": i * 6.5, "end": i * 6.5 + 6.5, "text": f"f{i}"} for i in range(12)]   # 0-78 s
+    out = clipper.validate_highlights([_h(0, 19.5, "A")], segs)                             # 19,5 s: quase 20
+    assert [(h.title, h.start, h.end) for h in out] == [("A", 0.0, 26.0)]                    # +1 segmento inteiro, nunca meia frase
+
+
+def test_extension_goes_backwards_at_the_end_of_the_media_and_respects_the_cap():
+    segs = [{"start": i * 6.5, "end": i * 6.5 + 6.5, "text": f"f{i}"} for i in range(12)]
+    out = clipper.validate_highlights([_h(58.5, 78, "Fim")], segs)                          # sem segmento depois: volta para trás
+    assert [(h.start, h.end) for h in out] == [(52.0, 78.0)]
+    assert clipper.validate_highlights([_h(0, 19.5)], segs, max_s=22.0) == []                # estender estouraria o teto: descarta
+
+
+def test_window_far_below_the_minimum_is_still_dropped_not_stretched():
+    rej = []
+    assert clipper.validate_highlights([_h(0, 10)], SEGS, rej) == []                         # 10 s < 75% de 20 s
+    assert "fora de 20-75s" in rej[0][1]
+
+
+def test_requested_count_and_length_reach_validation_and_prompt():
+    segs = [{"start": i * 10.0, "end": i * 10.0 + 10.0, "text": "x"} for i in range(12)]
+    raw = [_h(0, 20, "a"), _h(20, 40, "b"), _h(40, 60, "c"), _h(60, 80, "d")]
+    assert [h.title for h in clipper.validate_highlights(raw, segs, n=2, min_s=15, max_s=30)] == ["a", "b"]
+    assert len(clipper.validate_highlights(raw, segs, n=5, min_s=15, max_s=30)) == 4
+    assert clipper.validate_highlights([_h(0, 50)], segs, min_s=15, max_s=30)[0].end == 30.0   # aparado ao teto pedido
+    sys_prompt = clipper._system("pt", 5, 15, 30)
+    assert "up to 5 windows" in sys_prompt and "15-30 seconds" in sys_prompt
+    assert "ideally 15-30 s" in sys_prompt                                                   # faixa ideal recortada ao pedido
+    assert "ideally 30-60 s" in clipper._system("pt")                                        # o padrão não mudou
+
+
+def test_pick_highlights_passes_the_request_to_the_model_and_caps_the_result(monkeypatch):
+    seen = {}
+
+    async def fake_ask(segs, language=None, n=clipper.N_CLIPS, min_s=clipper.MIN_LEN_S, max_s=clipper.MAX_LEN_S):
+        seen.update(n=n, min_s=min_s, max_s=max_s)
+        return [_h(0, 25, "a"), _h(30, 55, "b"), _h(60, 85, "c")]
+
+    monkeypatch.setattr(clipper, "ask_claude", fake_ask)
+    segs = [{"start": i * 5.0, "end": i * 5.0 + 5.0, "text": "x"} for i in range(24)]       # 0-120 s
+    out = asyncio.run(clipper.pick_highlights(segs, "pt", n=2, min_s=20, max_s=40))
+    assert seen == {"n": 2, "min_s": 20, "max_s": 40} and [h.title for h in out] == ["a", "b"]
+
+
+def test_length_error_rules():
+    assert clipper.length_error(20, 75) is None and clipper.length_error(10, 90) is None
+    assert clipper.length_error(9, 40) and clipper.length_error(20, 91)                      # fora de 10-90 s
+    assert clipper.length_error(30, 33) and clipper.length_error(40, 30)                     # folga < 5 s / invertido
+
+
+def test_caption_fixes_replace_words_keep_punctuation_and_timing():
+    fix = clipper._fix_word
+    assert fix("vetto,", {"Vetto": "VETTO"}) == "VETTO," and fix("(arc)", {"arc": "Arc"}) == "(Arc)"
+    assert fix("outro", {"arc": "Arc"}) == "outro" and fix("arco", {"arc": "Arc"}) == "arco"   # palavra inteira, não pedaço
+    segs = [{"start": 0.0, "end": 4.0, "text": "o vetto falou, vetto de novo",
+             "words": [{"text": t, "start": i * 0.8, "end": i * 0.8 + 0.7} for i, t in enumerate(["o", "vetto", "falou,", "vetto", "de"])]}]
+    plain = clipper.caption_groups(segs, 0.0, 4.0)
+    fixed = clipper.caption_groups(segs, 0.0, 4.0, {"vetto": "Vetto"})
+    assert [w[0] for _, _, g in fixed for w in g] == ["o", "Vetto", "falou,", "Vetto", "de"]
+    assert [(t0, t1, [(w[1], w[2]) for w in g]) for t0, t1, g in fixed] == [(t0, t1, [(w[1], w[2]) for w in g]) for t0, t1, g in plain]
+    assert "Vetto" in clipper.build_ass(segs, 0.0, 4.0, {"vetto": "Vetto"}) and "Vetto" not in clipper.build_ass(segs, 0.0, 4.0)
+
+
+def test_clean_fixes_rules():
+    assert clipper.clean_fixes({" vetto ": " {Vetto} "}) == {"vetto": "Vetto"}                # normaliza e tira chaves do ASS
+    for bad in ({"duas palavras": "x"}, {"": "x"}, {"a": ""}, {"a": "x" * 61}, {f"w{i}": "x" for i in range(21)}):
+        with pytest.raises(ValueError):
+            clipper.clean_fixes(bad)
+
+
+# ── volume do corte (loudnorm em 2 passadas) ───────────────────────────────────────────────────────────────
+
+def _loudness(path):
+    err = subprocess.run(["ffmpeg", "-nostdin", "-hide_banner", "-i", path, "-af", "ebur128=peak=true", "-f", "null", "-"],
+                         capture_output=True, text=True, check=True).stderr
+    tail = err[err.rindex("Summary"):]
+    return float(re.search(r"I:\s+(-?[\d.]+) LUFS", tail).group(1)), float(re.search(r"Peak:\s+(-?[\d.]+) dBFS", tail).group(1))
+
+
+def _src(tmp_path, name, audio):
+    p = str(tmp_path / name)
+    cmd = ["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc=size=640x360:rate=25:duration=12"]
+    if audio:
+        cmd += ["-f", "lavfi", "-i", audio, "-shortest"]
+    subprocess.run([*cmd, "-pix_fmt", "yuv420p", "-y", p], check=True)
+    return p
+
+
+def _render(tmp_path, src, out="o.mp4"):
+    ass = tmp_path / "s.ass"
+    ass.write_text(clipper.build_ass([], 0, 10), encoding="utf-8")
+    dest = str(tmp_path / out)
+    asyncio.run(clipper.render_clip(src, str(ass), 1.0, 11.0, dest))
+    return dest
+
+
+@pytest.mark.parametrize("gain", [0.02, 0.9])  # muito baixo e muito alto: os dois acabam no mesmo volume
+def test_render_normalizes_loudness_without_clipping(tmp_path, gain):
+    src = _src(tmp_path, "a.mp4", f"anoisesrc=color=pink:amplitude={gain}:duration=12")
+    lufs, peak = _loudness(_render(tmp_path, src))
+    assert lufs == pytest.approx(-16.0, abs=1.0)
+    assert peak <= -1.0
+
+
+def test_render_without_audio_track_or_with_silence_still_works(tmp_path):
+    for name, audio in (("n.mp4", None), ("s.mp4", "anullsrc=r=44100:cl=mono")):
+        src = _src(tmp_path, name, audio)
+        stream, duration = _probe(_render(tmp_path, src, "o_" + name))
+        assert stream["height"] == 1920 and duration == pytest.approx(10.0, abs=0.5)
+
+
+def test_loudnorm_filter_parses_report_and_rejects_unusable_ones():
+    ok = '{"input_i":"-30.1","input_tp":"-12.0","input_lra":"5.0","input_thresh":"-40.1","target_offset":"0.3"}'
+    f = clipper.loudnorm_filter("noise\n" + ok + "\n")
+    assert "measured_I=-30.1" in f and "offset=0.3" in f and f.endswith("level=disabled")
+    assert clipper.loudnorm_filter(ok.replace("-30.1", "-inf")) is None  # trecho mudo
+    assert clipper.loudnorm_filter("sem json") is None and clipper.loudnorm_filter("{}") is None

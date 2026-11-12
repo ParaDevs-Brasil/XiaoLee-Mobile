@@ -93,14 +93,18 @@ export async function shareClip(mediaId: number, clip: Pick<MediaClip, 'id' | 't
   if (!canShareClips) {
     throw new ClipShareError('Update the app to share clips — this version is missing the share feature.');
   }
+  const file = await downloadClip(mediaId, clip);
+  await shareVideoFile(file, clip.title);
+}
+
+/** Abre a tela de compartilhar do sistema com um MP4 já no aparelho. */
+export async function shareVideoFile(file: File, title: string): Promise<void> {
+  if (!canShareClips) {
+    throw new ClipShareError('Update the app to share videos — this version is missing the share feature.');
+  }
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- carregamento tardio, ver `canShareClips`
   const Sharing = require('expo-sharing') as typeof import('expo-sharing');
-  const file = await downloadClip(mediaId, clip);
-  await Sharing.shareAsync(file.uri, {
-    mimeType: 'video/mp4',
-    UTI: 'public.mpeg-4',
-    dialogTitle: clip.title,
-  });
+  await Sharing.shareAsync(file.uri, { mimeType: 'video/mp4', UTI: 'public.mpeg-4', dialogTitle: title });
 }
 
 /**
@@ -127,6 +131,15 @@ export async function saveClipToDevice(mediaId: number, clip: Pick<MediaClip, 'i
   if (!canSaveClips) {
     throw new ClipShareError('Update the app to save clips — this version is missing the save feature.');
   }
+  const file = await downloadClip(mediaId, clip);
+  await saveVideoFileToGallery(file);
+}
+
+/** Grava um MP4 já no aparelho na galeria (permissões: ver `saveClipToDevice`). */
+export async function saveVideoFileToGallery(file: File): Promise<void> {
+  if (!canSaveClips) {
+    throw new ClipShareError('Update the app to save videos — this version is missing the save feature.');
+  }
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- carregamento tardio, ver `canShareClips`
   const MediaLibrary = require('expo-media-library') as typeof import('expo-media-library');
 
@@ -136,11 +149,9 @@ export async function saveClipToDevice(mediaId: number, clip: Pick<MediaClip, 'i
       throw new ClipShareError('Allow XiaoLee to add videos to your gallery in Settings, then try again.');
     }
   }
-
-  const file = await downloadClip(mediaId, clip);
   try {
     await MediaLibrary.Asset.create(file.uri);
   } catch {
-    throw new ClipShareError("Couldn't save the clip to your gallery. Try again.");
+    throw new ClipShareError("Couldn't save the video to your gallery. Try again.");
   }
 }

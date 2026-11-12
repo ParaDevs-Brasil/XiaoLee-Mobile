@@ -193,3 +193,49 @@ export function Twinkle({
     </Animated.View>
   );
 }
+
+/**
+ * Desliza de lado para entrar — a troca de abas. `from` é o sentido de onde o conteúdo vem: `1` entra pela direita
+ * (aba seguinte), `-1` pela esquerda (aba anterior). Remonte com `key` para animar a cada troca.
+ */
+export function SlideIn({
+  from = 1,
+  style,
+  children,
+}: {
+  from?: 1 | -1;
+  style?: StyleProp<ViewStyle>;
+  children: ReactNode;
+}) {
+  const reduce = useReduceMotion();
+  const [progress] = useState(() => new Animated.Value(0));
+
+  useEffect(() => {
+    if (reduce) {
+      progress.setValue(1);
+      return;
+    }
+    const run = Animated.timing(progress, {
+      toValue: 1,
+      duration: 280,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    });
+    run.start();
+    return () => run.stop();
+  }, [reduce, progress]);
+
+  return (
+    <Animated.View
+      style={[
+        style,
+        {
+          opacity: progress.interpolate({ inputRange: [0, 0.6], outputRange: [0, 1], extrapolate: 'clamp' }),
+          transform: [{ translateX: progress.interpolate({ inputRange: [0, 1], outputRange: [from * 56, 0] }) }],
+        },
+      ]}
+    >
+      {children}
+    </Animated.View>
+  );
+}

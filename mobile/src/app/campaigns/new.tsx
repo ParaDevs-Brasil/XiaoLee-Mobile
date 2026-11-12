@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { createCampaign } from '@/api/backend';
+import { createCampaign, getMyProfile } from '@/api/backend';
 import { ApiError } from '@/api/client';
 import { ErrorState } from '@/components/feedback';
 import { IconAlert } from '@/components/icons';
@@ -19,7 +19,7 @@ import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useKeyboard } from '@/hooks/use-keyboard';
 import { useSession } from '@/hooks/use-session';
-import { formatTokenAmount } from '@/lib/format';
+import { formatReward } from '@/lib/format';
 
 /**
  * Formulário de nova campanha — porta de
@@ -79,6 +79,13 @@ export default function NewCampaignScreen() {
   const [form, setForm] = useState<FormState>(INITIAL);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Só os donos veem a opção de pontos; o backend confere de novo (403 para os demais).
+  const [canPoints, setCanPoints] = useState(false);
+  useEffect(() => {
+    if (!hasSession) return;
+    getMyProfile().then((p) => setCanPoints(p.can_create_points_campaigns)).catch(() => {});
+  }, [hasSession]);
+  const isPoints = form.reward_token.trim().toUpperCase() === 'POINTS';
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((current) => ({ ...current, [key]: value }));
@@ -227,18 +234,45 @@ export default function NewCampaignScreen() {
           autoCapitalize="none"
         />
 
-        <Field
-          label="Reward token"
-          required
-          value={form.reward_token}
-          onChange={(v) => set('reward_token', v)}
-          placeholder="Ex: USDC, ETH, BTC"
-          autoCapitalize="characters"
-        />
+        {canPoints ? (
+          <View style={styles.field}>
+            <Text style={styles.label}>
+              Reward<Text style={styles.required}> *</Text>
+            </Text>
+            <View style={styles.segmented}>
+              {[
+                { token: 'USDC', label: 'USDC' },
+                { token: 'POINTS', label: 'Points (free)' },
+              ].map(({ token, label }) => {
+                const active = form.reward_token.trim().toUpperCase() === token;
+                return (
+                  <Pressable
+                    key={token}
+                    onPress={() => set('reward_token', token)}
+                    style={[styles.segment, active && styles.segmentActive]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                  >
+                    <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        ) : (
+          <Field
+            label="Reward token"
+            required
+            value={form.reward_token}
+            onChange={(v) => set('reward_token', v)}
+            placeholder="Ex: USDC, ETH, BTC"
+            autoCapitalize="characters"
+          />
+        )}
 
         <View style={styles.row}>
           <Field
-            label="Reward each"
+            label={isPoints ? 'Points each' : 'Reward each'}
             required
             value={form.reward_per_participant}
             onChange={(v) => set('reward_per_participant', v)}
@@ -257,9 +291,9 @@ export default function NewCampaignScreen() {
 
         {/* Prévia do `reward_pool` que o backend vai gravar. */}
         <View style={styles.totalBox}>
-          <Text style={styles.totalLabel}>Total pool</Text>
+          <Text style={styles.totalLabel}>{isPoints ? 'Total points' : 'Total pool'}</Text>
           <Text style={styles.totalValue}>
-            {formatTokenAmount(total)} {form.reward_token.trim() || '—'}
+            {form.reward_token.trim() ? formatReward(total, form.reward_token.trim()) : '—'}
           </Text>
         </View>
 

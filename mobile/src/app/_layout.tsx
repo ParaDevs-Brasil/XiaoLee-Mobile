@@ -52,6 +52,12 @@ const PRIVY_CLIENT_ID = process.env.EXPO_PUBLIC_PRIVY_CLIENT_ID?.trim() || 'CHAN
 SplashScreen.preventAutoHideAsync();
 
 /**
+ * As cinco abas da barra de baixo trocam entre si sem a transição de pilha (o slide padrão leva ~350 ms e fazia a
+ * troca parecer travada): a tela nova aparece na hora e o conteúdo entra com o próprio reveal.
+ */
+const TAB_ROOT_ANIMATION = 'none' as const;
+
+/**
  * Navegador raiz do aplicativo dentro dos provedores Privy e WalletProvider.
  *
  * Aplica o gate de login via `Stack.Protected`:
@@ -97,7 +103,10 @@ function RootNavigator() {
         {/* Estas telas trazem o próprio HeaderBar (o wordmark do Figma) via
             `ScreenShell`, então a barra nativa sairia duplicada. A volta
             fica com o gesto do sistema e com o wordmark, que leva ao chat. */}
-        <Stack.Screen name="index" options={{ headerShown: false }} />
+        <Stack.Screen name="index" options={{ headerShown: false, animation: TAB_ROOT_ANIMATION }} />
+        <Stack.Screen name="chat" options={{ headerShown: false, animation: TAB_ROOT_ANIMATION }} />
+        <Stack.Screen name="studio" options={{ headerShown: false, animation: TAB_ROOT_ANIMATION }} />
+        <Stack.Screen name="grow" options={{ headerShown: false, animation: TAB_ROOT_ANIMATION }} />
         {/* Sem ScreenShell/header nativo de propósito: é o único passo
             obrigatório antes do chat/dashboard, não um destino para
             navegar de volta a partir de outra tela. */}
@@ -106,11 +115,28 @@ function RootNavigator() {
         <Stack.Screen name="notifications" options={{ headerShown: false }} />
         <Stack.Screen name="dashboard" options={{ headerShown: false }} />
         <Stack.Screen name="campaigns/index" options={{ headerShown: false }} />
-        <Stack.Screen name="wallet/index" options={{ headerShown: false }} />
+        <Stack.Screen name="wallet/index" options={{ headerShown: false, animation: TAB_ROOT_ANIMATION }} />
         <Stack.Screen name="wallet/receipts" options={{ headerShown: false }} />
+        <Stack.Screen name="wallet/activity" options={{ headerShown: false }} />
         <Stack.Screen name="wallet/breakdown" options={{ headerShown: false }} />
         <Stack.Screen name="transactions" options={{ headerShown: false }} />
         <Stack.Screen name="history" options={{ headerShown: false }} />
+        <Stack.Screen name="marketplace" options={{ headerShown: false }} />
+        <Stack.Screen name="creators/index" options={{ headerShown: false }} />
+        <Stack.Screen name="creators/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="creators/new-video" options={{ headerShown: false }} />
+        <Stack.Screen name="accounts" options={{ headerShown: false }} />
+        {/* Retorno do login do X: transparente e sem animação, a Accounts que abriu o login segue visível por baixo. */}
+        <Stack.Screen
+          name="social/x"
+          options={{
+            headerShown: false,
+            presentation: 'transparentModal',
+            animation: 'none',
+            // o `contentStyle` padrão pinta `colors.bg` e cobriria a Accounts de branco enquanto o login conclui
+            contentStyle: { backgroundColor: 'transparent' },
+          }}
+        />
         <Stack.Screen name="clips/index" options={{ headerShown: false }} />
         <Stack.Screen name="clips/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="reports/index" options={{ headerShown: false }} />

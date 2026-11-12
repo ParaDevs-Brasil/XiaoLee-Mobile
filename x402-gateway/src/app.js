@@ -1,0 +1,81 @@
+import express from "express";
+import { createGatewayMiddleware } from "@circle-fin/x402-batching/server";
+import { openapi } from "./openapi.js";
+import { catalog } from "./catalog.js";
+import { timingSafeEqual } from "node:crypto";
+import { deliver, validate, defaultLedger } from "./delivery.js";
+import { createLimiter, guardMiddleware, payerKey } from "./guard.js";
+
+// Gateway x402 (Circle) na frente do FastAPI. O pagamento é liquidado ANTES do handler;
+// o upstream só é chamado com o segredo interno + dados do pagador (anti-bypass no FastAPI).
+export function createApp(cfg, buyer = null, ledger = defaultLedger) {
+  const app = express();
+  app.set("trust proxy", 1); // Railway: IP real do cliente
+  const state = { paused: Boolean(cfg.paused) };
+  // O `from` do header é forjável: a cota por IP fecha esse desvio; a por pagador protege o upstream.
+  const byIp = createLimiter({ max: cfg.ipRateLimitPerMin ?? 120, windowMs: 60_000 });
+  const byPayer = createLimiter({ max: cfg.rateLimitPerMin ?? 30, windowMs: 60_000 });
+  const guard = guardMiddleware(state, (req) => byIp(`ip:${req.ip}`) && byPayer(payerKey(req)));
+  app.use(express.json({ limit: "64kb" }));
+
+  const gateway = createGatewayMiddleware({
+    sellerAddress: cfg.sellerAddress,
+    facilitatorUrl: cfg.facilitatorUrl,
+    ...(cfg.networks.length ? { networks: cfg.networks } : {}),
+  });
+
+  app.get("/health", (_req, res) => res.json({ ok: true }));
+  app.get("/openapi.json", (_req, res) => res.json(openapi(cfg)));
+
+  // Comprador interno (só o FastAPI chama, com o segredo compartilhado)
+  const auth = (req, res, next) => {
+    const a = Buffer.from(String(req.get("x-internal-secret") ?? "")), b = Buffer.from(cfg.internalSecret ?? "");
+    if (!b.length || a.length !== b.length || !timingSafeEqual(a, b)) return res.status(403).json({ error: "forbidden" });
+    next();
+  };
+  const internal = [(req, res, next) => (buyer ? next() : res.status(503).json({ error: "buyer_disabled" })), auth];
+  // botão de desligar em runtime (rotas pagas devolvem 503 sem cobrar)
+  app.post("/internal/pause", auth, (req, res) => { state.paused = req.body?.paused !== false; res.json({ paused: state.paused }); });
+  // pagamentos liquidados sem entrega (reconciliação/reembolso manual)
+  // `failures` = linhas abertas (failed ou settled sem conclusão: pedido pago que travou).
+  app.get("/internal/reconcile", auth, async (_req, res) => {
+    try { res.json({ durable: ledger.durable, failures: await ledger.open() }); }
+    catch (e) { res.status(503).json({ error: "ledger_unavailable" }); }
+  });
+  // fecha um caso aberto depois do reembolso manual: nota obrigatória, hash do reembolso opcional
+  app.post("/internal/reconcile/:tx/resolve", auth, async (req, res) => {
+    const note = typeof req.body?.note === "string" ? req.body.note.trim() : "";
+    const refund_tx = req.body?.refund_tx == null ? null : String(req.body.refund_tx);
+    if (!note || note.length > 500 || (refund_tx && refund_tx.length > 200)) return res.status(400).json({ error: "invalid_resolution" });
+    try {
+      const ok = await ledger.resolve(req.params.tx, { note, refund_tx });
+      res.status(ok ? 200 : 404).json(ok ? { resolved: req.params.tx } : { error: "not_open" });
+    } catch (e) { res.status(503).json({ error: "ledger_unavailable" }); }
+  });
+  app.get("/internal/market/search", internal, async (req, res) => {
+    try { res.json({ items: await buyer.search({ q: req.query.q, limit: req.query.limit }) }); }
+    catch (e) { res.status(502).json({ error: "discovery_failed" }); }
+  });
+  app.post("/internal/market/buy", internal, async (req, res) => res.json(await buyer.buy(req.body ?? {})));
+  // aprovação do usuário para uma cotação (confirmation_required); só o FastAPI chama, após autenticar o usuário
+  app.post("/internal/market/confirm", internal, (req, res) => {
+    const r = buyer.confirm({ confirmId: req.body?.confirmId, userId: req.body?.userId });
+    res.status(r.error ? 404 : 200).json(r);
+  });
+
+  for (const svc of catalog) {
+    // valida ANTES de cobrar: entrada inválida nunca gera pagamento. Só quando já há pagamento
+    // no pedido; a sonda sem pagamento (crawler/listagem) segue recebendo o 402 padrão.
+    const check = (req, res, next) => {
+      if (!req.get("payment-signature") && !req.get("x-payment")) return next();
+      const err = validate(svc.schema, req.body);
+      return err ? res.status(400).json({ error: "invalid_request", detail: err }) : next();
+    };
+    app.post(`/v1/x402/${svc.id}`, guard, check, gateway.require(svc.price), async (req, res) => {
+      const r = await deliver(cfg, svc, req.payment ?? {}, req.body, { ledger });
+      res.status(r.status).json(r.body);
+    });
+  }
+
+  return app;
+}

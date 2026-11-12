@@ -21,7 +21,7 @@ import {
 import { Pop, Reveal, Twinkle } from '@/components/motion';
 import { IdeasProgress, ReportIdeaCard } from '@/components/report-idea-card';
 import { ReportMetricCard } from '@/components/report-metric-card';
-import { ScreenShell } from '@/components/screen-shell';
+import { FAB_CLEARANCE, ScreenShell } from '@/components/screen-shell';
 import { CardShadow, Fonts, Radius, Spacing } from '@/constants/theme';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useBackendData } from '@/hooks/use-backend-data';
@@ -60,8 +60,6 @@ const METRIC_ICON: Record<MetricKey, (p: IconProps) => React.ReactElement> = {
   usdc_received: IconWallet,
 };
 
-/** O botão flutuante do Chat cobre o fim da lista: a folga extra deixa o rodapé à vista. */
-const CHAT_FAB_CLEARANCE = 72;
 
 /** Posição de cada bloco na cascata de entrada (a cascata trava em 9: ver `motion.tsx`). */
 const ORDER = { summary: 0, numbersHeading: 1, tiles: 2, ideasHeading: 7, ideas: 8, footer: 9 };
@@ -88,7 +86,7 @@ export default function ReportScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.content,
-          { paddingBottom: Spacing.four + CHAT_FAB_CLEARANCE + insets.bottom },
+          { paddingBottom: FAB_CLEARANCE + insets.bottom },
         ]}
         showsVerticalScrollIndicator={false}
         refreshControl={

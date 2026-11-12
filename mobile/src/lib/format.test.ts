@@ -10,6 +10,8 @@ import assert from 'node:assert/strict';
 
 import {
   formatDate,
+  formatReward,
+  isPoints,
   formatTokenAmount,
   formatUSDC,
   parseTimestamp,
@@ -82,6 +84,18 @@ test('formatDate aceita o offset que o campo created_at usa', () => {
   // `GET /campaigns` devolve "+00:00", não o "Z" do feed de traction.
   assert.notEqual(formatDate('2026-07-28T00:34:56+00:00'), '');
   assert.equal(formatDate('não é uma data'), '');
+});
+
+test('isPoints reconhece o token de pontos sem depender de caixa ou espaços', () => {
+  assert.equal(isPoints('POINTS'), true);
+  assert.equal(isPoints(' points '), true);
+  assert.equal(isPoints('USDC'), false);
+});
+
+test('formatReward escreve "points" para pontos e mantém o token dos demais', () => {
+  assert.equal(formatReward(50, 'POINTS'), '50 points');
+  assert.equal(formatReward(1000, ' points '), '1,000 points');
+  assert.equal(formatReward(2.5, 'USDC'), '2.5 USDC');
 });
 
 console.log('todos os checks passaram');

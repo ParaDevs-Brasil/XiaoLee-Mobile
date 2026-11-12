@@ -55,15 +55,15 @@ def _client():
 
 
 def presign_put(key: str, content_type: str, size_bytes: int, expires: int = 3600) -> str:
-    """URL de PUT que só aceita este content-type e este tamanho exato (assinados)."""
+    """URL de PUT que só aceita este content-type (assinado).
+
+    O tamanho NÃO é assinado: o celular informa o tamanho do arquivo antes de o seletor recomprimir a imagem, e o R2 real
+    responde 403 SignatureDoesNotMatch se o corpo tiver outro tamanho. Quem chama confere o tamanho real no `complete`
+    (`object_size`). `size_bytes` fica na assinatura só para os chamadores validarem o declarado.
+    """
     return _client().generate_presigned_url(
         "put_object",
-        Params={
-            "Bucket": settings.r2_bucket,
-            "Key": key,
-            "ContentType": content_type,
-            "ContentLength": size_bytes,
-        },
+        Params={"Bucket": settings.r2_bucket, "Key": key, "ContentType": content_type},
         ExpiresIn=expires,
     )
 

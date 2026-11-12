@@ -29,6 +29,16 @@ def check(ok: bool, label: str, detail: str = "") -> None:
         failures.append(label)
 
 
+def poll(fetch, done, every: float = 5, timeout: float = 900):
+    """Repete `fetch` até `done(resultado)` ou estourar `timeout` (devolve o último resultado)."""
+    end = time.time() + timeout
+    while True:
+        out = fetch()
+        if done(out) or time.time() > end:
+            return out
+        time.sleep(every)
+
+
 def main(video: Path, layout: str) -> int:
     base = os.environ["XIAOLEE_API_URL"].rstrip("/")
     h = {"Authorization": f"Bearer {os.environ['XIAOLEE_TEST_BEARER']}"}
@@ -55,8 +65,8 @@ def main(video: Path, layout: str) -> int:
             check(put.status_code == 200, "upload direto ao R2", f"HTTP {put.status_code} · {time.time() - t:.0f}s")
 
             t = time.time()
-            r = api.post(f"/v1/media/{aid}/complete")
-            d = api.get(f"/v1/media/{aid}").json()
+            r = api.post(f"/v1/media/{aid}/complete")  # a transcrição roda em background no servidor
+            d = poll(lambda: api.get(f"/v1/media/{aid}").json(), lambda d: d["status"] in ("transcribed", "failed", "expired"))
             check(d["status"] == "transcribed", "mídia transcrita", f"status={d['status']} {d.get('error') or ''} · {time.time() - t:.0f}s")
             if d["status"] != "transcribed":
                 return 1
@@ -64,7 +74,8 @@ def main(video: Path, layout: str) -> int:
             t = time.time()
             r = api.post(f"/v1/media/{aid}/clips?layout={layout}")
             check(r.status_code == 200, "POST /clips", f"HTTP {r.status_code} {r.text[:120] if r.status_code != 200 else ''}")
-            clips = api.get(f"/v1/media/{aid}/clips").json() if r.status_code == 200 else []
+            clips = poll(lambda: api.get(f"/v1/media/{aid}/clips").json(),
+                         lambda cs: bool(cs) and all(c["status"] in ("ready", "failed", "expired") for c in cs)) if r.status_code == 200 else []
             check(bool(clips) and all(c["status"] == "ready" for c in clips),
                   "cortes prontos", f"{[c['status'] for c in clips]} · {time.time() - t:.0f}s")
             for c in clips:

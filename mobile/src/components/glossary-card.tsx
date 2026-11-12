@@ -40,7 +40,7 @@ const COUNT_VISIBLE_FROM = 45;
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
-export function GlossaryCard() {
+export function GlossaryCard({ bare = false }: { bare?: boolean }) {
   const colors = useTheme();
   const styles = useStyles();
   const glossary = useBackendData(getGlossary);
@@ -77,7 +77,7 @@ export function GlossaryCard() {
 
   const loaded = glossary.data !== null;
   const terms = local ?? glossary.data ?? [];
-  const expanded = open ?? (loaded && terms.length === 0);
+  const expanded = bare || (open ?? (loaded && terms.length === 0));
 
   const flush = async () => {
     const list = box.current.pending;
@@ -154,6 +154,7 @@ export function GlossaryCard() {
 
   return (
     <View style={styles.card}>
+      {bare ? null : (
       <Pressable
         onPress={() => setOpen(!expanded)}
         style={({ pressed }) => [styles.header, pressed && styles.pressed]}
@@ -177,6 +178,7 @@ export function GlossaryCard() {
           <IconChevronDown size={18} sw={2.2} color={colors.ink3} />
         </View>
       </Pressable>
+      )}
 
       {/* Fechado: as palavras à vista, só leitura — abrir é para mudar. */}
       {!expanded && terms.length ? (
@@ -195,7 +197,7 @@ export function GlossaryCard() {
       ) : null}
 
       {expanded ? (
-        <View style={styles.body}>
+        <View style={[styles.body, bare && styles.bodyBare]}>
           {!loaded ? (
             glossary.error ? (
               <View style={styles.loadFailed}>
@@ -374,6 +376,7 @@ const useStyles = makeStyles((colors) => ({
   title: { fontFamily: Fonts.bold, fontSize: 15, color: colors.ink },
   subtitle: { fontFamily: Fonts.sans, fontSize: 12, lineHeight: 17, color: colors.ink2, marginTop: 2 },
   chevronOpen: { transform: [{ rotate: '180deg' }] },
+  bodyBare: { paddingTop: Spacing.three },
   body: { gap: Spacing.three - 4, paddingHorizontal: Spacing.three, paddingBottom: Spacing.three },
   inputRow: {
     flexDirection: 'row',

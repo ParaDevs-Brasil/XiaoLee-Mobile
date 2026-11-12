@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { getFormatSuggestions, type FormatSuggestions } from '@/api/backend';
@@ -24,17 +24,16 @@ type State =
   | { phase: 'done'; data: FormatSuggestions }
   | { phase: 'error'; message: string; retry: boolean };
 
-export function FormatIdeasCard() {
+export function FormatIdeasCard({ bare = false }: { bare?: boolean }) {
   const colors = useTheme();
   const styles = useStyles();
-  const [open, setOpen] = useState(false);
-  const [state, setState] = useState<State>({ phase: 'idle' });
+  const [open, setOpen] = useState(bare);
+  const [state, setState] = useState<State>({ phase: bare ? 'loading' : 'idle' });
   /** Descarta resposta de um pedido antigo (dois toques seguidos em "Try again"). */
   const version = useRef(0);
 
-  const load = async () => {
+  const request = async () => {
     const mine = ++version.current;
-    setState({ phase: 'loading' });
     try {
       const data = await getFormatSuggestions();
       if (mine === version.current) setState({ phase: 'done', data });
@@ -44,6 +43,25 @@ export function FormatIdeasCard() {
     }
   };
 
+  const load = () => {
+    setState({ phase: 'loading' });
+    return request();
+  };
+
+  // Aberto pelo atalho do Studio: o pedido sai na hora, sem o cabeçalho para tocar.
+  useEffect(() => {
+    if (!bare) return;
+    const mine = ++version.current;
+    getFormatSuggestions().then(
+      (data) => {
+        if (mine === version.current) setState({ phase: 'done', data });
+      },
+      (err) => {
+        if (mine === version.current) setState({ phase: 'error', ...formatIdeasError(err instanceof ApiError ? err.status : null) });
+      },
+    );
+  }, [bare]);
+
   const toggle = () => {
     const next = !open;
     setOpen(next);
@@ -52,6 +70,7 @@ export function FormatIdeasCard() {
 
   return (
     <View style={styles.card}>
+      {bare ? null : (
       <Pressable
         onPress={toggle}
         style={({ pressed }) => [styles.header, pressed && styles.pressed]}
@@ -75,9 +94,10 @@ export function FormatIdeasCard() {
           <IconChevronDown size={18} sw={2.2} color={colors.ink3} />
         </View>
       </Pressable>
+      )}
 
       {open ? (
-        <View style={styles.body}>
+        <View style={[styles.body, bare && styles.bodyBare]}>
           {state.phase === 'loading' ? (
             <View style={styles.loading} accessibilityLiveRegion="polite">
               <ActivityIndicator color={colors.accent} />
@@ -152,6 +172,7 @@ const useStyles = makeStyles((colors) => ({
   title: { fontFamily: Fonts.bold, fontSize: 15, color: colors.ink },
   subtitle: { fontFamily: Fonts.sans, fontSize: 12, lineHeight: 17, color: colors.ink2, marginTop: 2 },
   chevronOpen: { transform: [{ rotate: '180deg' }] },
+  bodyBare: { paddingTop: Spacing.three },
   body: { gap: Spacing.three - 4, paddingHorizontal: Spacing.three, paddingBottom: Spacing.three },
   loading: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, minHeight: 44 },
   helper: { fontFamily: Fonts.sans, fontSize: 12, lineHeight: 17, color: colors.ink2 },
