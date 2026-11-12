@@ -11,6 +11,7 @@ import { BottomNav } from '@/components/bottom-nav';
 import { ProfileMenu } from '@/components/profile-menu';
 import { Fonts, Spacing } from '@/constants/theme';
 import { makeStyles } from '@/hooks/use-theme';
+import { usePoints } from '@/hooks/use-points';
 import { useUnreadNotificationsCount } from '@/hooks/use-unread-notifications';
 import { useWallet } from '@/hooks/use-wallet';
 
@@ -70,6 +71,7 @@ export function ScreenShell({ children, deferContent = false }: { children: Reac
   // ao conectar) — não há mais um login separado dela para esperar aqui.
   const { address: wallet } = useWallet();
   const unreadCount = useUnreadNotificationsCount();
+  const points = usePoints();
 
   const close = () => setPanel('none');
   /** Tocar no mesmo ícone fecha; nos dois painéis, abrir um fecha o outro. */
@@ -93,6 +95,7 @@ export function ScreenShell({ children, deferContent = false }: { children: Reac
         // vaivém entre dois chats idênticos.
         onPressLogo={() => router.navigate('/')}
         unreadCount={unreadCount}
+        points={points}
       />
 
       {ready ? (

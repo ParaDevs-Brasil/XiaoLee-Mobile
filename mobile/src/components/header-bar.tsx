@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconBell, IconSpark } from '@/components/icons';
 import { ProfileAvatarButton } from '@/components/profile-avatar-button';
 import { Fonts, Radius, Spacing } from '@/constants/theme';
+import { formatTokenAmount } from '@/lib/format';
 import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useProfilePhoto } from '@/hooks/use-profile-photo';
 
@@ -25,6 +26,8 @@ interface HeaderBarProps {
   profileOpen?: boolean;
   /** Contagem para o badge sobre o sino — 0/undefined não desenha nada. */
   unreadCount?: number;
+  /** Saldo de pontos: selo ao lado do sino. 0/undefined não desenha nada. */
+  points?: number;
 }
 
 export function HeaderBar({
@@ -33,6 +36,7 @@ export function HeaderBar({
   onPressLogo,
   profileOpen = false,
   unreadCount,
+  points,
 }: HeaderBarProps) {
   const colors = useTheme();
   const styles = useStyles();
@@ -66,6 +70,17 @@ export function HeaderBar({
       </Pressable>
 
       <View style={styles.actions}>
+        {points ? (
+          <View style={styles.points} accessible accessibilityLabel={`Seus pontos: ${formatTokenAmount(points)}`}>
+            {/* O desenho da faísca ocupa a metade de cima do quadro 24x24: desce para alinhar ao número. */}
+            <View style={styles.pointsSpark}>
+              <IconSpark size={14} color={colors.accent} />
+            </View>
+            <Text style={styles.pointsText} numberOfLines={1}>
+              {formatTokenAmount(points)}
+            </Text>
+          </View>
+        ) : null}
         <Pressable
           onPress={onPressNotifications}
           hitSlop={Spacing.two}
@@ -118,6 +133,17 @@ const useStyles = makeStyles((colors) => ({
     alignItems: 'center',
     gap: Spacing.three,
   },
+  points: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: Spacing.two,
+    height: 26,
+    borderRadius: Radius.pill,
+    backgroundColor: colors.accentSoft,
+  },
+  pointsSpark: { marginTop: 3 },
+  pointsText: { fontFamily: Fonts.bold, fontSize: 13, color: colors.accent },
   badge: {
     position: 'absolute',
     top: -4,
