@@ -74,9 +74,14 @@ export function formatTokenAmount(value: number): string {
   return value.toLocaleString('en-US', { maximumFractionDigits: 2 });
 }
 
+/** Campanha de pontos: o token da recompensa é POINTS (sem dinheiro, sem resgate). */
+export function isPoints(token: string): boolean {
+  return token.trim().toUpperCase() === 'POINTS';
+}
+
 /** Recompensa de campanha: "50 POINTS" vira "50 points"; os demais tokens ficam como estão. */
 export function formatReward(value: number, token: string): string {
-  return token.trim().toUpperCase() === 'POINTS' ? `${formatTokenAmount(value)} points` : `${formatTokenAmount(value)} ${token}`;
+  return isPoints(token) ? `${formatTokenAmount(value)} points` : `${formatTokenAmount(value)} ${token}`;
 }
 
 /** Data curta no locale do aparelho. Vazio se não parsear, como `timeAgo`. */

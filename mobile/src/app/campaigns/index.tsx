@@ -24,6 +24,7 @@ import {
   IconMegaphone,
   IconPlus,
   IconRefresh,
+  IconSpark,
   IconTarget,
 } from '@/components/icons';
 import { FAB_CLEARANCE, PageHeading, ScreenShell } from '@/components/screen-shell';
@@ -32,7 +33,7 @@ import { makeStyles, useTheme } from '@/hooks/use-theme';
 import { useBackendData } from '@/hooks/use-backend-data';
 import { useSession } from '@/hooks/use-session';
 import { ARC_NETWORK } from '@/lib/arc-network';
-import { formatReward } from '@/lib/format';
+import { formatReward, formatTokenAmount, isPoints } from '@/lib/format';
 
 /**
  * Tela de Campaigns — porta de `frontend/src/pages/CampanhasNew.tsx`.
@@ -96,6 +97,10 @@ export function CampaignsView({ embedded = false }: { embedded?: boolean }) {
   const campaigns = data?.campaigns ?? [];
   const mine = data?.mine ?? [];
   const claimed = mine.filter((item) => item.tasks_claimed);
+  // Pontos já ganhos: as participações resgatadas de campanhas de pontos (é o mesmo que `points` no perfil).
+  const earned = claimed.filter((item) => isPoints(item.reward_token));
+  const points = earned.reduce((sum, item) => sum + item.reward_per_participant, 0);
+  const showPoints = earned.length > 0 || campaigns.some((c) => isPoints(c.reward_token));
   // Mapa por id: o cartão só precisa da SUA participação, e varrer a lista
   // dentro de cada cartão seria O(n²) por render do carrossel.
   const participationById = new Map(mine.map((item) => [item.id, item]));
@@ -137,6 +142,8 @@ export function CampaignsView({ embedded = false }: { embedded?: boolean }) {
 
         {/* Com a carteira conectada o aviso verde não diz nada de novo; só o convidado precisa dele, pelo botão de conectar. */}
         {hasSession ? null : <SessionBanner hasSession={false} />}
+
+        {hasSession && showPoints ? <PointsCard points={points} campaigns={earned.length} /> : null}
 
         <TabBar
           tab={tab}
@@ -305,6 +312,28 @@ export function CampaignsView({ embedded = false }: { embedded?: boolean }) {
         {body}
       </ScrollView>
     </ScreenShell>
+  );
+}
+
+/** Pontos ganhos em campanhas de pontos. Só aparece para quem ganhou ou para quando há campanha de pontos aberta. */
+function PointsCard({ points, campaigns }: { points: number; campaigns: number }) {
+  const colors = useTheme();
+  const styles = useStyles();
+  return (
+    <View style={styles.pointsCard} accessible accessibilityLabel={`Your points: ${formatTokenAmount(points)}`}>
+      <View style={styles.pointsIcon}>
+        <IconSpark size={18} color={colors.onAccent} />
+      </View>
+      <View style={styles.pointsBody}>
+        <Text style={styles.pointsLabel}>Your points</Text>
+        <Text style={styles.pointsHint} numberOfLines={2}>
+          {campaigns === 0
+            ? 'Join a points campaign to start earning'
+            : `Earned in ${campaigns} campaign${campaigns === 1 ? '' : 's'}`}
+        </Text>
+      </View>
+      <Text style={styles.pointsValue}>{formatTokenAmount(points)}</Text>
+    </View>
   );
 }
 
@@ -607,6 +636,28 @@ const useStyles = makeStyles((colors) => ({
   bannerIconGuest: { backgroundColor: colors.bg },
   bannerTitle: { fontFamily: Fonts.bold, fontSize: 13, color: colors.ink },
   bannerText: { fontFamily: Fonts.sans, fontSize: 12, color: colors.ink2, marginTop: 1 },
+  pointsCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two + 2,
+    padding: Spacing.three - 4,
+    borderRadius: Radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.accentSoft,
+  },
+  pointsIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: Radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.accentFill,
+  },
+  pointsBody: { flex: 1 },
+  pointsLabel: { fontFamily: Fonts.bold, fontSize: 13, color: colors.ink },
+  pointsHint: { fontFamily: Fonts.sans, fontSize: 12, color: colors.ink2, marginTop: 1 },
+  pointsValue: { fontFamily: Fonts.bold, fontSize: 24, color: colors.accent },
   bannerButton: {
     paddingHorizontal: Spacing.three - 2,
     paddingVertical: Spacing.two - 1,
